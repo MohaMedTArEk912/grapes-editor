@@ -123,3 +123,10 @@ html {
     border-color: var(--gjs-primary-color) !important;
     box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1) !important;
 }
+
+/* Real Preview Mode Force Overrides */
+.gjs-preview-active .gjs-badge, .gjs-preview-active .gjs-toolbar, .gjs-preview-active .gjs-resizer, .gjs-preview-active .gjs-highlighter, .gjs-preview-active .gjs-highlighter-sel, .gjs-preview-active .gjs-placeholder, .gjs-preview-active .gjs-ghost, .gjs-preview-active .gjs-dropzone { display: none !important; opacity: 0 !important; visibility: hidden !important; pointer-events: none !important; }
+.gjs-preview-active, .gjs-preview-active * { cursor: auto !important; }
+.gjs-preview-active .gjs-comp-selected { outline: none !important; box-shadow: none !important; }
+.gjs-preview-active .gjs-dashed * { outline: none !important; }
+.gjs-preview-active .gjs-hovered { outline: none !important; }

@@ -1,12 +1,12 @@
 import React from 'react';
-import type { Editor } from 'grapesjs';
+import { GrapesEditor } from '../../types/grapes';
 import {
     Undo, Redo, Trash2, Code, Eye,
     Maximize, Download, Monitor, Tablet, Smartphone
 } from 'lucide-react';
 
 interface ToolbarProps {
-    editor: Editor | null;
+    editor: GrapesEditor | null;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({ editor }) => {

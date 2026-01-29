@@ -17,15 +17,36 @@ export const Editor = () => {
     useEffect(() => {
         if (!editor) return;
 
-        const onPreviewStart = () => setPreviewMode(true);
-        const onPreviewStop = () => setPreviewMode(false);
+        const togglePreview = (active: boolean) => {
+            setPreviewMode(active);
+        };
 
-        editor.on('run:preview', onPreviewStart);
-        editor.on('stop:preview', onPreviewStop);
+        // Listen to generic command events to catch 'preview'
+        const onCommandRun = (id: string) => {
+            if (id === 'preview' || id === 'core:preview') togglePreview(true);
+        };
+
+        const onCommandStop = (id: string) => {
+            if (id === 'preview' || id === 'core:preview') togglePreview(false);
+        };
+
+        // Check initial state
+        if (editor.Commands.isActive('preview')) {
+            togglePreview(true);
+        }
+
+        editor.on('run', onCommandRun);
+        editor.on('stop', onCommandStop);
+
+        // Also listen to specific event just in case
+        editor.on('run:preview', () => togglePreview(true));
+        editor.on('stop:preview', () => togglePreview(false));
 
         return () => {
-            editor.off('run:preview', onPreviewStart);
-            editor.off('stop:preview', onPreviewStop);
+            editor.off('run', onCommandRun);
+            editor.off('stop', onCommandStop);
+            editor.off('run:preview');
+            editor.off('stop:preview');
         };
     }, [editor]);
 
@@ -54,7 +75,7 @@ export const Editor = () => {
                 )}
 
                 {/* Canvas */}
-                <main 
+                <main
                     className={`flex-1 relative bg-[#0a0a1a] transition-all duration-300 ${previewMode ? 'z-[100]' : ''}`}
                     style={!previewMode ? { backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(99, 102, 241, 0.1) 1px, transparent 0)', backgroundSize: '20px 20px' } : {}}
                 >

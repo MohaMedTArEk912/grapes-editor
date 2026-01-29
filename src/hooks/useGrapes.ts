@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import grapesjs, { Editor } from 'grapesjs';
+import grapesjs from 'grapesjs';
 import { initBlocks } from '../utils/blocks';
+import { GrapesEditor } from '../types/grapes';
+
+
 
 export const useGrapes = () => {
-    const [editor, setEditor] = useState<Editor | null>(null);
+    const [editor, setEditor] = useState<GrapesEditor | null>(null);
     const editorRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -92,6 +95,49 @@ export const useGrapes = () => {
                     'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css',
                 ],
             },
+        });
+        // Manually Register 'preview' command to ensure we have a 'real' preview
+        editorInstance.Commands.add('preview', {
+            run: (editor: GrapesEditor) => {
+                // 1. Stop core editing helpers
+                try { editor.stopCommand('sw-visibility'); } catch (e) { console.warn(e) }
+                try { editor.stopCommand('core:component-outline'); } catch (e) { /* ignore */ }
+                try { editor.stopCommand('core:canvas-tooltips'); } catch (e) { /* ignore */ }
+
+                // 2. Clear selection
+                editor.select(undefined);
+
+                // 3. Manually clean up any lingering CSS classes for a "Real" preview
+                const canvasBody = editor.Canvas.getBody();
+                if (canvasBody) {
+                    canvasBody.classList.remove('gjs-dashed');
+                    // Add a class that we can target with CSS to hide other editor-specific elements if needed
+                    canvasBody.classList.add('gjs-preview-active');
+                }
+
+                // 4. Notify UI
+                editor.trigger('run:preview');
+            },
+            stop: (editor: GrapesEditor) => {
+                // 1. Remove preview class explicitly
+                const canvasBody = editor.Canvas.getBody();
+                if (canvasBody) {
+                    canvasBody.classList.remove('gjs-preview-active');
+                    // Forcefully add the class back if sw-visibility fails to do so immediately
+                    canvasBody.classList.add('gjs-dashed');
+                }
+
+                // 2. Restore core editing helpers
+                // Force stop then start to ensure it resets the internal state correctly
+                try { editor.stopCommand('sw-visibility'); } catch (e) { /* ignore */ }
+                try { editor.runCommand('sw-visibility'); } catch (e) { /* ignore */ }
+
+                try { editor.runCommand('core:component-outline'); } catch (e) { /* ignore */ }
+                try { editor.runCommand('core:canvas-tooltips'); } catch (e) { /* ignore */ }
+
+                // 3. Notify UI
+                editor.trigger('stop:preview');
+            }
         });
 
         initBlocks(editorInstance);
