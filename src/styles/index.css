@@ -1,0 +1,125 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+    --gjs-primary-color: #6366f1;
+    --gjs-secondary-color: #8b5cf6;
+    --gjs-tertiary-color: #a855f7;
+    --gjs-quaternary-color: #ec4899;
+    --gjs-dark-bg: #0f0f23;
+    --gjs-darker-bg: #0a0a1a;
+    --gjs-panel-bg: #1a1a2e;
+    --gjs-border-color: #2a2a4a;
+    --gjs-text-color: #e2e8f0;
+    --gjs-text-muted: #94a3b8;
+}
+
+body,
+html {
+    height: 100%;
+    margin: 0;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--gjs-dark-bg);
+    color: var(--gjs-text-color);
+}
+
+/* ===== GrapesJS Overrides ===== */
+.gjs-one-bg {
+    background-color: var(--gjs-panel-bg) !important;
+}
+
+.gjs-two-color {
+    color: var(--gjs-text-color) !important;
+}
+
+.gjs-three-bg {
+    background-color: var(--gjs-darker-bg) !important;
+}
+
+.gjs-four-color,
+.gjs-four-color-h:hover {
+    color: var(--gjs-primary-color) !important;
+}
+
+.gjs-block {
+    background: var(--gjs-darker-bg) !important;
+    border: 1px solid var(--gjs-border-color) !important;
+    border-radius: 8px !important;
+    padding: 12px 8px !important;
+    margin: 4px !important;
+    transition: all 0.2s ease !important;
+    min-height: 70px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    box-shadow: none !important;
+    color: var(--gjs-text-color) !important;
+}
+
+.gjs-block:hover {
+    border-color: var(--gjs-primary-color) !important;
+    box-shadow: 0 0 15px rgba(99, 102, 241, 0.2) !important;
+    transform: translateY(-2px);
+    color: var(--gjs-primary-color) !important;
+}
+
+.gjs-block__media {
+    color: inherit !important;
+}
+
+.gjs-block-label {
+    font-size: 11px !important;
+    margin-top: 6px !important;
+    font-weight: 500 !important;
+}
+
+/* ===== Scrollbar Styling ===== */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--gjs-darker-bg);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--gjs-border-color);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--gjs-primary-color);
+}
+
+/* ===== GrapesJS Internal UI Overrides ===== */
+.gjs-sm-sector {
+    background: var(--gjs-darker-bg) !important;
+    border: 1px solid var(--gjs-border-color) !important;
+    border-radius: 8px !important;
+    margin-bottom: 8px !important;
+}
+
+.gjs-sm-sector-title {
+    background: transparent !important;
+    border: none !important;
+    color: var(--gjs-text-color) !important;
+    font-weight: 500 !important;
+}
+
+.gjs-field {
+    background: var(--gjs-darker-bg) !important;
+    border: 1px solid var(--gjs-border-color) !important;
+    border-radius: 6px !important;
+    color: var(--gjs-text-color) !important;
+}
+
+.gjs-field:focus-within {
+    border-color: var(--gjs-primary-color) !important;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1) !important;
+}
