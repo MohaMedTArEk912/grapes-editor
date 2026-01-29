@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import grapesjs from 'grapesjs';
+// @ts-ignore - No types available for this plugin
+import grapesjsTailwind from 'grapesjs-tailwind';
 import { initBlocks } from '../utils/blocks';
 import { GrapesEditor } from '../types/grapes';
-
 
 
 export const useGrapes = () => {
@@ -17,6 +18,15 @@ export const useGrapes = () => {
             height: '100%',
             width: 'auto',
             fromElement: true,
+            // Tailwind-first: All styling uses Tailwind CSS classes
+            plugins: [grapesjsTailwind],
+            pluginsOpts: {
+                // grapesjs-tailwind plugin options
+                'grapesjs-tailwind': {
+                    // Enable Tailwind blocks from Tailblocks.cc
+                    tailwindPlayCdn: true,
+                }
+            },
             storageManager: {
                 type: 'local',
                 id: 'gjs-ultimate-',
@@ -91,8 +101,14 @@ export const useGrapes = () => {
             },
             canvas: {
                 styles: [
+                    // Tailwind CSS CDN - enables all Tailwind utilities in the canvas
+                    'https://cdn.tailwindcss.com',
                     'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap',
                     'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css',
+                ],
+                scripts: [
+                    // Tailwind Play CDN for real-time Tailwind compilation
+                    'https://cdn.tailwindcss.com',
                 ],
             },
         });

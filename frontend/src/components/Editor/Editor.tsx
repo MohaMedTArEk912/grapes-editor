@@ -1,27 +1,45 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useGrapes } from '../../hooks/useGrapes';
 import { Toolbar } from '../Toolbar';
-import { Box, Paintbrush, Cog, Layers, EyeOff, CircuitBoard, Image, Package } from 'lucide-react';
+import { Box, Paintbrush, Cog, Layers, EyeOff, CircuitBoard, Image, Package, FileStack } from 'lucide-react';
 import { StyleInspector } from '../StyleInspector';
 import { LogicPanel } from '../LogicPanel';
 import { PropertyEditor } from '../PropertyEditor';
 import { AssetManager } from '../AssetManager';
 import { AutoLayoutPanel } from '../AutoLayoutPanel';
 import { SymbolPanel } from '../SymbolPanel';
+import { PageManager } from '../PageManager';
 import { RuntimeEngine } from '../../utils/runtime';
 import { useLogic } from '../../context/LogicContext';
+import { Page } from '../../services/pageService';
 
 export const Editor = () => {
     const { editor, editorRef } = useGrapes();
     const { flows, variables, updateVariable } = useLogic();
     const runtimeRef = useRef<RuntimeEngine | null>(null);
 
-    const [activeTab, setActiveTab] = useState<'styles' | 'traits' | 'layers' | 'logic' | 'symbols'>('styles');
+    const [activeTab, setActiveTab] = useState<'styles' | 'traits' | 'layers' | 'logic' | 'symbols' | 'pages'>('styles');
     const [previewMode, setPreviewMode] = useState(false);
     const [isAssetManagerOpen, setIsAssetManagerOpen] = useState(false);
 
+    // Page management state
+    // TODO: Get projectId from URL params or context
+    const [projectId] = useState<string>('default-project');
+    const [currentPageId, setCurrentPageId] = useState<string | undefined>();
+
+    // Handle page selection
+    const handlePageSelect = useCallback((page: Page) => {
+        setCurrentPageId(page._id);
+        // Load page content into editor
+        if (editor && page.content) {
+            const content = page.content as { html?: string; css?: string };
+            editor.setComponents(content.html || '');
+            editor.setStyle(content.css || '');
+        }
+    }, [editor]);
+
     // Handle Tab Switching
-    const handleTabClick = (tab: 'styles' | 'traits' | 'layers' | 'logic' | 'symbols') => {
+    const handleTabClick = (tab: 'styles' | 'traits' | 'layers' | 'logic' | 'symbols' | 'pages') => {
         setActiveTab(tab);
     };
 
@@ -190,6 +208,12 @@ export const Editor = () => {
                                 label="Symbols"
                                 onClick={() => handleTabClick('symbols')}
                             />
+                            <TabBtn
+                                active={activeTab === 'pages'}
+                                icon={<FileStack size={14} />}
+                                label="Pages"
+                                onClick={() => handleTabClick('pages')}
+                            />
                         </div>
 
                         <div className="flex-1 overflow-y-auto">
@@ -216,6 +240,15 @@ export const Editor = () => {
                             {/* Symbols Tab */}
                             <div className={activeTab === 'symbols' ? 'h-full' : 'hidden'}>
                                 <SymbolPanel editor={editor} />
+                            </div>
+
+                            {/* Pages Tab */}
+                            <div className={activeTab === 'pages' ? 'h-full' : 'hidden'}>
+                                <PageManager
+                                    projectId={projectId}
+                                    currentPageId={currentPageId}
+                                    onPageSelect={handlePageSelect}
+                                />
                             </div>
                         </div>
                     </aside>
