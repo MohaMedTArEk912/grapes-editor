@@ -163,6 +163,11 @@ export const DragProvider: React.FC<DragProviderProps> = ({ children, onMove }) 
     );
 };
 
+// Remove CSS import
+// import './DragMove.css'; 
+
+// ... (Types and Context remain unchanged, skipping to DraggableFile)
+
 // ============================================================================
 // DRAGGABLE FILE
 // ============================================================================
@@ -204,9 +209,16 @@ export const DraggableFile: React.FC<DraggableFileProps> = ({ file, children, di
             draggable={canDrag}
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
-            className={`draggable-file ${isDragging ? 'is-dragging' : ''} ${!canDrag ? 'no-drag' : ''}`}
+            className={`
+                transition-all duration-150
+                ${canDrag ? 'cursor-grab active:cursor-grabbing' : 'cursor-not-allowed opacity-70'}
+                ${isDragging ? 'opacity-50' : ''}
+            `}
         >
-            {children}
+            <div className="flex items-center">
+                {children}
+                {!canDrag && <span className="ml-1 text-[10px]">🔒</span>}
+            </div>
         </div>
     );
 };
@@ -225,6 +237,7 @@ export const DropZone: React.FC<DropZoneProps> = ({ path, children, onDrop }) =>
     const { dragItem, setDropTarget, validateDrop } = React.useContext(DragContext);
     const [isOver, setIsOver] = useState(false);
     const [isValid, setIsValid] = useState(false);
+    const [message, setMessage] = useState<string>('');
 
     const handleDragOver = useCallback((e: React.DragEvent) => {
         e.preventDefault();
@@ -237,6 +250,7 @@ export const DropZone: React.FC<DropZoneProps> = ({ path, children, onDrop }) =>
 
         setIsOver(true);
         setIsValid(result.allowed);
+        setMessage(result.allowed ? '✓ Drop here' : (result.reason || '✕ Cannot drop here'));
         setDropTarget(target);
 
         e.dataTransfer.dropEffect = result.allowed ? 'move' : 'none';
@@ -270,9 +284,24 @@ export const DropZone: React.FC<DropZoneProps> = ({ path, children, onDrop }) =>
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            className={`drop-zone ${isOver ? 'is-over' : ''} ${isOver && isValid ? 'is-valid' : ''} ${isOver && !isValid ? 'is-invalid' : ''}`}
+            className={`relative transition-colors duration-150 ${isOver
+                    ? isValid
+                        ? 'bg-green-500/15 ring-2 ring-inset ring-green-500/50'
+                        : 'bg-red-500/10 ring-2 ring-inset ring-red-500/40'
+                    : ''
+                }`}
         >
             {children}
+
+            {/* Drop Indicator Overlay */}
+            {isOver && (
+                <div className="absolute inset-0 z-10 pointer-events-none flex items-center justify-center">
+                    <div className={`px-3 py-1 rounded text-xs font-medium text-white shadow-sm ${isValid ? 'bg-green-500/90' : 'bg-red-500/90'
+                        }`}>
+                        {message}
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

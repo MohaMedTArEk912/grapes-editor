@@ -21,7 +21,8 @@ import {
     RotateCcw,
     ExternalLink
 } from 'lucide-react';
-import './FileTree.css';
+// Remove CSS import
+// import './FileTree.css';
 
 // ============================================================================
 // TYPES
@@ -78,15 +79,11 @@ const FILE_ICONS: Record<string, React.ElementType> = {
     inject: FileCode,
 };
 
-const PROTECTION_STYLES: Record<string, { color: string; label: string }> = {
-    protected: { color: 'var(--color-warning)', label: 'Managed by editor' },
-    semi_editable: { color: 'var(--color-info)', label: 'Form-editable only' },
-    free_code: { color: 'var(--color-success)', label: 'Freely editable' },
+const PROTECTION_STYLES: Record<string, { className: string; label: string }> = {
+    protected: { className: 'text-amber-500', label: 'Managed by editor' },
+    semi_editable: { className: 'text-blue-500', label: 'Form-editable only' },
+    free_code: { className: 'text-green-500', label: 'Freely editable' },
 };
-
-// ============================================================================
-// MAIN COMPONENT
-// ============================================================================
 
 export const FileTree: React.FC<FileTreeProps> = ({
     tree,
@@ -96,7 +93,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
     currentFileId,
 }) => {
     return (
-        <div className="file-tree" role="tree" aria-label="Project files">
+        <div className="h-full overflow-auto text-[13px] text-slate-400 select-none" role="tree" aria-label="Project files">
             <FolderItem
                 folder={tree}
                 level={0}
@@ -142,7 +139,7 @@ const FolderItem: React.FC<FolderItemProps> = ({
     // Don't render root folder header
     if (level === 0) {
         return (
-            <div className="folder-contents">
+            <div className="w-full">
                 {folder.children.map((child) => (
                     <FolderItem
                         key={child.path}
@@ -170,32 +167,34 @@ const FolderItem: React.FC<FolderItemProps> = ({
     }
 
     return (
-        <div className="folder-wrapper" role="treeitem" aria-expanded={isOpen}>
+        <div className="w-full" role="treeitem" aria-expanded={isOpen}>
             <button
-                className="folder-header"
+                className="flex items-center gap-1 w-full px-2 py-1 bg-transparent border-none text-inherit cursor-pointer text-left rounded hover:bg-white/5 focus:outline-none focus:bg-white/10 transition-colors duration-150"
                 style={{ paddingLeft: `${paddingLeft}px` }}
                 onClick={handleToggle}
                 aria-label={`${isOpen ? 'Collapse' : 'Expand'} ${folder.name} folder`}
             >
-                <span className="folder-chevron">
+                <span className="flex items-center justify-center shrink-0 text-slate-500">
                     {hasChildren ? (
                         isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />
                     ) : (
                         <span style={{ width: 14 }} />
                     )}
                 </span>
-                <span className="folder-icon">
+                <span className="flex items-center justify-center shrink-0 text-amber-400">
                     {isOpen ? (
                         <FolderOpen size={16} />
                     ) : (
                         <Folder size={16} />
                     )}
                 </span>
-                <span className="folder-name">{folder.name}</span>
+                <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-medium text-slate-300">
+                    {folder.name}
+                </span>
             </button>
 
             {isOpen && (
-                <div className="folder-contents" role="group">
+                <div className="w-full" role="group">
                     {folder.children.map((child) => (
                         <FolderItem
                             key={child.path}
@@ -248,7 +247,13 @@ const FileItem: React.FC<FileItemProps> = ({
     const [showMenu, setShowMenu] = useState(false);
 
     const Icon = FILE_ICONS[file.type] || File;
+    // Updated colors to match existing theme variables but with direct Tailwind classes usually prefereable or inline styles if dynamic
+    // Logic: we keep inline style for color to support dynamic prop-based coloring from the logic above
     const protectionStyle = PROTECTION_STYLES[file.protection] || PROTECTION_STYLES.free_code;
+
+    // Convert css vars to approximate tailwind colors for fallback/reference: 
+    // warning->amber-500, info->blue-500, success->green-500
+
     const isProtected = file.protection === 'protected';
     const canDelete = file.protection === 'free_code';
     const canRename = file.protection !== 'protected';
@@ -310,7 +315,13 @@ const FileItem: React.FC<FileItemProps> = ({
 
     return (
         <div
-            className={`file-item ${isSelected ? 'selected' : ''} ${isCurrent ? 'current' : ''} ${file.isArchived ? 'archived' : ''}`}
+            className={`
+                flex items-center gap-1 px-2 py-1 cursor-pointer rounded transition-colors relative group outline-none
+                hover:bg-white/5 focus:bg-white/10
+                ${isSelected ? 'bg-indigo-500/20 hover:bg-indigo-500/25' : ''}
+                ${isCurrent ? 'bg-indigo-500/15 border-l-2 border-indigo-500' : ''}
+                ${file.isArchived ? 'opacity-50' : ''}
+            `}
             style={{ paddingLeft: `${paddingLeft}px` }}
             onClick={handleClick}
             onContextMenu={handleContextMenu}
@@ -319,26 +330,25 @@ const FileItem: React.FC<FileItemProps> = ({
             tabIndex={0}
         >
             <span
-                className="file-icon"
-                style={{ color: protectionStyle.color }}
+                className={`flex items-center justify-center shrink-0 ${protectionStyle.className}`}
                 title={protectionStyle.label}
             >
                 <Icon size={16} />
             </span>
 
-            <span className="file-name" title={file.name}>
+            <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap" title={file.name}>
                 {file.name}
             </span>
 
             {isCurrent && (
-                <span className="file-badge current-badge" title="Currently editing">
+                <span className="text-indigo-500 text-lg leading-none px-1 rounded font-bold" title="Currently editing">
                     •
                 </span>
             )}
 
             {isProtected && (
                 <span
-                    className="file-lock"
+                    className="flex items-center justify-center shrink-0 text-slate-500 opacity-60"
                     title="Managed by editor"
                     aria-label="This file is managed by the editor"
                 >
@@ -347,7 +357,7 @@ const FileItem: React.FC<FileItemProps> = ({
             )}
 
             <button
-                className="file-menu-trigger"
+                className="flex items-center justify-center p-0.5 bg-transparent border-none text-slate-500 cursor-pointer rounded opacity-0 group-hover:opacity-100 transition-all hover:bg-white/10 hover:text-white"
                 onClick={handleMenuClick}
                 aria-label="File actions"
                 aria-haspopup="menu"
@@ -360,19 +370,27 @@ const FileItem: React.FC<FileItemProps> = ({
             {showMenu && (
                 <>
                     <div
-                        className="file-menu-backdrop"
+                        className="fixed inset-0 z-[100]"
                         onClick={closeMenu}
                         aria-hidden="true"
                     />
                     <div
-                        className="file-context-menu"
+                        className="absolute right-0 top-full min-w-[160px] bg-[#21262d] border border-[#30363d] rounded-md shadow-xl z-[101] py-1 animate-in fade-in slide-in-from-top-1"
                         role="menu"
                         aria-label="File actions"
                     >
                         {menuItems.map((item, index) => (
                             <button
                                 key={item.action}
-                                className={`menu-item ${item.danger ? 'danger' : ''} ${item.disabled ? 'disabled' : ''}`}
+                                className={`
+                                    flex items-center gap-2 w-full px-3 py-2 bg-transparent border-none cursor-pointer text-left text-[13px] transition-colors
+                                    ${item.disabled
+                                        ? 'opacity-50 cursor-not-allowed'
+                                        : item.danger
+                                            ? 'text-red-400 hover:bg-red-500/10'
+                                            : 'text-slate-300 hover:bg-white/5'
+                                    }
+                                `}
                                 onClick={() => !item.disabled && handleAction(item.action)}
                                 role="menuitem"
                                 disabled={item.disabled}
