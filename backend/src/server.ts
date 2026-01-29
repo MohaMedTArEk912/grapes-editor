@@ -10,6 +10,7 @@ import formRoutes from './routes/form.routes';
 import cmsRoutes from './routes/cms.routes';
 import pageRoutes from './routes/page.routes';
 import sharedRoutes from './routes/shared.routes';
+import vfsRoutes from './routes/vfs.routes';
 import { protect } from './middleware/auth.middleware';
 
 dotenv.config();
@@ -33,6 +34,7 @@ app.use('/api/forms', formRoutes);
 app.use('/api/cms', protect, cmsRoutes);
 app.use('/api/pages', protect, pageRoutes);
 app.use('/api/shared', protect, sharedRoutes);
+app.use('/api/vfs', vfsRoutes); // VFS routes (auth handled internally)
 
 // Health Check
 app.get('/health', (req, res) => {
