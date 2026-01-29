@@ -1,8 +1,11 @@
+import { LogicProvider } from './context/LogicContext';
 import { Editor } from './components/Editor';
 
 function App() {
     return (
-        <Editor />
+        <LogicProvider>
+            <Editor />
+        </LogicProvider>
     );
 }
 

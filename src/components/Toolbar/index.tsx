@@ -2,14 +2,25 @@ import React from 'react';
 import { GrapesEditor } from '../../types/grapes';
 import {
     Undo, Redo, Trash2, Code, Eye,
-    Maximize, Download, Monitor, Tablet, Smartphone
+    Maximize, Download, Monitor, Tablet, Smartphone,
+    Save, FolderOpen
 } from 'lucide-react';
+import {
+    exportProjectSchema,
+    downloadProjectSchema,
+    loadProjectFromFile
+} from '../../utils/schema';
+import { generateProjectKey } from '../../utils/generator';
+import { saveAs } from 'file-saver';
+import { useLogic } from '../../context/LogicContext';
 
 interface ToolbarProps {
     editor: GrapesEditor | null;
+    onOpenAssetManager?: () => void;
 }
 
-export const Toolbar: React.FC<ToolbarProps> = ({ editor }) => {
+export const Toolbar: React.FC<ToolbarProps> = ({ editor, onOpenAssetManager: _onOpenAssetManager }) => {
+    const { variables, flows } = useLogic();
     const [activeDevice, setActiveDevice] = React.useState('Desktop');
 
     if (!editor) return null;
@@ -41,26 +52,35 @@ export const Toolbar: React.FC<ToolbarProps> = ({ editor }) => {
             .open();
     };
 
-    const handleExport = () => {
-        const html = editor.getHtml();
-        const css = editor.getCss();
-        const fullHtml = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>${css}</style>
-</head>
-<body>${html}</body>
-</html>`;
 
-        const blob = new Blob([fullHtml], { type: 'text/html' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'exported-page.html';
-        a.click();
-        URL.revokeObjectURL(url);
+
+    const handleSaveProject = () => {
+        const schema = exportProjectSchema(editor, 'My Project', variables, flows);
+        downloadProjectSchema(schema);
+    };
+
+    const handleExportReact = async () => {
+        if (!editor) return;
+        const schema = exportProjectSchema(editor, 'My Project', variables, flows);
+        try {
+            const blob = await generateProjectKey(schema);
+            saveAs(blob, `${schema.name}-react.zip`);
+        } catch (error) {
+            console.error('Failed to generate code:', error);
+            alert('Failed to generate code. Check console for details.');
+        }
+    };
+
+    const handleLoadProject = () => {
+        loadProjectFromFile(
+            editor,
+            (schema) => {
+                alert(`Project "${schema.name}" loaded successfully!`);
+            },
+            (error) => {
+                alert(`Failed to load project: ${error.message}`);
+            }
+        );
     };
 
     return (
@@ -101,12 +121,17 @@ export const Toolbar: React.FC<ToolbarProps> = ({ editor }) => {
                 <ActionBtn icon={<Eye size={16} />} onClick={() => editor.runCommand('preview')} />
                 <ActionBtn icon={<Maximize size={16} />} onClick={() => document.documentElement.requestFullscreen()} />
 
+                <div className="w-px h-6 bg-[#2a2a4a] mx-1" /> {/* Divider */}
+
+                <ActionBtn icon={<Save size={16} />} onClick={handleSaveProject} title="Save Project" />
+                <ActionBtn icon={<FolderOpen size={16} />} onClick={handleLoadProject} title="Load Project" />
+
                 <button
-                    onClick={handleExport}
+                    onClick={handleExportReact}
                     className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-md text-sm font-medium hover:-translate-y-px hover:shadow-lg hover:shadow-indigo-500/40 transition-all border-none"
                 >
                     <Download size={16} />
-                    <span>Export</span>
+                    <span>Export App</span>
                 </button>
             </div>
         </header>
@@ -124,9 +149,10 @@ const DeviceBtn = ({ icon, active, onClick }: { icon: React.ReactNode, active: b
     </button>
 );
 
-const ActionBtn = ({ icon, onClick }: { icon: React.ReactNode, onClick: () => void }) => (
+const ActionBtn = ({ icon, onClick, title }: { icon: React.ReactNode, onClick: () => void, title?: string }) => (
     <button
         onClick={onClick}
+        title={title}
         className="px-3 py-2 text-slate-200 border border-[#2a2a4a] rounded hover:bg-indigo-500/10 hover:border-indigo-500 transition-colors bg-transparent"
     >
         {icon}

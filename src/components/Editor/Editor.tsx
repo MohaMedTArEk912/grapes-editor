@@ -1,17 +1,65 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useGrapes } from '../../hooks/useGrapes';
 import { Toolbar } from '../Toolbar';
-import { Box, Paintbrush, Cog, Layers, EyeOff } from 'lucide-react';
+import { Box, Paintbrush, Cog, Layers, EyeOff, CircuitBoard, Image } from 'lucide-react';
+import { StyleInspector } from '../StyleInspector';
+import { LogicPanel } from '../LogicPanel';
+import { PropertyEditor } from '../PropertyEditor';
+import { AssetManager } from '../AssetManager';
+import { AutoLayoutPanel } from '../AutoLayoutPanel';
+import { RuntimeEngine } from '../../utils/runtime';
+import { useLogic } from '../../context/LogicContext';
 
 export const Editor = () => {
     const { editor, editorRef } = useGrapes();
-    const [activeTab, setActiveTab] = useState<'styles' | 'traits' | 'layers'>('styles');
+    const { flows, variables, updateVariable } = useLogic();
+    const runtimeRef = useRef<RuntimeEngine | null>(null);
+
+    const [activeTab, setActiveTab] = useState<'styles' | 'traits' | 'layers' | 'logic'>('styles');
     const [previewMode, setPreviewMode] = useState(false);
+    const [isAssetManagerOpen, setIsAssetManagerOpen] = useState(false);
 
     // Handle Tab Switching
-    const handleTabClick = (tab: 'styles' | 'traits' | 'layers') => {
+    const handleTabClick = (tab: 'styles' | 'traits' | 'layers' | 'logic') => {
         setActiveTab(tab);
     };
+
+    // Hot reload effect - update runtime when flows/variables change
+    useEffect(() => {
+        if (runtimeRef.current && runtimeRef.current.isActive()) {
+            runtimeRef.current.hotReload(flows, variables);
+        }
+    }, [flows, variables]);
+
+    // Handle Preview Mode Runtime
+    useEffect(() => {
+        if (!editor) return;
+
+        const startRuntime = () => {
+            console.log('Starting Runtime...');
+            runtimeRef.current = new RuntimeEngine(editor, flows, variables, updateVariable);
+            runtimeRef.current.start();
+            setPreviewMode(true);
+        };
+
+        const stopRuntime = () => {
+            console.log('Stopping Runtime...');
+            if (runtimeRef.current) {
+                runtimeRef.current.stop();
+                runtimeRef.current = null;
+            }
+            setPreviewMode(false);
+        };
+
+        editor.on('run:preview', startRuntime);
+        editor.on('stop:preview', stopRuntime);
+
+        return () => {
+            editor.off('run:preview', startRuntime);
+            editor.off('stop:preview', stopRuntime);
+            if (runtimeRef.current) runtimeRef.current.stop();
+        };
+    }, [editor, flows, variables, updateVariable]);
 
     // Listen for Preview Mode
     useEffect(() => {
@@ -21,7 +69,6 @@ export const Editor = () => {
             setPreviewMode(active);
         };
 
-        // Listen to generic command events to catch 'preview'
         const onCommandRun = (id: string) => {
             if (id === 'preview' || id === 'core:preview') togglePreview(true);
         };
@@ -30,24 +77,30 @@ export const Editor = () => {
             if (id === 'preview' || id === 'core:preview') togglePreview(false);
         };
 
-        // Check initial state
         if (editor.Commands.isActive('preview')) {
             togglePreview(true);
         }
 
         editor.on('run', onCommandRun);
         editor.on('stop', onCommandStop);
-
-        // Also listen to specific event just in case
         editor.on('run:preview', () => togglePreview(true));
         editor.on('stop:preview', () => togglePreview(false));
 
         return () => {
             editor.off('run', onCommandRun);
             editor.off('stop', onCommandStop);
-            editor.off('run:preview');
-            editor.off('stop:preview');
+            editor.off('run:preview', () => togglePreview(true));
+            editor.off('stop:preview', () => togglePreview(false));
         };
+    }, [editor]);
+
+    // Handle asset selection from Asset Manager
+    const handleAssetSelect = useCallback((asset: { src: string }) => {
+        if (!editor) return;
+        const selected = editor.getSelected();
+        if (selected && selected.is('image')) {
+            selected.set('src', asset.src);
+        }
     }, [editor]);
 
     return (
@@ -60,7 +113,7 @@ export const Editor = () => {
                 </div>
             )}
 
-            {!previewMode && <Toolbar editor={editor} />}
+            {!previewMode && <Toolbar editor={editor} onOpenAssetManager={() => setIsAssetManagerOpen(true)} />}
 
             <div className="flex-1 flex overflow-hidden">
 
@@ -71,6 +124,15 @@ export const Editor = () => {
                             <Box size={14} /> Components & Blocks
                         </div>
                         <div id="blocks-container" className="flex-1 overflow-y-auto p-3"></div>
+
+                        {/* Asset Manager Button in Left Sidebar */}
+                        <button
+                            onClick={() => setIsAssetManagerOpen(true)}
+                            className="m-3 p-3 flex items-center gap-2 text-sm text-slate-400 hover:text-white bg-[#0a0a1a] hover:bg-[#2a2a4a] border border-[#2a2a4a] rounded-lg transition-colors"
+                        >
+                            <Image size={16} />
+                            <span>Asset Manager</span>
+                        </button>
                     </aside>
                 )}
 
@@ -93,7 +155,7 @@ export const Editor = () => {
                     )}
                 </main>
 
-                {/* Right Sidebar - Styles/Traits/Layers */}
+                {/* Right Sidebar - Styles/Traits/Layers/Logic */}
                 {!previewMode && (
                     <aside className="w-[300px] bg-[#1a1a2e] border-l border-[#2a2a4a] flex flex-col transition-all duration-300">
                         <div className="flex border-b border-[#2a2a4a] bg-[#0a0a1a]">
@@ -115,18 +177,46 @@ export const Editor = () => {
                                 label="Layers"
                                 onClick={() => handleTabClick('layers')}
                             />
+                            <TabBtn
+                                active={activeTab === 'logic'}
+                                icon={<CircuitBoard size={14} />}
+                                label="Logic"
+                                onClick={() => handleTabClick('logic')}
+                            />
                         </div>
 
                         <div className="flex-1 overflow-y-auto">
-                            <div id="selectors-container" className={activeTab === 'styles' ? 'p-3' : 'hidden'}></div>
-                            <div id="styles-container" className={activeTab === 'styles' ? 'p-3' : 'hidden'}></div>
-                            <div id="traits-container" className={activeTab === 'traits' ? 'p-3' : 'hidden'}></div>
+                            {/* Styles Tab */}
+                            <div className={activeTab === 'styles' ? '' : 'hidden'}>
+                                <div id="selectors-container" className="p-3"></div>
+                                <AutoLayoutPanel editor={editor} />
+                                <StyleInspector editor={editor} />
+                            </div>
+
+                            {/* Settings/Traits Tab - Using new PropertyEditor */}
+                            <div className={activeTab === 'traits' ? 'h-full' : 'hidden'}>
+                                <PropertyEditor editor={editor} />
+                            </div>
+
+                            {/* Layers Tab */}
                             <div id="layers-container" className={activeTab === 'layers' ? 'p-3' : 'hidden'}></div>
+
+                            {/* Logic Tab */}
+                            <div className={activeTab === 'logic' ? 'h-full' : 'hidden'}>
+                                <LogicPanel editor={editor} />
+                            </div>
                         </div>
                     </aside>
                 )}
-
             </div>
+
+            {/* Asset Manager Modal */}
+            <AssetManager
+                editor={editor}
+                isOpen={isAssetManagerOpen}
+                onClose={() => setIsAssetManagerOpen(false)}
+                onSelect={handleAssetSelect}
+            />
         </div>
     );
 };
