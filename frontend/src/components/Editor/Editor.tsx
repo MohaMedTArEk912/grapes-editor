@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useGrapes } from '../../hooks/useGrapes';
 import { Toolbar } from '../Toolbar';
-import { Box, Paintbrush, Cog, Layers, EyeOff, CircuitBoard, Image, Package, FileStack, Files, Database, History, Users, Code, ShoppingBag, Cloud, BarChart3, ShieldCheck, Store } from 'lucide-react';
+import { Box, Paintbrush, Cog, Layers, EyeOff, CircuitBoard, Image, Package, FileStack, Files, Database, History, Users, Code, ShoppingBag, Cloud, BarChart3, ShieldCheck, Store, LayoutTemplate } from 'lucide-react';
 import { StyleInspector } from '../StyleInspector';
 import { LogicPanel } from '../LogicPanel';
 import { PropertyEditor } from '../PropertyEditor';
@@ -19,10 +19,13 @@ import { PublishingPanel } from '../PublishingPanel';
 import { AnalyticsPanel } from '../AnalyticsPanel';
 import { AccessibilityPanel } from '../AccessibilityPanel';
 import { MarketplacePanel } from '../MarketplacePanel';
+import { LayoutPanel } from '../LayoutPanel';
 import { RuntimeEngine } from '../../utils/runtime';
 import { useLogic } from '../../context/LogicContext';
 import { Page, getPage, updatePage } from '../../services/pageService';
 import { useProject } from '../../context/ProjectContext';
+import { useCollaboration } from '../../context/useCollaboration';
+import { trackEvent as trackAnalyticsEvent } from '../../services/analyticsService';
 import FileTree, { FolderNode, VFSFile as TreeFile, FileAction } from '../FileTree';
 import {
     getProjectFiles,
@@ -33,6 +36,10 @@ import {
     restoreFile as restoreVfsFile,
     createFile as createVfsFile,
     moveFile as moveVfsFile,
+    getFileBlocks,
+    createBlock,
+    updateBlock,
+    createVersion,
 } from '../../services/vfsService';
 
 export const Editor = () => {
@@ -41,8 +48,9 @@ export const Editor = () => {
     const { currentProject } = useProject();
     const runtimeRef = useRef<RuntimeEngine | null>(null);
     const saveTimerRef = useRef<number | null>(null);
+    const applyingRemoteRef = useRef(false);
 
-    const [activeTab, setActiveTab] = useState<'styles' | 'traits' | 'layers' | 'logic' | 'symbols' | 'pages' | 'data' | 'history' | 'collab' | 'code' | 'commerce' | 'publish' | 'analytics' | 'a11y' | 'market'>('styles');
+    const [activeTab, setActiveTab] = useState<'styles' | 'traits' | 'layers' | 'logic' | 'symbols' | 'pages' | 'data' | 'history' | 'collab' | 'code' | 'commerce' | 'publish' | 'analytics' | 'a11y' | 'market' | 'layout'>('styles');
     const [leftTab, setLeftTab] = useState<'blocks' | 'files'>('blocks');
     const [previewMode, setPreviewMode] = useState(false);
     const [isAssetManagerOpen, setIsAssetManagerOpen] = useState(false);
@@ -51,14 +59,28 @@ export const Editor = () => {
     const projectId = currentProject?._id || '';
     const [currentPageId, setCurrentPageId] = useState<string | undefined>();
     const [vfsTree, setVfsTree] = useState<FolderNode | null>(null);
+    const [vfsFiles, setVfsFiles] = useState<TreeFile[]>([]);
     const [vfsLoading, setVfsLoading] = useState(false);
     const [vfsError, setVfsError] = useState<string | null>(null);
     const [vfsSelectedPath, setVfsSelectedPath] = useState<string | undefined>();
     const [currentFileId, setCurrentFileId] = useState<string | undefined>();
+    const [trackingEnabled, setTrackingEnabled] = useState<boolean>(() => localStorage.getItem('analytics_tracking') === 'true');
+    const {
+        setActivePage,
+        sendPageUpdate,
+        remoteUpdate,
+        setSelectedComponentId,
+    } = useCollaboration();
 
     useEffect(() => {
         setCurrentPageId(undefined);
     }, [projectId]);
+
+    useEffect(() => {
+        if (currentPageId) {
+            setActivePage(currentPageId);
+        }
+    }, [currentPageId, setActivePage]);
 
     const refreshVfs = useCallback(async () => {
         if (!projectId) {
@@ -69,6 +91,7 @@ export const Editor = () => {
             setVfsLoading(true);
             const result = await getProjectFiles(projectId);
             setVfsTree(result.tree);
+            setVfsFiles(result.files as unknown as TreeFile[]);
             setVfsError(null);
         } catch (err: any) {
             setVfsError(err.message || 'Failed to load files');
@@ -77,9 +100,104 @@ export const Editor = () => {
         }
     }, [projectId]);
 
+    const getCanvasDocument = useCallback(() => {
+        if (!editor) return null;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const canvas = editor.Canvas as any;
+        const iframe = canvas.getFrameEl?.();
+        return iframe?.contentDocument || iframe?.contentWindow?.document || null;
+    }, [editor]);
+
+    const applyCodeInjection = useCallback(() => {
+        const doc = getCanvasDocument();
+        if (!doc) return;
+
+        const marker = 'data-vfs-inject';
+        doc.querySelectorAll(`[${marker}]`).forEach((node) => node.remove());
+
+        const head = doc.head || doc.getElementsByTagName('head')[0];
+        if (!head) return;
+
+        const codeFiles = vfsFiles.filter((file) => ['css', 'js', 'inject'].includes(file.type));
+        const eligible = codeFiles.filter((file) => {
+            const schema = file.schema as { content?: string; scope?: 'global' | 'page'; pageId?: string };
+            if (!schema?.content) return false;
+            if (schema.scope === 'page') {
+                return Boolean(currentPageId && schema.pageId === currentPageId);
+            }
+            return true;
+        });
+
+        eligible.forEach((file) => {
+            const schema = file.schema as { content?: string; scope?: 'global' | 'page'; pageId?: string };
+            const content = schema?.content || '';
+            if (!content.trim()) return;
+
+            if (file.type === 'css') {
+                const style = doc.createElement('style');
+                style.setAttribute(marker, file._id);
+                style.textContent = content;
+                head.appendChild(style);
+            }
+
+            if (file.type === 'js') {
+                const script = doc.createElement('script');
+                script.setAttribute(marker, file._id);
+                script.textContent = `(function(){try{${content}\n}catch(e){console.error('Injected JS error', e);}})();`;
+                head.appendChild(script);
+            }
+
+            if (file.type === 'inject') {
+                const template = doc.createElement('template');
+                template.innerHTML = content;
+                Array.from(template.content.childNodes).forEach((node) => {
+                    if (node instanceof HTMLElement) {
+                        node.setAttribute(marker, file._id);
+                    }
+                    head.appendChild(node);
+                });
+            }
+        });
+    }, [currentPageId, getCanvasDocument, vfsFiles]);
+
+    const syncVfsBlocks = useCallback(async (pageId: string, html: string, css: string) => {
+        if (!projectId) return;
+        const file = vfsFiles.find((f) => (f.schema as { pageId?: string })?.pageId === pageId);
+        if (!file) return;
+        const blocks = await getFileBlocks(file._id);
+        const rootBlock = blocks.blocks?.[0];
+
+        if (rootBlock) {
+            await updateBlock(rootBlock._id, {
+                props: { html, css },
+            });
+        } else {
+            await createBlock(file._id, 'page-root', { html, css });
+        }
+    }, [projectId, vfsFiles]);
+
     useEffect(() => {
         refreshVfs();
     }, [refreshVfs]);
+
+    useEffect(() => {
+        const handler = () => {
+            setTrackingEnabled(localStorage.getItem('analytics_tracking') === 'true');
+        };
+        window.addEventListener('analytics-tracking-changed', handler);
+        return () => window.removeEventListener('analytics-tracking-changed', handler);
+    }, []);
+
+    useEffect(() => {
+        const handler = () => refreshVfs();
+        window.addEventListener('vfs-code-updated', handler);
+        return () => window.removeEventListener('vfs-code-updated', handler);
+    }, [refreshVfs]);
+
+    useEffect(() => {
+        if (!editor) return;
+        applyCodeInjection();
+    }, [editor, vfsFiles, currentPageId, applyCodeInjection]);
 
     const saveCurrentPage = useCallback(async () => {
         if (!editor || !projectId || !currentPageId) return;
@@ -92,10 +210,11 @@ export const Editor = () => {
                 content: { html, css },
                 styles: css,
             });
+            await syncVfsBlocks(currentPageId, html, css);
         } catch (err) {
             console.error('Failed to save page', err);
         }
-    }, [editor, projectId, currentPageId]);
+    }, [editor, projectId, currentPageId, syncVfsBlocks]);
 
     // Handle page selection
     const handlePageSelect = useCallback(async (page: Page) => {
@@ -185,6 +304,12 @@ export const Editor = () => {
                         URL.revokeObjectURL(url);
                     }
                     break;
+                case 'snapshot':
+                    if (projectId) {
+                        const label = prompt('Version label (optional):') || undefined;
+                        await createVersion(projectId, label || undefined);
+                    }
+                    break;
             }
         } catch (err: any) {
             console.error(err);
@@ -204,11 +329,15 @@ export const Editor = () => {
 
         const onUpdate = () => {
             if (!projectId || !currentPageId) return;
+            if (applyingRemoteRef.current) return;
             if (saveTimerRef.current) {
                 window.clearTimeout(saveTimerRef.current);
             }
             saveTimerRef.current = window.setTimeout(() => {
                 saveCurrentPage();
+                const html = editor.getHtml() || '';
+                const css = editor.getCss() || '';
+                sendPageUpdate(html, css);
             }, 800);
         };
 
@@ -222,8 +351,92 @@ export const Editor = () => {
         };
     }, [editor, projectId, currentPageId, saveCurrentPage]);
 
+    useEffect(() => {
+        if (!editor || !remoteUpdate || remoteUpdate.pageId !== currentPageId) return;
+        applyingRemoteRef.current = true;
+        editor.setComponents(remoteUpdate.html || '');
+        editor.setStyle(remoteUpdate.css || '');
+        window.setTimeout(() => {
+            applyingRemoteRef.current = false;
+        }, 0);
+    }, [editor, remoteUpdate, currentPageId]);
+
+    useEffect(() => {
+        if (!editor || !projectId || !currentPageId || !trackingEnabled) return;
+
+        const doc = getCanvasDocument();
+        if (!doc) return;
+
+        const handleClick = (event: MouseEvent) => {
+            const target = event.target as HTMLElement | null;
+            if (!target) return;
+            const rect = doc.documentElement.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            trackAnalyticsEvent({
+                projectId,
+                pageId: currentPageId,
+                type: 'click',
+                x,
+                y,
+                element: target.tagName.toLowerCase(),
+                meta: { id: target.id, className: target.className },
+            }).catch(() => undefined);
+        };
+
+        const handleSubmit = (event: Event) => {
+            const target = event.target as HTMLFormElement | null;
+            if (!target) return;
+            trackAnalyticsEvent({
+                projectId,
+                pageId: currentPageId,
+                type: 'form_submit',
+                element: 'form',
+                meta: { id: target.id, className: target.className },
+            }).catch(() => undefined);
+        };
+
+        doc.addEventListener('click', handleClick);
+        doc.addEventListener('submit', handleSubmit, true);
+
+        return () => {
+            doc.removeEventListener('click', handleClick);
+            doc.removeEventListener('submit', handleSubmit, true);
+        };
+    }, [editor, projectId, currentPageId, trackingEnabled, getCanvasDocument]);
+
+    useEffect(() => {
+        if (!projectId || !currentPageId || !trackingEnabled) return;
+        trackAnalyticsEvent({
+            projectId,
+            pageId: currentPageId,
+            type: 'page_view',
+        }).catch(() => undefined);
+    }, [projectId, currentPageId, trackingEnabled]);
+
+    useEffect(() => {
+        if (!editor) return;
+        const onSelect = (component: any) => {
+            try {
+                const id = component?.getId?.();
+                setSelectedComponentId(id);
+            } catch {
+                setSelectedComponentId(undefined);
+            }
+        };
+        const onDeselect = () => setSelectedComponentId(undefined);
+
+        editor.on('component:selected', onSelect);
+        editor.on('component:deselected', onDeselect);
+
+        return () => {
+            editor.off('component:selected', onSelect);
+            editor.off('component:deselected', onDeselect);
+        };
+    }, [editor, setSelectedComponentId]);
+
     // Handle Tab Switching
-    const handleTabClick = (tab: 'styles' | 'traits' | 'layers' | 'logic' | 'symbols' | 'pages' | 'data' | 'history' | 'collab' | 'code' | 'commerce' | 'publish' | 'analytics' | 'a11y' | 'market') => {
+    const handleTabClick = (tab: 'styles' | 'traits' | 'layers' | 'logic' | 'symbols' | 'pages' | 'data' | 'history' | 'collab' | 'code' | 'commerce' | 'publish' | 'analytics' | 'a11y' | 'market' | 'layout') => {
         setActiveTab(tab);
     };
 
@@ -451,6 +664,12 @@ export const Editor = () => {
                             onClick={() => handleTabClick('pages')}
                         />
                         <TabBtn
+                            active={activeTab === 'layout'}
+                            icon={<LayoutTemplate size={14} />}
+                            label="Layout"
+                            onClick={() => handleTabClick('layout')}
+                        />
+                        <TabBtn
                             active={activeTab === 'data'}
                             icon={<Database size={14} />}
                             label="Data"
@@ -546,6 +765,11 @@ export const Editor = () => {
                             />
                         </div>
 
+                        {/* Layout Tab */}
+                        <div className={activeTab === 'layout' ? 'h-full' : 'hidden'}>
+                            <LayoutPanel />
+                        </div>
+
                         {/* Data Model Tab */}
                         <div className={activeTab === 'data' ? 'h-full' : 'hidden'}>
                             <DataModelPanel />
@@ -553,7 +777,7 @@ export const Editor = () => {
 
                         {/* History Tab */}
                         <div className={activeTab === 'history' ? 'h-full' : 'hidden'}>
-                            <VersionHistoryPanel />
+                            <VersionHistoryPanel fileId={currentFileId} />
                         </div>
 
                         {/* Collaboration Tab */}
@@ -588,7 +812,7 @@ export const Editor = () => {
 
                         {/* Marketplace Tab */}
                         <div className={activeTab === 'market' ? 'h-full' : 'hidden'}>
-                            <MarketplacePanel />
+                            <MarketplacePanel editor={editor} currentPageId={currentPageId} />
                         </div>
                     </div>
                 </aside>

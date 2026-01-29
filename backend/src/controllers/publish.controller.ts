@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import crypto from 'crypto';
 import PublishSchedule from '../models/PublishSchedule';
+import Project from '../models/Project';
 
 const buildStaticHtml = (html: string, css: string) => {
     return `<!doctype html>
@@ -115,16 +116,27 @@ const deployNetlifyInternal = async (name: string, html: string, css: string) =>
         url: deployPayload?.deploy_ssl_url || deployPayload?.deploy_url,
         id: deployPayload?.id,
         siteUrl: sitePayload?.ssl_url || sitePayload?.url,
+        siteId: sitePayload?.id,
     };
+};
+
+const updateProjectPublishMeta = async (projectId: string, updates: Record<string, unknown>) => {
+    await Project.findByIdAndUpdate(projectId, updates);
 };
 
 export const deployVercel = async (req: Request, res: Response) => {
     try {
-        const { name, html, css } = req.body as { name?: string; html?: string; css?: string };
+        const { name, html, css, projectId } = req.body as { name?: string; html?: string; css?: string; projectId?: string };
         if (!name) {
             return res.status(400).json({ message: 'Deployment name is required' });
         }
         const deployment = await deployVercelInternal(name, html || '', css || '');
+        if (projectId) {
+            await updateProjectPublishMeta(projectId, {
+                vercelProjectName: name,
+                domainProvider: 'vercel',
+            });
+        }
         res.json(deployment);
     } catch (error: any) {
         res.status(500).json({ message: error.message || 'Failed to deploy to Vercel' });
@@ -138,12 +150,18 @@ export const deployVercel = async (req: Request, res: Response) => {
  */
 export const deployNetlify = async (req: Request, res: Response) => {
     try {
-        const { name, html, css } = req.body as { name?: string; html?: string; css?: string };
+        const { name, html, css, projectId } = req.body as { name?: string; html?: string; css?: string; projectId?: string };
         if (!name) {
             return res.status(400).json({ message: 'Deployment name is required' });
         }
 
         const deployment = await deployNetlifyInternal(name, html || '', css || '');
+        if (projectId && deployment.siteId) {
+            await updateProjectPublishMeta(projectId, {
+                netlifySiteId: deployment.siteId,
+                domainProvider: 'netlify',
+            });
+        }
         res.json(deployment);
     } catch (error: any) {
         res.status(500).json({ message: error.message || 'Failed to deploy to Netlify' });
@@ -227,5 +245,186 @@ export const runDueSchedules = async () => {
         }
 
         await schedule.save();
+    }
+};
+
+/**
+ * @desc    Create scheduled Netlify deploy
+ * @route   POST /api/publish/netlify/schedule
+ * @access  Private
+ */
+export const scheduleNetlify = async (req: Request, res: Response) => {
+    try {
+        const { projectId, name, html, css, scheduledAt } = req.body as {
+            projectId?: string;
+            name?: string;
+            html?: string;
+            css?: string;
+            scheduledAt?: string;
+        };
+
+        if (!projectId || !name || !scheduledAt) {
+            return res.status(400).json({ message: 'projectId, name, and scheduledAt are required' });
+        }
+
+        const schedule = await PublishSchedule.create({
+            projectId,
+            provider: 'netlify',
+            name,
+            html: html || '',
+            css: css || '',
+            scheduledAt: new Date(scheduledAt),
+        });
+
+        res.status(201).json(schedule);
+    } catch (error: any) {
+        res.status(500).json({ message: error.message || 'Failed to schedule deployment' });
+    }
+};
+
+// ============================================================================
+// CUSTOM DOMAIN + SSL
+// ============================================================================
+
+export const provisionDomain = async (req: Request, res: Response) => {
+    try {
+        const { projectId, provider, domain } = req.body as {
+            projectId?: string;
+            provider?: 'vercel' | 'netlify';
+            domain?: string;
+        };
+
+        if (!projectId || !provider || !domain) {
+            return res.status(400).json({ message: 'projectId, provider, and domain are required' });
+        }
+
+        const project = await Project.findById(projectId);
+        if (!project) {
+            return res.status(404).json({ message: 'Project not found' });
+        }
+
+        if (provider === 'netlify') {
+            const token = process.env.NETLIFY_TOKEN;
+            if (!token) throw new Error('NETLIFY_TOKEN is not configured');
+            if (!project.netlifySiteId) {
+                return res.status(400).json({ message: 'Netlify site not found. Deploy first.' });
+            }
+
+            const domainResponse = await fetch(`https://api.netlify.com/api/v1/sites/${project.netlifySiteId}/domains`, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ domain }),
+            });
+            const domainPayload = await domainResponse.json();
+            if (!domainResponse.ok) {
+                throw new Error(domainPayload?.message || 'Failed to provision Netlify domain');
+            }
+
+            await updateProjectPublishMeta(projectId, {
+                customDomain: domain,
+                domainProvider: 'netlify',
+                domainStatus: 'provisioned',
+                sslStatus: 'pending',
+            });
+
+            return res.json({ domain: domainPayload?.domain || domain, provider: 'netlify' });
+        }
+
+        const token = process.env.VERCEL_TOKEN;
+        if (!token) throw new Error('VERCEL_TOKEN is not configured');
+        if (!project.vercelProjectName) {
+            return res.status(400).json({ message: 'Vercel project not found. Deploy first.' });
+        }
+
+        const domainResponse = await fetch(`https://api.vercel.com/v10/projects/${project.vercelProjectName}/domains`, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ name: domain }),
+        });
+        const domainPayload = await domainResponse.json();
+        if (!domainResponse.ok) {
+            throw new Error(domainPayload?.error?.message || 'Failed to provision Vercel domain');
+        }
+
+        await updateProjectPublishMeta(projectId, {
+            customDomain: domain,
+            domainProvider: 'vercel',
+            domainStatus: domainPayload?.verified ? 'verified' : 'provisioned',
+            sslStatus: domainPayload?.verified ? 'active' : 'pending',
+        });
+
+        return res.json({ domain: domainPayload?.name || domain, provider: 'vercel', verified: domainPayload?.verified });
+    } catch (error: any) {
+        res.status(500).json({ message: error.message || 'Failed to provision domain' });
+    }
+};
+
+export const refreshSslStatus = async (req: Request, res: Response) => {
+    try {
+        const { projectId } = req.params;
+        const project = await Project.findById(projectId);
+        if (!project || !project.customDomain || !project.domainProvider) {
+            return res.status(404).json({ message: 'Domain configuration not found' });
+        }
+
+        if (project.domainProvider === 'netlify') {
+            const token = process.env.NETLIFY_TOKEN;
+            if (!token) throw new Error('NETLIFY_TOKEN is not configured');
+            if (!project.netlifySiteId) {
+                return res.status(400).json({ message: 'Netlify site not found.' });
+            }
+
+            const sslResponse = await fetch(`https://api.netlify.com/api/v1/sites/${project.netlifySiteId}/ssl`, {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
+            });
+            const sslPayload = await sslResponse.json();
+            if (!sslResponse.ok) {
+                throw new Error(sslPayload?.message || 'Failed to fetch Netlify SSL status');
+            }
+
+            const status = sslPayload?.state || sslPayload?.status || 'pending';
+            const mappedStatus = status === 'issued' || status === 'ready' ? 'active' : status === 'error' ? 'failed' : 'pending';
+
+            await updateProjectPublishMeta(projectId, { sslStatus: mappedStatus });
+            return res.json({ sslStatus: mappedStatus, provider: 'netlify', details: sslPayload });
+        }
+
+        const token = process.env.VERCEL_TOKEN;
+        if (!token) throw new Error('VERCEL_TOKEN is not configured');
+        if (!project.vercelProjectName) {
+            return res.status(400).json({ message: 'Vercel project not found.' });
+        }
+
+        const domainResponse = await fetch(
+            `https://api.vercel.com/v10/projects/${project.vercelProjectName}/domains/${project.customDomain}`,
+            {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
+            }
+        );
+        const domainPayload = await domainResponse.json();
+        if (!domainResponse.ok) {
+            throw new Error(domainPayload?.error?.message || 'Failed to fetch Vercel domain status');
+        }
+
+        const verified = Boolean(domainPayload?.verified);
+        await updateProjectPublishMeta(projectId, {
+            domainStatus: verified ? 'verified' : 'provisioned',
+            sslStatus: verified ? 'active' : 'pending',
+        });
+        return res.json({ sslStatus: verified ? 'active' : 'pending', provider: 'vercel', verified });
+    } catch (error: any) {
+        res.status(500).json({ message: error.message || 'Failed to refresh SSL' });
     }
 };

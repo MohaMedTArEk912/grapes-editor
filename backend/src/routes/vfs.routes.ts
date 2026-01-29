@@ -55,6 +55,19 @@ router.delete('/block/:blockId', vfsController.deleteBlock);
 router.put('/file/:fileId/blocks/reorder', vfsController.reorderBlocks);
 
 // ============================================================================
+// UNDO ROUTES
+// ============================================================================
+
+// Get undo history for file
+router.get('/file/:fileId/undo/history', vfsController.getUndoHistory);
+
+// Undo last action for file
+router.post('/file/:fileId/undo', vfsController.undoFileAction);
+
+// Redo last undone action for file
+router.post('/file/:fileId/redo', vfsController.redoFileAction);
+
+// ============================================================================
 // VERSION ROUTES
 // ============================================================================
 
@@ -66,5 +79,8 @@ router.post('/project/:projectId/version', vfsController.createVersion);
 
 // Restore version
 router.post('/version/:versionId/restore', vfsController.restoreVersion);
+
+// Diff version against current or another version
+router.get('/version/:versionId/diff', vfsController.getVersionDiff);
 
 export default router;

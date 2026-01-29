@@ -1,5 +1,6 @@
 import { Sequelize } from 'sequelize-typescript';
 import dotenv from 'dotenv';
+import { User, Organization, Permission, Subscription, Plan } from '../models/sql';
 
 dotenv.config();
 
@@ -59,6 +60,8 @@ if (DATABASE_URL) {
         }
     });
 }
+
+sequelize.addModels([User, Organization, Permission, Subscription, Plan]);
 
 /**
  * Test the database connection

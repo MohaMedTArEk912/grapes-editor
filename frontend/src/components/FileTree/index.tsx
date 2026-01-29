@@ -19,7 +19,8 @@ import {
     Copy,
     Archive,
     RotateCcw,
-    ExternalLink
+    ExternalLink,
+    History
 } from 'lucide-react';
 import { DragProvider, DraggableFile, DropZone } from './DragMove';
 // Remove CSS import
@@ -63,7 +64,8 @@ export type FileAction =
     | 'delete'
     | 'archive'
     | 'restore'
-    | 'export';
+    | 'export'
+    | 'snapshot';
 
 // ============================================================================
 // FILE ICON MAPPING
@@ -322,6 +324,7 @@ const FileItem: React.FC<FileItemProps> = ({
         }
 
         items.push({ icon: ExternalLink, label: 'Export', action: 'export' });
+        items.push({ icon: History, label: 'Snapshot', action: 'snapshot' });
 
         if (file.isArchived) {
             items.push({ icon: RotateCcw, label: 'Restore', action: 'restore' });

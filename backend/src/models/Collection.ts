@@ -5,6 +5,12 @@ export interface FieldDefinition {
     type: 'text' | 'richtext' | 'number' | 'boolean' | 'date' | 'image' | 'reference';
     required?: boolean;
     defaultValue?: any;
+    reference?: string;
+    validations?: {
+        min?: number;
+        max?: number;
+        pattern?: string;
+    };
 }
 
 export interface ICollection extends Document {
@@ -26,6 +32,12 @@ const FieldSchema = new Schema({
     },
     required: { type: Boolean, default: false },
     defaultValue: { type: Schema.Types.Mixed },
+    reference: { type: String },
+    validations: {
+        min: { type: Number },
+        max: { type: Number },
+        pattern: { type: String },
+    },
 });
 
 const CollectionSchema: Schema = new Schema(

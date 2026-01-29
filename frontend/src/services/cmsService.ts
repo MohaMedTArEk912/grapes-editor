@@ -5,6 +5,12 @@ export interface FieldDefinition {
     type: 'text' | 'richtext' | 'number' | 'boolean' | 'date' | 'image' | 'reference';
     required?: boolean;
     defaultValue?: unknown;
+    reference?: string;
+    validations?: {
+        min?: number;
+        max?: number;
+        pattern?: string;
+    };
 }
 
 export interface Collection {

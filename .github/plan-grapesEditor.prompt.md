@@ -1,408 +1,163 @@
-Perfect — below is a **FULL, END-TO-END, COPILOT-READY MASTER PLAN** covering **ALL PHASES (1 → 19)**, written **exactly** in a way you can paste into **VS Code Copilot / Copilot Chat / Copilot Workspace** and execute phase by phase.
-
-This is **not documentation**.
-This is a **build specification + task breakdown**.
+Prompt instructions file:
+Below is the **NEW UI/UX REFACTOR MASTER PLAN** focused on layout, panels, blocks, and project management. This is a **build specification + task breakdown**, not documentation.
 
 ---
 
-# 🚀 Website Builder Platform — MASTER EXECUTION PLAN
+# 🎨 UI/UX REFACTOR — MASTER PLAN
 
-**Target:** Visual OS for building full-stack websites
+**Target:** Modern, faster, and more intuitive editor UI
 **Stack:** React + TypeScript + Tailwind + GrapesJS (headless)
-**Architecture:** Hybrid MongoDB (Editor State) + PostgreSQL (Platform)
 
 ---
 
-# 🧱 PHASE 1 — Foundations ✅ COMPLETE
+# 0) GLOBAL RULES (DO NOT BREAK)
 
-### Tasks
-
-* Define output formats (HTML / React / JS)
-* Define layout system (Flexbox + Grid)
-* Define styling system (Tailwind only)
-* Setup React + TS + Vite
-* Configure Tailwind + PostCSS
-* Setup editor iframe sandbox
-
-**Deliverables**
-
-* Working dev environment
-* Tailwind tokens
-* Base editor shell
+- Tailwind-only UI
+- Schema-first architecture
+- No hard deletes
+- Keep existing APIs stable unless explicitly required
+- Preserve GrapesJS headless usage and custom shell
 
 ---
 
-# 🎨 PHASE 2 — Editor MVP (Visual Builder) ✅ COMPLETE
+# 1) EDITOR SHELL REWORK
 
-### Tasks
+## Goals
+- Cleaner layout hierarchy
+- Persistent navigation
+- Faster access to key panels
 
-* Disable default GrapesJS UI
-* Build custom editor layout
-* Left sidebar (blocks)
-* Right sidebar (styles / traits / layers)
-* Top toolbar (preview, undo, export)
-* Custom block registry
-* Asset manager
-* JSON schema export
+## Tasks
+- Introduce a **left rail** for global navigation (Project, Pages, Blocks, Assets, Logic, Data, SEO, Publish, Analytics, A11y)
+- Move **panel content** to a **single right-side drawer** with tabbed sections
+- Add a **center workspace header** (page name, breakpoint, device toggle, preview, undo/redo)
+- Create a **collapsible bottom status bar** (sync, save state, selection info)
 
-**Deliverables**
-
-* Drag & drop editor
-* Clean UI
-* Exportable schema
+## Deliverables
+- New Editor shell layout
+- Panel routing state (active panel, active tab)
 
 ---
 
-# 📐 PHASE 3 — Styling & Responsive System ✅ COMPLETE
+# 2) BLOCKS EXPERIENCE UPGRADE
 
-### Tasks
+## Goals
+- Faster block discovery
+- Cleaner categories
+- Better previews
 
-* Style inspector (typography, spacing, colors)
-* Breakpoints (desktop/tablet/mobile)
-* Per-breakpoint Tailwind classes
-* Auto layout (flex/grid)
-* Responsive preview
+## Tasks
+- Add **block categories** with icons and search
+- Add **block preview cards** (hover preview + add button)
+- Add **favorites** + **recently used** blocks
+- Improve **drag affordances** and empty-state hints
+- Add **custom block groups** by project
 
-**Deliverables**
-
-* Figma-like styling experience
-* Tailwind-only output
-
----
-
-# 🧠 PHASE 4 — State & Logic System ✅ COMPLETE
-
-### Tasks
-
-* Global state manager
-* Page & app state
-* Event builder UI
-* Action blocks (API, navigation, visibility)
-* Visual logic → executable JS
-
-**Deliverables**
-
-* App-like interactivity
-* No-code logic engine
+## Deliverables
+- Blocks panel UX refresh
+- Block data model for favorites/recent
 
 ---
 
-# 🏗️ PHASE 5 — Code Generation ✅ COMPLETE
+# 3) PROJECT MANAGEMENT UX
 
-### Tasks
+## Goals
+- Clearer project selection
+- Better page tree visibility
+- Quick actions
 
-* Schema normalization
-* React component generator
-* Page generator
-* Logic handler generator
-* ZIP export
-* GitHub export
-* Preview deploy
+## Tasks
+- Rework project picker into a **full-screen modal** with search + grid/list
+- Add **project metadata cards** (last edited, published, collaborators)
+- Add **page tree panel** with drag-reorder + context actions
+- Add **quick actions** (duplicate, archive, publish)
 
-**Deliverables**
-
-* Real production code output
-
----
-
-# ⚡ PHASE 6 — Live Preview & Runtime ✅ COMPLETE
-
-### Tasks
-
-* Runtime sandbox
-* Hot reload
-* Event isolation
-* Error boundaries
-
-**Deliverables**
-
-* Instant feedback
-* Safe execution
+## Deliverables
+- New ProjectManager UI
+- Updated PageManager with tree view
 
 ---
 
-# 🧩 PHASE 7 — Backend Platform ✅ COMPLETE
+# 4) RIGHT PANEL RESTRUCTURE
 
-### Tasks
+## Goals
+- Reduce clutter
+- Logical grouping
+- Faster switching
 
-* Node + Express backend
-* MongoDB (editor state)
-* Auth (users, teams)
-* Project CRUD
-* Permissions
+## Tasks
+- Merge **Styles + Traits + Layers** into tabs within one panel
+- Add **sticky section headers** in styles
+- Add **compact mode** toggle
+- Add **search/filter** for style props
 
-**Deliverables**
-
-* Multi-user platform
-
----
-
-# 🚀 PHASE 8 — Pro Features ✅ COMPLETE
-
-### Tasks
-
-* Reusable components
-* Animations
-* CMS collections
-* SEO panel
-* Forms + backend actions
-* API integrations
-* Performance optimizations
+## Deliverables
+- Unified Inspector panel
+- Improved property navigation
 
 ---
 
-# 📄 PHASE 9 — Multi-Page Support 🔄 IN PROGRESS
+# 5) PANEL ROUTING & STATE MANAGEMENT
 
-### Implemented (in repo)
+## Goals
+- Consistent panel state
+- Restore UI on reload
 
-* Page model & API
-* PageManagerPanel UI
-* Editor loads/saves per-page content
-* Project selection drives active pages
+## Tasks
+- Add **panel state store** (active panel, tabs, sizes, collapse)
+- Persist state in localStorage per project
+- Centralize panel navigation actions
 
-### Remaining
-
-* Shared layouts (header/footer)
-* Routing config
-* Page transitions
-
-**Deliverables**
-
-* Core multi-page projects
+## Deliverables
+- Panel state store + persistence
 
 ---
 
-# 🗂️ PHASE 10 — Virtual File System (VFS) 🔄 IN PROGRESS
+# 6) ACCESSIBILITY & USABILITY
 
-### Implemented (in repo)
+## Goals
+- Better keyboard support
+- Clear focus states
 
-* VFS schema + file registry + protection levels
-* Mongo collections (files, blocks, versions)
-* VS-Code-style file tree with drag/move
-* Safety rules (guard + snapshot for risky operations)
-* Auto-organization engine
-* Page ↔ VFS file sync for page files
+## Tasks
+- Add keyboard shortcuts for panel switching
+- Add focus rings for all interactive UI
+- Ensure panel toggles are keyboard accessible
 
-### Remaining
-
-* File ↔ block binding with editor runtime
-* SQL tables (users, orgs, billing) wired to app
-* Undo stack integration into VFS UI
-
-**Deliverables**
-
-* Visual OS
-* Zero corruption (guarded operations)
+## Deliverables
+- Accessible navigation flow
 
 ---
 
-# 🗄️ PHASE 11 — Visual Data Model Designer 🔄 IN PROGRESS
+# 7) PERFORMANCE & RESPONSIVENESS
 
-### Implemented (in repo)
+## Goals
+- Faster UI, smoother panels
 
-* Collections CRUD + items CRUD
-* Field editor + schema preview
-* Basic API tester for items
+## Tasks
+- Virtualize long lists (blocks, pages, assets)
+- Debounce search inputs
+- Add skeleton loaders for panels
+- Memoize heavy panel components
 
-### Remaining
-
-* Visual ERD canvas
-* Relation editor + validation builder
-* Mongo schema generator
-* SQL table + migration generator
-* Seed data generator
-* Auto-generated API docs
-
-**Deliverables**
-
-* No-code backend modeling (core)
+## Deliverables
+- Noticeably faster panel render
 
 ---
 
-# 🕘 PHASE 12 — Version History & Undo 🔄 IN PROGRESS
+# 8) ROLLOUT STRATEGY
 
-### Implemented (in repo)
-
-* Named versions UI
-* Create/restore version endpoints
-* Auto snapshots for risky VFS operations
-
-### Remaining
-
-* Command-based undo stack wired to editor/VFS
-* Visual diff
-* Rollback engine UX
-
-**Deliverables**
-
-* Safe experimentation (core)
+## Steps
+- Ship behind a **UI refresh toggle** in settings
+- Collect usage feedback
+- Flip default once stable
 
 ---
 
-# 👥 PHASE 13 — Real-Time Collaboration 🔄 IN PROGRESS
-
-### Implemented (in repo)
-
-* WebSocket server
-* Presence list + cursor broadcast (foundation)
-
-### Remaining
-
-* Shared document sync
-* Component locking
-* Conflict resolution (OT)
-* Comments & annotations
-
-**Deliverables**
-
-* Team editing (foundation)
-
----
-
-# 🧩 PHASE 14 — Custom Code Injection 🔄 IN PROGRESS
-
-### Implemented (in repo)
-
-* VFS-backed code files (css/js/inject)
-* Editor panel to edit/store code
-
-### Remaining
-
-* Monaco editor
-* Sandbox JS execution
-* Head injection into canvas/runtime
-* Syntax validation
-
-**Deliverables**
-
-* Power-user extensibility (core)
-
----
-
-# 🛒 PHASE 15 — E-commerce Components 🔄 IN PROGRESS
-
-### Implemented (in repo)
-
-* Product model + CRUD API
-* Product manager UI panel
-* Product card block
-
-### Remaining
-
-* Cart system
-* Stripe & PayPal checkout
-* Orders dashboard
-
-**Deliverables**
-
-* Visual storefront builder (core)
-
----
-
-# 🌍 PHASE 16 — Advanced Publishing 🔄 IN PROGRESS
-
-### Implemented (in repo)
-
-* Vercel integration (server-side deploy via VERCEL_TOKEN)
-* Netlify integration (server-side deploy via NETLIFY_TOKEN)
-* Deploy buttons in Publishing panel
-* Preview links (Vercel + Netlify)
-* Scheduled Vercel publishing
-* Custom domain stored in settings
-
-### Remaining
-
-* SSL automation
-* Scheduled publishing for Netlify
-* Custom domain provisioning
-
-**Deliverables**
-
-* One-click deployment (Vercel + Netlify)
-
----
-
-# 🧱 PHASE 17 — Template Marketplace ⏳ NOT STARTED
-
-### Planned
-
-* Template model
-* Page / block templates
-* Import / export
-* Marketplace UI (real listings)
-* Community sharing
-
-**Deliverables**
-
-* Growth engine
-
----
-
-# 📊 PHASE 18 — Analytics Dashboard ⏳ NOT STARTED
-
-### Planned
-
-* Event tracking
-* Page analytics
-* Form analytics
-* Heatmaps
-* A/B testing
-
-**Deliverables**
-
-* Data-driven optimization
-
----
-
-# ♿ PHASE 19 — Accessibility Checker 🔄 IN PROGRESS
-
-### Implemented (in repo)
-
-* Alt-text audit + basic score
-
-### Remaining
-
-* WCAG scanner
-* Contrast checker
-* Keyboard navigation testing
-* Full accessibility scoring
-
-**Deliverables**
-
-* Enterprise-grade compliance (core)
-
----
-
-# 🧠 GLOBAL ENGINEERING RULES (DO NOT BREAK)
-
-* Schema is source of truth
-* Files are projections
-* Tailwind only
-* No hard deletes
-* Everything versioned
-* UI never decides permissions
-* Services enforce safety
-
----
-
-# 🤖 FINAL COPILOT PROMPT (USE THIS)
+# 9) FINAL COPILOT PROMPT (USE THIS)
 
 Paste into Copilot Chat:
 
-> “We are building a no-code website builder. Implement Phase X from the master plan. Follow domain-driven design, Tailwind-only UI, and schema-first architecture. Do not include mock data unless requested.”
-
----
-
-## 🏁 Final Reality Check
-
-This plan is:
-
-* **Startup-grade**
-* **Enterprise-ready**
-* **Defensible**
-* **Scalable**
-
-You are not building “a builder”.
-You are building a **Visual Development OS**.
+> “Refactor the editor UI using the UI/UX Refactor Master Plan. Keep GrapesJS headless, Tailwind-only, and schema-first. Prioritize layout shell, blocks UX, project manager, and right inspector panel. No breaking API changes.”
 
 ---

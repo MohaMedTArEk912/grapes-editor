@@ -205,6 +205,56 @@ export class UndoStack {
     }
 
     /**
+     * Record file create action
+     */
+    recordFileCreate(
+        fileId: string,
+        file: VFSFile
+    ): UndoAction {
+        return this.push({
+            type: 'file_create',
+            description: `Created file ${file.name}`,
+            fileId,
+            before: {},
+            after: { file }
+        });
+    }
+
+    /**
+     * Record file archive action
+     */
+    recordFileArchive(
+        fileId: string,
+        before: VFSFile,
+        after: VFSFile
+    ): UndoAction {
+        return this.push({
+            type: 'file_archive',
+            description: `Archived file ${after.name}`,
+            fileId,
+            before: { file: before },
+            after: { file: after }
+        });
+    }
+
+    /**
+     * Record file restore action
+     */
+    recordFileRestore(
+        fileId: string,
+        before: VFSFile,
+        after: VFSFile
+    ): UndoAction {
+        return this.push({
+            type: 'file_restore',
+            description: `Restored file ${after.name}`,
+            fileId,
+            before: { file: before },
+            after: { file: after }
+        });
+    }
+
+    /**
      * Record block create action
      */
     recordBlockCreate(
@@ -282,6 +332,23 @@ export class UndoStack {
         return this.push({
             type: 'batch',
             description,
+            fileId,
+            before: { blocks: blocksBefore },
+            after: { blocks: blocksAfter }
+        });
+    }
+
+    /**
+     * Record block reorder/move action
+     */
+    recordBlockReorder(
+        fileId: string,
+        blocksBefore: VFSBlock[],
+        blocksAfter: VFSBlock[]
+    ): UndoAction {
+        return this.push({
+            type: 'block_reorder',
+            description: 'Reordered blocks',
             fileId,
             before: { blocks: blocksBefore },
             after: { blocks: blocksAfter }

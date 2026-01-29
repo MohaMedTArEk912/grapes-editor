@@ -9,6 +9,16 @@ export interface ProjectData {
     content: any[]; // Components JSON
     styles: string; // CSS
     assets: any[];
+    headerHtml?: string;
+    headerCss?: string;
+    footerHtml?: string;
+    footerCss?: string;
+    customDomain?: string;
+    domainProvider?: 'vercel' | 'netlify';
+    domainStatus?: 'pending' | 'provisioned' | 'verified' | 'failed';
+    sslStatus?: 'pending' | 'active' | 'failed';
+    netlifySiteId?: string;
+    vercelProjectName?: string;
     updatedAt?: string;
 }
 

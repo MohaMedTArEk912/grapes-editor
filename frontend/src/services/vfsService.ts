@@ -45,6 +45,32 @@ export interface VFSVersion {
     createdAt: string;
 }
 
+export interface UndoAction {
+    id: string;
+    type: string;
+    description: string;
+    timestamp: string;
+    fileId: string;
+}
+
+export interface UndoStats {
+    undoCount: number;
+    redoCount: number;
+}
+
+export interface VersionDiff {
+    files: {
+        added: Array<{ name?: string; path?: string; type?: string }>;
+        removed: Array<{ name?: string; path?: string; type?: string }>;
+        changed: Array<{ name?: string; path?: string; type?: string }>;
+    };
+    blocks: {
+        added: Array<{ id?: string; type?: string }>;
+        removed: Array<{ id?: string; type?: string }>;
+        changed: Array<{ id?: string; type?: string }>;
+    };
+}
+
 export interface FolderNode {
     name: string;
     path: string;
@@ -441,6 +467,62 @@ export async function restoreVersion(versionId: string): Promise<void> {
     });
 
     await handleResponse(response);
+}
+
+/**
+ * Get diff between a version and current/another version
+ */
+export async function getVersionDiff(
+    versionId: string,
+    compareWith: 'current' | string = 'current'
+): Promise<{ diff: VersionDiff }> {
+    const response = await fetch(
+        `${API_BASE}/vfs/version/${versionId}/diff?with=${encodeURIComponent(compareWith)}`,
+        {
+            method: 'GET',
+            headers: buildHeaders(),
+        }
+    );
+
+    return handleResponse(response);
+}
+
+// ============================================================================
+// UNDO OPERATIONS
+// ============================================================================
+
+export async function getUndoHistory(
+    fileId: string,
+    limit = 20
+): Promise<{ history: UndoAction[]; stats: UndoStats }> {
+    const response = await fetch(`${API_BASE}/vfs/file/${fileId}/undo/history?limit=${limit}`, {
+        method: 'GET',
+        headers: buildHeaders(),
+    });
+
+    return handleResponse(response);
+}
+
+export async function undoFileAction(
+    fileId: string
+): Promise<{ action: UndoAction; stats: UndoStats }> {
+    const response = await fetch(`${API_BASE}/vfs/file/${fileId}/undo`, {
+        method: 'POST',
+        headers: buildHeaders(),
+    });
+
+    return handleResponse(response);
+}
+
+export async function redoFileAction(
+    fileId: string
+): Promise<{ action: UndoAction; stats: UndoStats }> {
+    const response = await fetch(`${API_BASE}/vfs/file/${fileId}/redo`, {
+        method: 'POST',
+        headers: buildHeaders(),
+    });
+
+    return handleResponse(response);
 }
 
 // ============================================================================

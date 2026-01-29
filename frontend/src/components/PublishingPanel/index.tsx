@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Cloud, Link as LinkIcon, Save, X, UploadCloud, CalendarClock } from 'lucide-react';
+import { Cloud, Link as LinkIcon, Save, X, UploadCloud, CalendarClock, ShieldCheck } from 'lucide-react';
 import { GrapesEditor } from '../../types/grapes';
 import { useProject } from '../../context/ProjectContext';
+import { ProjectService } from '../../services/projectService';
 
 interface PublishingPanelProps {
     editor: GrapesEditor | null;
@@ -10,18 +11,23 @@ interface PublishingPanelProps {
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 export const PublishingPanel: React.FC<PublishingPanelProps> = ({ editor }) => {
-    const { currentProject } = useProject();
+    const { currentProject, setCurrentProject } = useProject();
     const [customDomain, setCustomDomain] = useState('');
+    const [domainProvider, setDomainProvider] = useState<'vercel' | 'netlify'>('vercel');
     const [message, setMessage] = useState<string | null>(null);
     const [deployUrl, setDeployUrl] = useState<string | null>(null);
     const [deploying, setDeploying] = useState(false);
     const [netlifyDeploying, setNetlifyDeploying] = useState(false);
     const [scheduleAt, setScheduleAt] = useState('');
+    const [scheduleNetlifyAt, setScheduleNetlifyAt] = useState('');
     const [schedules, setSchedules] = useState<Array<{ _id: string; scheduledAt: string; status: string; resultUrl?: string; errorMessage?: string }>>([]);
+    const [sslStatus, setSslStatus] = useState<string>('pending');
 
     useEffect(() => {
-        setCustomDomain(localStorage.getItem('publish_custom_domain') || '');
-    }, []);
+        setCustomDomain(currentProject?.customDomain || localStorage.getItem('publish_custom_domain') || '');
+        setDomainProvider(currentProject?.domainProvider || 'vercel');
+        setSslStatus(currentProject?.sslStatus || 'pending');
+    }, [currentProject]);
 
     const handleSave = () => {
         localStorage.setItem('publish_custom_domain', customDomain);
@@ -64,6 +70,7 @@ export const PublishingPanel: React.FC<PublishingPanelProps> = ({ editor }) => {
                 method: 'POST',
                 headers: getAuthHeaders(),
                 body: JSON.stringify({
+                    projectId: currentProject._id,
                     name: currentProject.name?.toLowerCase().replace(/\s+/g, '-') || 'grapes-site',
                     html,
                     css,
@@ -75,6 +82,10 @@ export const PublishingPanel: React.FC<PublishingPanelProps> = ({ editor }) => {
             }
             setDeployUrl(`https://${data.url}`);
             setMessage('Deployment created successfully.');
+            if (currentProject?._id) {
+                const refreshed = await ProjectService.getProjectById(currentProject._id);
+                setCurrentProject(refreshed);
+            }
             await loadSchedules();
         } catch (err: any) {
             setMessage(err.message || 'Deploy failed');
@@ -93,6 +104,7 @@ export const PublishingPanel: React.FC<PublishingPanelProps> = ({ editor }) => {
                 method: 'POST',
                 headers: getAuthHeaders(),
                 body: JSON.stringify({
+                    projectId: currentProject._id,
                     name: currentProject.name?.toLowerCase().replace(/\s+/g, '-') || 'grapes-site',
                     html,
                     css,
@@ -104,6 +116,10 @@ export const PublishingPanel: React.FC<PublishingPanelProps> = ({ editor }) => {
             }
             setDeployUrl(data.url || data.siteUrl || null);
             setMessage('Netlify deployment created successfully.');
+            if (currentProject?._id) {
+                const refreshed = await ProjectService.getProjectById(currentProject._id);
+                setCurrentProject(refreshed);
+            }
             await loadSchedules();
         } catch (err: any) {
             setMessage(err.message || 'Netlify deploy failed');
@@ -137,6 +153,78 @@ export const PublishingPanel: React.FC<PublishingPanelProps> = ({ editor }) => {
             await loadSchedules();
         } catch (err: any) {
             setMessage(err.message || 'Schedule failed');
+        }
+    };
+
+    const handleScheduleNetlify = async () => {
+        if (!editor || !currentProject?._id || !scheduleNetlifyAt) return;
+        try {
+            const html = editor.getHtml() || '';
+            const css = editor.getCss() || '';
+            const response = await fetch(`${API_URL}/publish/netlify/schedule`, {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({
+                    projectId: currentProject._id,
+                    name: currentProject.name?.toLowerCase().replace(/\s+/g, '-') || 'grapes-site',
+                    html,
+                    css,
+                    scheduledAt: scheduleNetlifyAt,
+                }),
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data?.message || 'Schedule failed');
+            }
+            setMessage('Netlify deployment scheduled.');
+            setScheduleNetlifyAt('');
+            await loadSchedules();
+        } catch (err: any) {
+            setMessage(err.message || 'Schedule failed');
+        }
+    };
+
+    const handleProvisionDomain = async () => {
+        if (!customDomain || !currentProject?._id) return;
+        try {
+            const response = await fetch(`${API_URL}/publish/domain/provision`, {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({
+                    projectId: currentProject._id,
+                    provider: domainProvider,
+                    domain: customDomain,
+                }),
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data?.message || 'Domain provisioning failed');
+            }
+            setMessage(`Domain provisioned via ${data.provider}.`);
+            const refreshed = await ProjectService.getProjectById(currentProject._id);
+            setCurrentProject(refreshed);
+            setSslStatus(refreshed.sslStatus || 'pending');
+        } catch (err: any) {
+            setMessage(err.message || 'Domain provisioning failed');
+        }
+    };
+
+    const handleRefreshSsl = async () => {
+        if (!currentProject?._id) return;
+        try {
+            const response = await fetch(`${API_URL}/publish/domain/${currentProject._id}/ssl`, {
+                headers: getAuthHeaders(),
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data?.message || 'SSL refresh failed');
+            }
+            setSslStatus(data.sslStatus || 'pending');
+            setMessage(`SSL status: ${data.sslStatus}`);
+            const refreshed = await ProjectService.getProjectById(currentProject._id);
+            setCurrentProject(refreshed);
+        } catch (err: any) {
+            setMessage(err.message || 'SSL refresh failed');
         }
     };
 
@@ -179,6 +267,33 @@ export const PublishingPanel: React.FC<PublishingPanelProps> = ({ editor }) => {
                             className="w-full bg-[#0a0a1a] border border-[#2a2a4a] rounded px-2 py-1 text-sm text-white"
                             placeholder="example.com"
                         />
+                    </div>
+                    <div className="mt-2 flex items-center gap-2">
+                        <select
+                            value={domainProvider}
+                            onChange={(e) => setDomainProvider(e.target.value as 'vercel' | 'netlify')}
+                            className="bg-[#0a0a1a] border border-[#2a2a4a] rounded px-2 py-1 text-xs text-white"
+                        >
+                            <option value="vercel">Vercel</option>
+                            <option value="netlify">Netlify</option>
+                        </select>
+                        <button
+                            onClick={handleProvisionDomain}
+                            disabled={!customDomain}
+                            className="px-3 py-1 text-xs bg-indigo-500 text-white rounded hover:bg-indigo-600 disabled:opacity-50"
+                        >
+                            Provision domain
+                        </button>
+                        <button
+                            onClick={handleRefreshSsl}
+                            className="px-3 py-1 text-xs bg-[#0a0a1a] border border-[#2a2a4a] rounded text-slate-300"
+                        >
+                            Refresh SSL
+                        </button>
+                        <span className="text-xs text-slate-400 flex items-center gap-1">
+                            <ShieldCheck size={12} />
+                            {sslStatus}
+                        </span>
                     </div>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
@@ -225,6 +340,27 @@ export const PublishingPanel: React.FC<PublishingPanelProps> = ({ editor }) => {
                             onClick={handleSchedule}
                             disabled={!scheduleAt || !editor}
                             className="px-3 py-1 text-xs bg-indigo-500 text-white rounded hover:bg-indigo-600 disabled:opacity-50"
+                        >
+                            Schedule
+                        </button>
+                    </div>
+                </div>
+                <div className="mt-4 border-t border-[#2a2a4a] pt-3">
+                    <div className="text-xs text-slate-400 mb-2 flex items-center gap-2">
+                        <CalendarClock size={14} />
+                        Schedule Netlify deploy
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <input
+                            type="datetime-local"
+                            value={scheduleNetlifyAt}
+                            onChange={(e) => setScheduleNetlifyAt(e.target.value)}
+                            className="bg-[#0a0a1a] border border-[#2a2a4a] rounded px-2 py-1 text-xs text-white"
+                        />
+                        <button
+                            onClick={handleScheduleNetlify}
+                            disabled={!scheduleNetlifyAt || !editor}
+                            className="px-3 py-1 text-xs bg-emerald-500 text-white rounded hover:bg-emerald-600 disabled:opacity-50"
                         >
                             Schedule
                         </button>

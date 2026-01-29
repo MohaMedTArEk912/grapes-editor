@@ -4,7 +4,194 @@ import VFSBlockModel from '../models/VFSBlock';
 import VFSVersionModel from '../models/VFSVersion';
 import { FileRegistry, SafetyGuard, AutoOrganizer, BlockOwnership } from '../vfs';
 import { FileType, ProtectionLevel } from '../vfs/types';
+import { undoStack, UndoAction } from '../vfs/UndoStack';
 import mongoose from 'mongoose';
+
+const toPlain = (doc: any) => {
+    if (!doc) return doc;
+    return typeof doc.toObject === 'function' ? doc.toObject() : doc;
+};
+
+const normalizeId = (doc: any) => (doc?._id || doc?.id || doc);
+
+const sanitizeDoc = (doc: any) => {
+    if (!doc) return doc;
+    const clean = { ...doc } as any;
+    delete clean.__v;
+    return clean;
+};
+
+const upsertFile = async (file: any) => {
+    if (!file) return;
+    const id = normalizeId(file);
+    const update = sanitizeDoc({ ...file });
+    delete update._id;
+    await VFSFileModel.findByIdAndUpdate(id, update, {
+        upsert: true,
+        new: true,
+        setDefaultsOnInsert: true,
+    });
+};
+
+const upsertBlock = async (block: any) => {
+    if (!block) return;
+    const id = normalizeId(block);
+    const update = sanitizeDoc({ ...block });
+    delete update._id;
+    await VFSBlockModel.findByIdAndUpdate(id, update, {
+        upsert: true,
+        new: true,
+        setDefaultsOnInsert: true,
+    });
+};
+
+const upsertBlocks = async (blocks: any[]) => {
+    if (!blocks || blocks.length === 0) return;
+    const ops = blocks.map((block) => {
+        const id = normalizeId(block);
+        const update = sanitizeDoc({ ...block });
+        delete update._id;
+        return {
+            updateOne: {
+                filter: { _id: id },
+                update: { $set: update },
+                upsert: true,
+            },
+        };
+    });
+    await VFSBlockModel.bulkWrite(ops);
+};
+
+const applyUndoAction = async (action: UndoAction, direction: 'undo' | 'redo') => {
+    const payload = direction === 'undo' ? action.before : action.after;
+
+    switch (action.type) {
+        case 'file_create':
+            if (direction === 'undo') {
+                const id = normalizeId(action.after?.file || action.fileId);
+                if (id) {
+                    await VFSFileModel.findByIdAndDelete(id);
+                }
+            } else {
+                await upsertFile(action.after?.file);
+            }
+            break;
+        case 'file_update':
+        case 'file_archive':
+        case 'file_restore':
+            await upsertFile(payload.file);
+            break;
+        case 'block_create':
+            if (direction === 'undo') {
+                const id = normalizeId(action.after?.block);
+                if (id) {
+                    await VFSBlockModel.findByIdAndDelete(id);
+                }
+            } else {
+                await upsertBlock(action.after?.block);
+            }
+            break;
+        case 'block_delete':
+            if (direction === 'undo') {
+                await upsertBlock(action.before?.block);
+            } else {
+                const id = normalizeId(action.before?.block || action.after?.block);
+                if (id) {
+                    await VFSBlockModel.findByIdAndDelete(id);
+                }
+            }
+            break;
+        case 'block_update':
+        case 'style_change':
+            await upsertBlock(payload.block);
+            break;
+        case 'block_reorder':
+        case 'block_move':
+        case 'batch':
+            await upsertBlocks(payload.blocks || []);
+            break;
+        default:
+            break;
+    }
+};
+
+const buildSnapshotDiff = (baseFiles: any[], targetFiles: any[], baseBlocks: any[], targetBlocks: any[]) => {
+    const fileKey = (file: any) => file?.path || normalizeId(file);
+    const filePick = (file: any) => ({
+        name: file?.name,
+        path: file?.path,
+        type: file?.type,
+        protection: file?.protection,
+        isArchived: file?.isArchived,
+        schema: file?.schema || file?.dataSchema,
+    });
+    const blockPick = (block: any) => ({
+        type: block?.type,
+        props: block?.props,
+        styles: block?.styles,
+        events: block?.events,
+        order: block?.order,
+        parentBlockId: block?.parentBlockId,
+    });
+
+    const baseFileMap = new Map(baseFiles.map((file) => [fileKey(file), file]));
+    const targetFileMap = new Map(targetFiles.map((file) => [fileKey(file), file]));
+
+    const addedFiles = Array.from(targetFileMap.entries())
+        .filter(([key]) => !baseFileMap.has(key))
+        .map(([, file]) => filePick(file));
+    const removedFiles = Array.from(baseFileMap.entries())
+        .filter(([key]) => !targetFileMap.has(key))
+        .map(([, file]) => filePick(file));
+    const changedFiles = Array.from(targetFileMap.entries())
+        .filter(([key]) => baseFileMap.has(key))
+        .map(([key, file]) => {
+            const base = baseFileMap.get(key);
+            const before = JSON.stringify(filePick(base));
+            const after = JSON.stringify(filePick(file));
+            if (before === after) return null;
+            return {
+                path: file?.path,
+                name: file?.name,
+                type: file?.type,
+            };
+        })
+        .filter(Boolean);
+
+    const blockKey = (block: any) => normalizeId(block);
+    const baseBlockMap = new Map(baseBlocks.map((block) => [blockKey(block), block]));
+    const targetBlockMap = new Map(targetBlocks.map((block) => [blockKey(block), block]));
+
+    const addedBlocks = Array.from(targetBlockMap.entries())
+        .filter(([key]) => !baseBlockMap.has(key))
+        .map(([, block]) => ({ id: normalizeId(block), type: block?.type }));
+    const removedBlocks = Array.from(baseBlockMap.entries())
+        .filter(([key]) => !targetBlockMap.has(key))
+        .map(([, block]) => ({ id: normalizeId(block), type: block?.type }));
+    const changedBlocks = Array.from(targetBlockMap.entries())
+        .filter(([key]) => baseBlockMap.has(key))
+        .map(([key, block]) => {
+            const base = baseBlockMap.get(key);
+            const before = JSON.stringify(blockPick(base));
+            const after = JSON.stringify(blockPick(block));
+            if (before === after) return null;
+            return { id: normalizeId(block), type: block?.type };
+        })
+        .filter(Boolean);
+
+    return {
+        files: {
+            added: addedFiles,
+            removed: removedFiles,
+            changed: changedFiles,
+        },
+        blocks: {
+            added: addedBlocks,
+            removed: removedBlocks,
+            changed: changedBlocks,
+        },
+    };
+};
 
 /**
  * VFS Controller - Handles all virtual file system operations
@@ -113,6 +300,8 @@ export const createFile = async (req: Request, res: Response) => {
             projectId
         });
 
+        undoStack.recordFileCreate(file._id.toString(), toPlain(file) as any);
+
         res.status(201).json({
             success: true,
             data: { file }
@@ -159,6 +348,8 @@ export const updateFile = async (req: Request, res: Response) => {
             });
         }
 
+        const before = toPlain(file);
+
         // Apply updates
         if (updates.name) {
             file.name = updates.name;
@@ -169,6 +360,8 @@ export const updateFile = async (req: Request, res: Response) => {
         }
 
         await file.save();
+
+        undoStack.recordFileUpdate(file._id.toString(), before as any, toPlain(file) as any, 'Updated file');
 
         res.json({
             success: true,
@@ -263,11 +456,14 @@ export const moveFile = async (req: Request, res: Response) => {
             });
         }
 
+        const before = toPlain(file);
         const parsed = FileRegistry.parsePath(normalizedPath);
         file.path = normalizedPath;
         file.name = parsed.name;
 
         await file.save();
+
+        undoStack.recordFileUpdate(file._id.toString(), before as any, toPlain(file) as any, 'Moved file');
 
         res.json({
             success: true,
@@ -357,10 +553,14 @@ export const archiveFile = async (req: Request, res: Response) => {
             'archive'
         );
 
+        const before = toPlain(file);
+
         // Archive the file
         file.isArchived = true;
         file.archivedAt = new Date();
         await file.save();
+
+        undoStack.recordFileArchive(file._id.toString(), before as any, toPlain(file) as any);
 
         res.json({
             success: true,
@@ -399,9 +599,13 @@ export const restoreFile = async (req: Request, res: Response) => {
             });
         }
 
+        const before = toPlain(file);
+
         file.isArchived = false;
         file.archivedAt = undefined;
         await file.save();
+
+        undoStack.recordFileRestore(file._id.toString(), before as any, toPlain(file) as any);
 
         res.json({
             success: true,
@@ -500,6 +704,8 @@ export const createBlock = async (req: Request, res: Response) => {
             parentBlockId
         });
 
+        undoStack.recordBlockCreate(fileId, toPlain(block) as any);
+
         res.status(201).json({
             success: true,
             data: { block }
@@ -562,6 +768,8 @@ export const updateBlock = async (req: Request, res: Response) => {
             }
         }
 
+        const before = toPlain(block);
+
         // Apply updates
         if (updates.props) block.props = { ...block.props, ...updates.props };
         if (updates.styles) block.styles = updates.styles;
@@ -570,6 +778,8 @@ export const updateBlock = async (req: Request, res: Response) => {
         if (updates.parentBlockId !== undefined) block.parentBlockId = updates.parentBlockId;
 
         await block.save();
+
+        undoStack.recordBlockUpdate(block.fileId.toString(), before as any, toPlain(block) as any);
 
         res.json({
             success: true,
@@ -608,10 +818,14 @@ export const deleteBlock = async (req: Request, res: Response) => {
             });
         }
 
+        const before = toPlain(block);
+
         // Delete children first
         // @ts-ignore
         await VFSBlockModel.deleteMany({ parentBlockId: blockId });
         await block.deleteOne();
+
+        undoStack.recordBlockDelete(block.fileId.toString(), before as any);
 
         res.json({
             success: true,
@@ -641,6 +855,9 @@ export const reorderBlocks = async (req: Request, res: Response) => {
             });
         }
 
+        // @ts-ignore
+        const blocksBefore = await VFSBlockModel.find({ fileId }).lean();
+
         const session = await mongoose.startSession();
         session.startTransaction();
 
@@ -659,6 +876,10 @@ export const reorderBlocks = async (req: Request, res: Response) => {
         } finally {
             session.endSession();
         }
+
+        // @ts-ignore
+        const blocksAfter = await VFSBlockModel.find({ fileId }).lean();
+        undoStack.recordBlockReorder(fileId, blocksBefore as any, blocksAfter as any);
 
         res.json({
             success: true,
@@ -802,6 +1023,145 @@ export const restoreVersion = async (req: Request, res: Response) => {
         res.status(500).json({
             success: false,
             error: 'Failed to restore version'
+        });
+    }
+};
+
+// ============================================================================
+// UNDO OPERATIONS
+// ============================================================================
+
+export const getUndoHistory = async (req: Request, res: Response) => {
+    try {
+        const { fileId } = req.params;
+        const limit = parseInt(req.query.limit as string) || 20;
+        const history = undoStack.getHistory(fileId, limit);
+        const stats = undoStack.getStats(fileId);
+
+        res.json({
+            success: true,
+            data: { history, stats }
+        });
+    } catch (error) {
+        console.error('Error fetching undo history:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to fetch undo history'
+        });
+    }
+};
+
+export const undoFileAction = async (req: Request, res: Response) => {
+    try {
+        const { fileId } = req.params;
+        const action = undoStack.popUndo(fileId);
+
+        if (!action) {
+            return res.status(400).json({
+                success: false,
+                error: 'Nothing to undo'
+            });
+        }
+
+        await applyUndoAction(action, 'undo');
+        const stats = undoStack.getStats(fileId);
+
+        res.json({
+            success: true,
+            data: { action, stats }
+        });
+    } catch (error) {
+        console.error('Error undoing action:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to undo action'
+        });
+    }
+};
+
+export const redoFileAction = async (req: Request, res: Response) => {
+    try {
+        const { fileId } = req.params;
+        const action = undoStack.popRedo(fileId);
+
+        if (!action) {
+            return res.status(400).json({
+                success: false,
+                error: 'Nothing to redo'
+            });
+        }
+
+        await applyUndoAction(action, 'redo');
+        const stats = undoStack.getStats(fileId);
+
+        res.json({
+            success: true,
+            data: { action, stats }
+        });
+    } catch (error) {
+        console.error('Error redoing action:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to redo action'
+        });
+    }
+};
+
+// ============================================================================
+// VERSION DIFF
+// ============================================================================
+
+export const getVersionDiff = async (req: Request, res: Response) => {
+    try {
+        const { versionId } = req.params;
+        const compareTarget = (req.query.with as string) || 'current';
+
+        // @ts-ignore
+        const version = await VFSVersionModel.findById(versionId).lean();
+        if (!version) {
+            return res.status(404).json({
+                success: false,
+                error: 'Version not found'
+            });
+        }
+
+        let targetFiles: any[] = [];
+        let targetBlocks: any[] = [];
+
+        if (compareTarget === 'current') {
+            // @ts-ignore
+            targetFiles = await VFSFileModel.find({ projectId: version.projectId }).lean();
+            // @ts-ignore
+            targetBlocks = await VFSBlockModel.find({ projectId: version.projectId }).lean();
+        } else {
+            // @ts-ignore
+            const compareVersion = await VFSVersionModel.findById(compareTarget).lean();
+            if (!compareVersion) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Compare version not found'
+                });
+            }
+            targetFiles = compareVersion.snapshot?.files || [];
+            targetBlocks = compareVersion.snapshot?.blocks || [];
+        }
+
+        const diff = buildSnapshotDiff(
+            version.snapshot?.files || [],
+            targetFiles,
+            version.snapshot?.blocks || [],
+            targetBlocks
+        );
+
+        res.json({
+            success: true,
+            data: { diff }
+        });
+    } catch (error) {
+        console.error('Error generating version diff:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to generate version diff'
         });
     }
 };

@@ -41,7 +41,7 @@ export const getProject = async (req: Request, res: Response) => {
 // @access  Private
 export const createProject = async (req: Request, res: Response) => {
     try {
-        const { name, content, styles, assets } = req.body;
+        const { name, content, styles, assets, headerHtml, headerCss, footerHtml, footerCss, customDomain, domainProvider, domainStatus, sslStatus, netlifySiteId, vercelProjectName } = req.body;
         const slug = name.toLowerCase().replace(/ /g, '-') + '-' + Date.now();
 
         const project = new Project({
@@ -50,6 +50,16 @@ export const createProject = async (req: Request, res: Response) => {
             content,
             styles,
             assets,
+            headerHtml,
+            headerCss,
+            footerHtml,
+            footerCss,
+            customDomain,
+            domainProvider,
+            domainStatus,
+            sslStatus,
+            netlifySiteId,
+            vercelProjectName,
             // @ts-ignore
             owner: req.user._id,
         });
@@ -66,7 +76,7 @@ export const createProject = async (req: Request, res: Response) => {
 // @access  Private
 export const updateProject = async (req: Request, res: Response) => {
     try {
-        const { name, content, styles, assets } = req.body;
+        const { name, content, styles, assets, headerHtml, headerCss, footerHtml, footerCss, customDomain, domainProvider, domainStatus, sslStatus, netlifySiteId, vercelProjectName } = req.body;
         const project = await Project.findById(req.params.id);
 
         if (project) {
@@ -80,6 +90,16 @@ export const updateProject = async (req: Request, res: Response) => {
             project.content = content || project.content;
             project.styles = styles || project.styles;
             project.assets = assets || project.assets;
+            if (headerHtml !== undefined) project.headerHtml = headerHtml;
+            if (headerCss !== undefined) project.headerCss = headerCss;
+            if (footerHtml !== undefined) project.footerHtml = footerHtml;
+            if (footerCss !== undefined) project.footerCss = footerCss;
+            if (customDomain !== undefined) project.customDomain = customDomain;
+            if (domainProvider !== undefined) project.domainProvider = domainProvider;
+            if (domainStatus !== undefined) project.domainStatus = domainStatus;
+            if (sslStatus !== undefined) project.sslStatus = sslStatus;
+            if (netlifySiteId !== undefined) project.netlifySiteId = netlifySiteId;
+            if (vercelProjectName !== undefined) project.vercelProjectName = vercelProjectName;
 
             const updatedProject = await project.save();
             res.json(updatedProject);

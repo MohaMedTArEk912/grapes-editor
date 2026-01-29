@@ -6,6 +6,7 @@ import { CollaborationProvider } from './context/CollaborationContext';
 import { Editor } from './components/Editor';
 import { Login } from './pages/Auth/Login';
 import { Register } from './pages/Auth/Register';
+import { PagePreview } from './pages/Preview/PagePreview';
 
 // Protected Route Wrapper
 const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
@@ -40,6 +41,14 @@ function App() {
                                     element={
                                         <ProtectedRoute>
                                             <Editor />
+                                        </ProtectedRoute>
+                                    }
+                                />
+                                <Route
+                                    path="/preview/:projectId/:pageId"
+                                    element={
+                                        <ProtectedRoute>
+                                            <PagePreview />
                                         </ProtectedRoute>
                                     }
                                 />
