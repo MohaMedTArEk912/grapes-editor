@@ -29,7 +29,8 @@ export const useGrapes = () => {
                 'grapesjs-tailwind': {
                     // Disable plugin's blocks - we use our own responsive blocks
                     blocks: [],
-                    tailwindPlayCdn: true,
+                    // Use local play script to avoid "CDN in production" warnings
+                    tailwindPlayCdn: '/tailwind-play.js',
                 },
                 'grapesjs-rulers': {
                     dragMode: 'translate',
@@ -109,14 +110,12 @@ export const useGrapes = () => {
             },
             canvas: {
                 styles: [
-                    // Tailwind CSS CDN - enables all Tailwind utilities in the canvas
-                    'https://cdn.tailwindcss.com',
-                    'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap',
-                    'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css',
+                    // Local Tailwind build for canvas styling (served by Vite)
+                    '/src/styles/index.css',
                 ],
                 scripts: [
-                    // Tailwind Play CDN for real-time Tailwind compilation
-                    'https://cdn.tailwindcss.com',
+                    // Use local Tailwind Play for JIT in canvas
+                    '/tailwind-play.js',
                 ],
                 // Ensure the canvas frame has proper styling for responsive preview
                 frameStyle: `
@@ -149,6 +148,22 @@ export const useGrapes = () => {
 
 
         initBlocks(editorInstance);
+
+        // Cleanup unwanted blocks injected by plugins
+        // We use a whitelist approach to only keep our custom blocks
+        const allowedBlocks = new Set([
+            'section', 'text', 'image', 'video', 'map', 'link', 'link-block',
+            'column1', 'column2', 'column3', 'column37',
+            'button', 'divider', 'quote',
+            'product-card', 'hero', 'card', 'testimonial', 'pricing', 'navbar', 'footer',
+            'form', 'input', 'textarea', 'select', 'checkbox', 'radio'
+        ]);
+
+        const bm = editorInstance.BlockManager;
+        const allBlocks = bm.getAll();
+        const blocksToRemove = allBlocks.filter((block: any) => !allowedBlocks.has(block.getId()));
+
+        blocksToRemove.forEach((block: any) => bm.remove(block.getId()));
         setEditor(editorInstance);
 
         return () => {

@@ -4,7 +4,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
 import jwt from 'jsonwebtoken';
-import { WebSocketServer } from 'ws';
+import WebSocket, { WebSocketServer } from 'ws';
 import { connectPostgres } from './config/postgres';
 import { connectDB } from './config/db';
 import projectRoutes from './routes/project.routes';
@@ -102,7 +102,30 @@ const sendToClient = (client: any, payload: unknown) => {
     }
 };
 
-wss.on('connection', (ws: any, req) => {
+interface WSMessage {
+    type: string;
+    [key: string]: any;
+}
+
+interface WSClient extends WebSocket {
+    projectId?: string;
+    userId?: string;
+    pageId?: string;
+}
+
+interface Lock {
+    userId: string;
+    username: string;
+    updatedAt: number;
+}
+
+interface PageState {
+    version: number;
+    html: string;
+    css: string;
+}
+
+wss.on('connection', (ws: WSClient, req: http.IncomingMessage) => {
     try {
         const url = new URL(req.url || '', `http://${req.headers.host}`);
         const token = url.searchParams.get('token');
@@ -125,9 +148,17 @@ wss.on('connection', (ws: any, req) => {
 
         broadcast(projectId, { type: 'presence', users: Array.from(room.users.values()) });
 
-        ws.on('message', async (data: Buffer) => {
+        ws.on('message', async (data: WebSocket.RawData) => {
             try {
-                const message = JSON.parse(data.toString());
+                const text = (() => {
+                    if (typeof data === 'string') return data;
+                    if (Buffer.isBuffer(data)) return data.toString();
+                    if (Array.isArray(data)) return Buffer.concat(data).toString();
+                    if (data instanceof ArrayBuffer) return Buffer.from(data).toString();
+                    return Buffer.from(data as ArrayBuffer).toString();
+                })();
+
+                const message: WSMessage = JSON.parse(text);
                 if (message.type === 'cursor') {
                     broadcast(projectId, { type: 'cursor', userId, x: message.x, y: message.y });
                 }
@@ -164,7 +195,7 @@ wss.on('connection', (ws: any, req) => {
                 }
 
                 if (message.type === 'page_update' && message.pageId) {
-                    const current = room.pages.get(message.pageId) || { version: 0, html: '', css: '' };
+                    const current: PageState = room.pages.get(message.pageId) || { version: 0, html: '', css: '' };
                     if (message.version !== current.version) {
                         sendToClient(ws, {
                             type: 'conflict',
@@ -176,7 +207,7 @@ wss.on('connection', (ws: any, req) => {
                         return;
                     }
 
-                    const next = {
+                    const next: PageState = {
                         version: current.version + 1,
                         html: message.html || '',
                         css: message.css || '',
@@ -198,9 +229,9 @@ wss.on('connection', (ws: any, req) => {
                 }
 
                 if (message.type === 'lock_request' && message.componentId) {
-                    const current = room.locks.get(message.componentId);
+                    const current: Lock | undefined = room.locks.get(message.componentId);
                     if (!current || current.userId === userId) {
-                        const next = { userId, username, updatedAt: Date.now() };
+                        const next: Lock = { userId, username, updatedAt: Date.now() };
                         room.locks.set(message.componentId, next);
                         broadcast(projectId, { type: 'lock_update', locks: Array.from(room.locks.entries()) });
                     } else {
@@ -209,7 +240,7 @@ wss.on('connection', (ws: any, req) => {
                 }
 
                 if (message.type === 'lock_release' && message.componentId) {
-                    const current = room.locks.get(message.componentId);
+                    const current: Lock | undefined = room.locks.get(message.componentId);
                     if (current?.userId === userId) {
                         room.locks.delete(message.componentId);
                         broadcast(projectId, { type: 'lock_update', locks: Array.from(room.locks.entries()) });
@@ -253,7 +284,7 @@ wss.on('connection', (ws: any, req) => {
             }
         });
 
-        ws.on('close', () => {
+        ws.addEventListener('close', () => {
             const activeRoom = getRoom(projectId);
             activeRoom.users.delete(userId);
             for (const [key, lock] of activeRoom.locks.entries()) {

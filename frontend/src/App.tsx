@@ -3,6 +3,7 @@ import { LogicProvider } from './context/LogicContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ProjectProvider } from './context/ProjectContext';
 import { CollaborationProvider } from './context/CollaborationContext';
+import { PanelStateProvider } from './context/PanelStateContext';
 import { Editor } from './components/Editor';
 import { Login } from './pages/Auth/Login';
 import { Register } from './pages/Auth/Register';
@@ -40,7 +41,9 @@ function App() {
                                     path="/"
                                     element={
                                         <ProtectedRoute>
-                                            <Editor />
+                                            <PanelStateProvider>
+                                                <Editor />
+                                            </PanelStateProvider>
                                         </ProtectedRoute>
                                     }
                                 />
@@ -48,7 +51,9 @@ function App() {
                                     path="/preview/:projectId/:pageId"
                                     element={
                                         <ProtectedRoute>
-                                            <PagePreview />
+                                            <PanelStateProvider>
+                                                <PagePreview />
+                                            </PanelStateProvider>
                                         </ProtectedRoute>
                                     }
                                 />

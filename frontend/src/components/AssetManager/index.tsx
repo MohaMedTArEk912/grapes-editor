@@ -1,9 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { GrapesEditor } from '../../types/grapes';
 import {
     Image, Upload, Trash2, Search, Grid, List, Copy,
     ExternalLink, X, FolderOpen, Check
 } from 'lucide-react';
+import { FixedSizeGrid, FixedSizeList, GridChildComponentProps, ListChildComponentProps } from 'react-window';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
+import { useElementSize } from '../../hooks/useElementSize';
 
 /**
  * @interface AssetManagerProps
@@ -50,6 +53,8 @@ export const AssetManager: React.FC<AssetManagerProps> = ({
     const [selectedAsset, setSelectedAsset] = useState<AssetItem | null>(null);
     const [isUploading, setIsUploading] = useState(false);
     const [dragOver, setDragOver] = useState(false);
+    const debouncedSearch = useDebouncedValue(searchTerm, 200);
+    const { ref: assetListRef, size: assetListSize } = useElementSize<HTMLDivElement>();
 
     /**
      * Load assets from the GrapesJS Asset Manager
@@ -227,9 +232,13 @@ export const AssetManager: React.FC<AssetManagerProps> = ({
     };
 
     // Filter assets based on search term
-    const filteredAssets = assets.filter(asset =>
-        asset.name.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredAssets = useMemo(() => {
+        if (!debouncedSearch.trim()) return assets;
+        const query = debouncedSearch.toLowerCase();
+        return assets.filter(asset =>
+            asset.name.toLowerCase().includes(query)
+        );
+    }, [assets, debouncedSearch]);
 
     if (!isOpen) return null;
 
@@ -304,10 +313,11 @@ export const AssetManager: React.FC<AssetManagerProps> = ({
 
                 {/* Content Area */}
                 <div
-                    className={`flex-1 overflow-y-auto p-4 ${dragOver ? 'bg-indigo-500/10' : ''}`}
+                    className={`flex-1 overflow-hidden p-4 ${dragOver ? 'bg-indigo-500/10' : ''}`}
                     onDragOver={handleDragOver}
                     onDragLeave={handleDragLeave}
                     onDrop={handleDrop}
+                    ref={assetListRef}
                 >
                     {isUploading && (
                         <div className="flex items-center justify-center p-8">
@@ -327,105 +337,199 @@ export const AssetManager: React.FC<AssetManagerProps> = ({
 
                     {!isUploading && filteredAssets.length > 0 && (
                         viewMode === 'grid' ? (
-                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                                {filteredAssets.map((asset) => (
-                                    <div
-                                        key={asset.id}
-                                        onClick={() => handleAssetSelect(asset)}
-                                        className={`group relative aspect-square rounded-lg overflow-hidden border-2 cursor-pointer transition-all ${selectedAsset?.id === asset.id
-                                            ? 'border-indigo-500 ring-2 ring-indigo-500/30'
-                                            : 'border-[#2a2a4a] hover:border-slate-600'
-                                            }`}
-                                    >
-                                        <img
-                                            src={asset.src}
-                                            alt={asset.name}
-                                            className="w-full h-full object-cover"
-                                            loading="lazy"
-                                        />
+                            assetListSize.height > 0 && assetListSize.width > 0 ? (
+                                <FixedSizeGrid
+                                    columnCount={assetListSize.width >= 720 ? 5 : assetListSize.width >= 560 ? 4 : assetListSize.width >= 420 ? 3 : 2}
+                                    columnWidth={Math.floor(assetListSize.width / (assetListSize.width >= 720 ? 5 : assetListSize.width >= 560 ? 4 : assetListSize.width >= 420 ? 3 : 2))}
+                                    height={assetListSize.height}
+                                    rowCount={Math.ceil(filteredAssets.length / (assetListSize.width >= 720 ? 5 : assetListSize.width >= 560 ? 4 : assetListSize.width >= 420 ? 3 : 2))}
+                                    rowHeight={160}
+                                    width={assetListSize.width}
+                                >
+                                    {({ columnIndex, rowIndex, style }: GridChildComponentProps) => {
+                                        const columns = assetListSize.width >= 720 ? 5 : assetListSize.width >= 560 ? 4 : assetListSize.width >= 420 ? 3 : 2;
+                                        const index = rowIndex * columns + columnIndex;
+                                        const asset = filteredAssets[index];
+                                        if (!asset) return null;
+                                        return (
+                                            <div style={{ ...style, padding: 6 }}>
+                                                <div
+                                                    onClick={() => handleAssetSelect(asset)}
+                                                    className={`group relative h-full rounded-lg overflow-hidden border-2 cursor-pointer transition-all ${selectedAsset?.id === asset.id
+                                                        ? 'border-indigo-500 ring-2 ring-indigo-500/30'
+                                                        : 'border-[#2a2a4a] hover:border-slate-600'
+                                                        }`}
+                                                >
+                                                    <img
+                                                        src={asset.src}
+                                                        alt={asset.name}
+                                                        className="w-full h-full object-cover"
+                                                        loading="lazy"
+                                                    />
 
-                                        {/* Overlay */}
-                                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); copyToClipboard(asset.src); }}
-                                                className="p-2 bg-white/20 rounded-lg hover:bg-white/30 transition-colors"
-                                                title="Copy URL"
-                                            >
-                                                <Copy size={14} className="text-white" />
-                                            </button>
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); handleDelete(asset); }}
-                                                className="p-2 bg-red-500/50 rounded-lg hover:bg-red-500/70 transition-colors"
-                                                title="Delete"
-                                            >
-                                                <Trash2 size={14} className="text-white" />
-                                            </button>
-                                        </div>
+                                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); copyToClipboard(asset.src); }}
+                                                            className="p-2 bg-white/20 rounded-lg hover:bg-white/30 transition-colors"
+                                                            title="Copy URL"
+                                                        >
+                                                            <Copy size={14} className="text-white" />
+                                                        </button>
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); handleDelete(asset); }}
+                                                            className="p-2 bg-red-500/50 rounded-lg hover:bg-red-500/70 transition-colors"
+                                                            title="Delete"
+                                                        >
+                                                            <Trash2 size={14} className="text-white" />
+                                                        </button>
+                                                    </div>
 
-                                        {/* Selected Icon */}
-                                        {selectedAsset?.id === asset.id && (
-                                            <div className="absolute top-2 right-2 w-6 h-6 bg-indigo-500 rounded-full flex items-center justify-center">
-                                                <Check size={14} className="text-white" />
+                                                    {selectedAsset?.id === asset.id && (
+                                                        <div className="absolute top-2 right-2 w-6 h-6 bg-indigo-500 rounded-full flex items-center justify-center">
+                                                            <Check size={14} className="text-white" />
+                                                        </div>
+                                                    )}
+
+                                                    <div className="absolute bottom-0 inset-x-0 p-2 bg-gradient-to-t from-black/80 to-transparent">
+                                                        <p className="text-xs text-white truncate">{asset.name}</p>
+                                                    </div>
+                                                </div>
                                             </div>
-                                        )}
-
-                                        {/* Name */}
-                                        <div className="absolute bottom-0 inset-x-0 p-2 bg-gradient-to-t from-black/80 to-transparent">
-                                            <p className="text-xs text-white truncate">{asset.name}</p>
+                                        );
+                                    }}
+                                </FixedSizeGrid>
+                            ) : (
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                                    {filteredAssets.map((asset) => (
+                                        <div
+                                            key={asset.id}
+                                            onClick={() => handleAssetSelect(asset)}
+                                            className={`group relative aspect-square rounded-lg overflow-hidden border-2 cursor-pointer transition-all ${selectedAsset?.id === asset.id
+                                                ? 'border-indigo-500 ring-2 ring-indigo-500/30'
+                                                : 'border-[#2a2a4a] hover:border-slate-600'
+                                                }`}
+                                        >
+                                            <img
+                                                src={asset.src}
+                                                alt={asset.name}
+                                                className="w-full h-full object-cover"
+                                                loading="lazy"
+                                            />
                                         </div>
-                                    </div>
-                                ))}
-                            </div>
+                                    ))}
+                                </div>
+                            )
                         ) : (
-                            <div className="space-y-2">
-                                {filteredAssets.map((asset) => (
-                                    <div
-                                        key={asset.id}
-                                        onClick={() => handleAssetSelect(asset)}
-                                        className={`flex items-center gap-4 p-3 rounded-lg border-2 cursor-pointer transition-all ${selectedAsset?.id === asset.id
-                                            ? 'border-indigo-500 bg-indigo-500/10'
-                                            : 'border-[#2a2a4a] hover:border-slate-600 hover:bg-white/5'
-                                            }`}
-                                    >
-                                        <img
-                                            src={asset.src}
-                                            alt={asset.name}
-                                            className="w-12 h-12 object-cover rounded-lg"
-                                            loading="lazy"
-                                        />
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-sm text-white font-medium truncate">{asset.name}</p>
-                                            <p className="text-xs text-slate-500 truncate">{asset.src}</p>
+                            assetListSize.height > 0 && assetListSize.width > 0 ? (
+                                <FixedSizeList
+                                    height={assetListSize.height}
+                                    itemCount={filteredAssets.length}
+                                    itemSize={72}
+                                    width={assetListSize.width}
+                                >
+                                    {({ index, style }: ListChildComponentProps) => {
+                                        const asset = filteredAssets[index];
+                                        return (
+                                            <div style={{ ...style, paddingBottom: 8 }}>
+                                                <div
+                                                    onClick={() => handleAssetSelect(asset)}
+                                                    className={`flex items-center gap-4 p-3 rounded-lg border-2 cursor-pointer transition-all ${selectedAsset?.id === asset.id
+                                                        ? 'border-indigo-500 bg-indigo-500/10'
+                                                        : 'border-[#2a2a4a] hover:border-slate-600 hover:bg-white/5'
+                                                        }`}
+                                                >
+                                                    <img
+                                                        src={asset.src}
+                                                        alt={asset.name}
+                                                        className="w-12 h-12 object-cover rounded-lg"
+                                                        loading="lazy"
+                                                    />
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-sm text-white font-medium truncate">{asset.name}</p>
+                                                        <p className="text-xs text-slate-500 truncate">{asset.src}</p>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); copyToClipboard(asset.src); }}
+                                                            className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                                                            title="Copy URL"
+                                                        >
+                                                            <Copy size={14} />
+                                                        </button>
+                                                        <a
+                                                            href={asset.src}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                                                            title="Open in New Tab"
+                                                        >
+                                                            <ExternalLink size={14} />
+                                                        </a>
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); handleDelete(asset); }}
+                                                            className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                                                            title="Delete"
+                                                        >
+                                                            <Trash2 size={14} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    }}
+                                </FixedSizeList>
+                            ) : (
+                                <div className="space-y-2">
+                                    {filteredAssets.map((asset) => (
+                                        <div
+                                            key={asset.id}
+                                            onClick={() => handleAssetSelect(asset)}
+                                            className={`flex items-center gap-4 p-3 rounded-lg border-2 cursor-pointer transition-all ${selectedAsset?.id === asset.id
+                                                ? 'border-indigo-500 bg-indigo-500/10'
+                                                : 'border-[#2a2a4a] hover:border-slate-600 hover:bg-white/5'
+                                                }`}
+                                        >
+                                            <img
+                                                src={asset.src}
+                                                alt={asset.name}
+                                                className="w-12 h-12 object-cover rounded-lg"
+                                                loading="lazy"
+                                            />
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm text-white font-medium truncate">{asset.name}</p>
+                                                <p className="text-xs text-slate-500 truncate">{asset.src}</p>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); copyToClipboard(asset.src); }}
+                                                    className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                                                    title="Copy URL"
+                                                >
+                                                    <Copy size={14} />
+                                                </button>
+                                                <a
+                                                    href={asset.src}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                                                    title="Open in New Tab"
+                                                >
+                                                    <ExternalLink size={14} />
+                                                </a>
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); handleDelete(asset); }}
+                                                    className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                                                    title="Delete"
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            </div>
                                         </div>
-                                        <div className="flex items-center gap-2">
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); copyToClipboard(asset.src); }}
-                                                className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
-                                                title="Copy URL"
-                                            >
-                                                <Copy size={14} />
-                                            </button>
-                                            <a
-                                                href={asset.src}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                onClick={(e) => e.stopPropagation()}
-                                                className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
-                                                title="Open in New Tab"
-                                            >
-                                                <ExternalLink size={14} />
-                                            </a>
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); handleDelete(asset); }}
-                                                className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
-                                                title="Delete"
-                                            >
-                                                <Trash2 size={14} />
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
+                                    ))}
+                                </div>
+                            )
                         )
                     )}
                 </div>

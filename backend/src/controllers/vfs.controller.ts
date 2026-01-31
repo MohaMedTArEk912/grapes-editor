@@ -704,7 +704,7 @@ export const createBlock = async (req: Request, res: Response) => {
             parentBlockId
         });
 
-        undoStack.recordBlockCreate(fileId, toPlain(block) as any);
+        undoStack.recordBlockCreate(fileId as string, toPlain(block) as any);
 
         res.status(201).json({
             success: true,
@@ -879,7 +879,7 @@ export const reorderBlocks = async (req: Request, res: Response) => {
 
         // @ts-ignore
         const blocksAfter = await VFSBlockModel.find({ fileId }).lean();
-        undoStack.recordBlockReorder(fileId, blocksBefore as any, blocksAfter as any);
+        undoStack.recordBlockReorder(fileId as string, blocksBefore as any, blocksAfter as any);
 
         res.json({
             success: true,
@@ -1035,8 +1035,8 @@ export const getUndoHistory = async (req: Request, res: Response) => {
     try {
         const { fileId } = req.params;
         const limit = parseInt(req.query.limit as string) || 20;
-        const history = undoStack.getHistory(fileId, limit);
-        const stats = undoStack.getStats(fileId);
+        const history = undoStack.getHistory(fileId as string, limit);
+        const stats = undoStack.getStats(fileId as string);
 
         res.json({
             success: true,
@@ -1054,7 +1054,7 @@ export const getUndoHistory = async (req: Request, res: Response) => {
 export const undoFileAction = async (req: Request, res: Response) => {
     try {
         const { fileId } = req.params;
-        const action = undoStack.popUndo(fileId);
+        const action = undoStack.popUndo(fileId as string);
 
         if (!action) {
             return res.status(400).json({
@@ -1064,7 +1064,7 @@ export const undoFileAction = async (req: Request, res: Response) => {
         }
 
         await applyUndoAction(action, 'undo');
-        const stats = undoStack.getStats(fileId);
+        const stats = undoStack.getStats(fileId as string);
 
         res.json({
             success: true,
@@ -1082,7 +1082,7 @@ export const undoFileAction = async (req: Request, res: Response) => {
 export const redoFileAction = async (req: Request, res: Response) => {
     try {
         const { fileId } = req.params;
-        const action = undoStack.popRedo(fileId);
+        const action = undoStack.popRedo(fileId as string);
 
         if (!action) {
             return res.status(400).json({
@@ -1092,7 +1092,7 @@ export const redoFileAction = async (req: Request, res: Response) => {
         }
 
         await applyUndoAction(action, 'redo');
-        const stats = undoStack.getStats(fileId);
+        const stats = undoStack.getStats(fileId as string);
 
         res.json({
             success: true,

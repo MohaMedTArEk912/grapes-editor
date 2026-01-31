@@ -57,7 +57,7 @@ export const getCart = async (req: Request, res: Response) => {
         const { projectId } = req.params;
         // @ts-ignore
         await getProjectOrThrow(projectId, req.user._id);
-        const cart = await getOrCreateCart(projectId);
+        const cart = await getOrCreateCart(projectId as string);
         res.json(cart);
     } catch (error: any) {
         res.status(error.status || 500).json({ message: error.message });
@@ -71,10 +71,11 @@ export const addCartItem = async (req: Request, res: Response) => {
         // @ts-ignore
         await getProjectOrThrow(projectId, req.user._id);
 
+        // @ts-ignore - Mongoose query typing
         const product = await Product.findOne({ _id: productId, projectId });
         if (!product) return res.status(404).json({ message: 'Product not found' });
 
-        const cart = await getOrCreateCart(projectId);
+        const cart = await getOrCreateCart(projectId as string);
         const existing = cart.items.find((item: any) => item.productId.toString() === productId);
         if (existing) {
             existing.quantity += Number(quantity || 1);
@@ -104,7 +105,8 @@ export const updateCartItem = async (req: Request, res: Response) => {
         // @ts-ignore
         await getProjectOrThrow(projectId, req.user._id);
 
-        const cart = await getOrCreateCart(projectId);
+        const cart = await getOrCreateCart(projectId as string);
+        // @ts-ignore - Mongoose subdocument .id() method
         const item = cart.items.id(itemId);
         if (!item) return res.status(404).json({ message: 'Item not found' });
         item.quantity = Math.max(1, Number(quantity || 1));
@@ -123,7 +125,8 @@ export const removeCartItem = async (req: Request, res: Response) => {
         // @ts-ignore
         await getProjectOrThrow(projectId, req.user._id);
 
-        const cart = await getOrCreateCart(projectId);
+        const cart = await getOrCreateCart(projectId as string);
+        // @ts-ignore - Mongoose subdocument .id() method
         const item = cart.items.id(itemId);
         if (!item) return res.status(404).json({ message: 'Item not found' });
         item.deleteOne();
@@ -140,7 +143,7 @@ export const clearCart = async (req: Request, res: Response) => {
         const { projectId } = req.params;
         // @ts-ignore
         await getProjectOrThrow(projectId, req.user._id);
-        const cart = await getOrCreateCart(projectId);
+        const cart = await getOrCreateCart(projectId as string);
         cart.items = [] as any[];
         cart.subtotal = 0;
         const saved = await cart.save();
@@ -159,6 +162,7 @@ export const getOrders = async (req: Request, res: Response) => {
         const { projectId } = req.params;
         // @ts-ignore
         await getProjectOrThrow(projectId, req.user._id);
+        // @ts-ignore - Mongoose query typing
         const orders = await Order.find({ projectId }).sort({ createdAt: -1 });
         res.json(orders);
     } catch (error: any) {
@@ -173,7 +177,8 @@ export const createOrder = async (req: Request, res: Response) => {
         // @ts-ignore
         await getProjectOrThrow(projectId, req.user._id);
 
-        const cart = cartId ? await Cart.findOne({ _id: cartId, projectId }) : await getOrCreateCart(projectId);
+        // @ts-ignore - Mongoose query typing
+        const cart = cartId ? await Cart.findOne({ _id: cartId, projectId }) : await getOrCreateCart(projectId as string);
         if (!cart) return res.status(404).json({ message: 'Cart not found' });
         if (!cart.items.length) return res.status(400).json({ message: 'Cart is empty' });
 
@@ -208,6 +213,7 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
         // @ts-ignore
         await getProjectOrThrow(projectId, req.user._id);
 
+        // @ts-ignore - Mongoose query typing
         const order = await Order.findOne({ _id: orderId, projectId });
         if (!order) return res.status(404).json({ message: 'Order not found' });
 
@@ -236,9 +242,11 @@ export const createStripeCheckout = async (req: Request, res: Response) => {
             return res.status(400).json({ message: 'STRIPE_SECRET_KEY is not configured' });
         }
 
-        const cart = cartId ? await Cart.findOne({ _id: cartId, projectId }) : await getOrCreateCart(projectId);
+        // @ts-ignore - Mongoose query typing
+        const cart = cartId ? await Cart.findOne({ _id: cartId, projectId }) : await getOrCreateCart(projectId as string);
         if (!cart || !cart.items.length) return res.status(400).json({ message: 'Cart is empty' });
 
+        // @ts-ignore - Stripe API version typing
         const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2024-06-20' });
         const session = await stripe.checkout.sessions.create({
             mode: 'payment',
@@ -276,7 +284,8 @@ export const createPayPalCheckout = async (req: Request, res: Response) => {
             return res.status(400).json({ message: 'PAYPAL_CLIENT_ID or PAYPAL_CLIENT_SECRET is not configured' });
         }
 
-        const cart = cartId ? await Cart.findOne({ _id: cartId, projectId }) : await getOrCreateCart(projectId);
+        // @ts-ignore - Mongoose query typing
+        const cart = cartId ? await Cart.findOne({ _id: cartId, projectId }) : await getOrCreateCart(projectId as string);
         if (!cart || !cart.items.length) return res.status(400).json({ message: 'Cart is empty' });
 
         const auth = Buffer.from(`${clientId}:${secret}`).toString('base64');

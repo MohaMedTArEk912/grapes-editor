@@ -132,7 +132,7 @@ export const createPage = async (req: Request, res: Response) => {
         });
 
         const created = await page.save();
-        await upsertPageFile(projectId, created);
+        await upsertPageFile(projectId as string, created);
         res.status(201).json(created);
     } catch (error: any) {
         if (error.code === 11000) {
@@ -179,7 +179,7 @@ export const updatePage = async (req: Request, res: Response) => {
         if (order !== undefined) page.order = order;
 
         const updated = await page.save();
-        await upsertPageFile(projectId, updated);
+        await upsertPageFile(projectId as string, updated);
         res.json(updated);
     } catch (error: any) {
         if (error.code === 11000) {
@@ -286,7 +286,7 @@ export const duplicatePage = async (req: Request, res: Response) => {
         });
 
         const created = await duplicatedPage.save();
-        await upsertPageFile(projectId, created);
+        await upsertPageFile(projectId as string, created);
         res.status(201).json(created);
     } catch (error: any) {
         res.status(500).json({ message: error.message });

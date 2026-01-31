@@ -7,15 +7,19 @@ export interface IProject extends Document {
     content: object; // GrapesJS JSON
     styles: string;  // CSS
     assets: any[];   // Assets list
+    headerHtml?: string;
+    headerCss?: string;
+    footerHtml?: string;
+    footerCss?: string;
     owner: mongoose.Schema.Types.ObjectId;
     createdAt: Date;
     updatedAt: Date;
-        customDomain?: string;
-        domainProvider?: 'vercel' | 'netlify';
-        domainStatus?: 'pending' | 'provisioned' | 'verified' | 'failed';
-        sslStatus?: 'pending' | 'active' | 'failed';
-        netlifySiteId?: string;
-        vercelProjectName?: string;
+    customDomain?: string;
+    domainProvider?: 'vercel' | 'netlify';
+    domainStatus?: 'pending' | 'provisioned' | 'verified' | 'failed';
+    sslStatus?: 'pending' | 'active' | 'failed';
+    netlifySiteId?: string;
+    vercelProjectName?: string;
 }
 
 const ProjectSchema: Schema = new Schema(

@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useGrapes } from '../../hooks/useGrapes';
+import { EyeOff, Box, Paintbrush, Cog, Layers, CircuitBoard, Image, Package, FileStack, Files, Database, History, Users, Code, ShoppingBag, Cloud, BarChart3, ShieldCheck, Store, LayoutTemplate } from 'lucide-react';
 import { Toolbar } from '../Toolbar';
-import { Box, Paintbrush, Cog, Layers, EyeOff, CircuitBoard, Image, Package, FileStack, Files, Database, History, Users, Code, ShoppingBag, Cloud, BarChart3, ShieldCheck, Store, LayoutTemplate } from 'lucide-react';
 import { StyleInspector } from '../StyleInspector';
 import { LogicPanel } from '../LogicPanel';
 import { PropertyEditor } from '../PropertyEditor';
@@ -10,6 +10,7 @@ import { AssetManager } from '../AssetManager';
 import { AutoLayoutPanel } from '../AutoLayoutPanel';
 import { SymbolPanel } from '../SymbolPanel';
 import { PageManager } from '../PageManager';
+import { SEOPanel, SEOData } from '../SEOPanel';
 import { DataModelPanel } from '../DataModelPanel';
 import { VersionHistoryPanel } from '../VersionHistoryPanel';
 import { CollaborationPanel } from '../CollaborationPanel';
@@ -20,12 +21,21 @@ import { AnalyticsPanel } from '../AnalyticsPanel';
 import { AccessibilityPanel } from '../AccessibilityPanel';
 import { MarketplacePanel } from '../MarketplacePanel';
 import { LayoutPanel } from '../LayoutPanel';
+import { LeftRail } from '../LeftRail';
+import { LeftPanel } from '../LeftPanel';
+import { RightDrawer } from '../RightDrawer';
+import { WorkspaceHeader } from '../WorkspaceHeader';
+import { StatusBar } from '../StatusBar';
+import { EnhancedBlocksPanel } from '../EnhancedBlocksPanel';
+import { EnhancedProjectPicker } from '../ProjectManager/EnhancedProjectPicker';
 import { RuntimeEngine } from '../../utils/runtime';
 import { useLogic } from '../../context/LogicContext';
 import { Page, getPage, updatePage } from '../../services/pageService';
 import { useProject } from '../../context/ProjectContext';
 import { useCollaboration } from '../../context/useCollaboration';
 import { trackEvent as trackAnalyticsEvent } from '../../services/analyticsService';
+import { usePanelState } from '../../context/PanelStateContext';
+import { useBlockUsage } from '../../hooks/useBlockUsage';
 import FileTree, { FolderNode, VFSFile as TreeFile, FileAction } from '../FileTree';
 import {
     getProjectFiles,
@@ -45,15 +55,29 @@ import {
 export const Editor = () => {
     const { editor, editorRef } = useGrapes();
     const { flows, variables, updateVariable } = useLogic();
-    const { currentProject } = useProject();
+    const { currentProject, setCurrentProject } = useProject();
+    const { panelState, setActiveLeftPanel, setActiveInspectorTab, setRightDrawerOpen } = usePanelState();
     const runtimeRef = useRef<RuntimeEngine | null>(null);
     const saveTimerRef = useRef<number | null>(null);
     const applyingRemoteRef = useRef(false);
 
-    const [activeTab, setActiveTab] = useState<'styles' | 'traits' | 'layers' | 'logic' | 'symbols' | 'pages' | 'data' | 'history' | 'collab' | 'code' | 'commerce' | 'publish' | 'analytics' | 'a11y' | 'market' | 'layout'>('styles');
-    const [leftTab, setLeftTab] = useState<'blocks' | 'files'>('blocks');
     const [previewMode, setPreviewMode] = useState(false);
     const [isAssetManagerOpen, setIsAssetManagerOpen] = useState(false);
+    const [isProjectPickerOpen, setIsProjectPickerOpen] = useState(false);
+    const [currentPageName, setCurrentPageName] = useState<string>('');
+    const [uiRefreshEnabled, setUiRefreshEnabled] = useState(() => localStorage.getItem('ui_refresh_enabled') !== 'false');
+    const [legacyActiveTab, setLegacyActiveTab] = useState<'styles' | 'traits' | 'layers' | 'logic' | 'symbols' | 'pages' | 'data' | 'history' | 'collab' | 'code' | 'commerce' | 'publish' | 'analytics' | 'a11y' | 'market' | 'layout'>('styles');
+    const [legacyLeftTab, setLegacyLeftTab] = useState<'blocks' | 'files'>('blocks');
+    const [seoData, setSeoData] = useState<SEOData>({
+        title: '',
+        description: '',
+        keywords: '',
+        ogTitle: '',
+        ogDescription: '',
+        ogImage: '',
+        canonicalUrl: '',
+        favicon: '',
+    });
 
     // Page management state
     const projectId = currentProject?._id || '';
@@ -65,6 +89,7 @@ export const Editor = () => {
     const [vfsSelectedPath, setVfsSelectedPath] = useState<string | undefined>();
     const [currentFileId, setCurrentFileId] = useState<string | undefined>();
     const [trackingEnabled, setTrackingEnabled] = useState<boolean>(() => localStorage.getItem('analytics_tracking') === 'true');
+    const { toggleFavorite, trackBlockUsage, isFavorite, getLastUsed } = useBlockUsage(currentProject?._id);
     const {
         setActivePage,
         sendPageUpdate,
@@ -74,6 +99,7 @@ export const Editor = () => {
 
     useEffect(() => {
         setCurrentPageId(undefined);
+        setCurrentPageName('');
     }, [projectId]);
 
     useEffect(() => {
@@ -225,6 +251,7 @@ export const Editor = () => {
         }
 
         setCurrentPageId(page._id);
+        setCurrentPageName(page.name || 'Untitled Page');
         // Load page content into editor
         if (editor) {
             const content = page.content as { html?: string; css?: string } | undefined;
@@ -235,6 +262,7 @@ export const Editor = () => {
 
     const handlePageCreate = useCallback((page: Page) => {
         setCurrentPageId(page._id);
+        setCurrentPageName(page.name || 'Untitled Page');
         if (editor) {
             editor.DomComponents.clear();
             editor.CssComposer.clear();
@@ -250,10 +278,14 @@ export const Editor = () => {
             if (pageId) {
                 const page = await getPage(projectId, pageId);
                 await handlePageSelect(page);
-                setActiveTab('pages');
+                if (uiRefreshEnabled) {
+                    setActiveLeftPanel('pages');
+                } else {
+                    setLegacyActiveTab('pages');
+                }
             }
         }
-    }, [projectId, handlePageSelect]);
+    }, [projectId, handlePageSelect, setActiveLeftPanel, uiRefreshEnabled]);
 
     const handleFileAction = useCallback(async (file: TreeFile, action: FileAction) => {
         try {
@@ -435,11 +467,6 @@ export const Editor = () => {
         };
     }, [editor, setSelectedComponentId]);
 
-    // Handle Tab Switching
-    const handleTabClick = (tab: 'styles' | 'traits' | 'layers' | 'logic' | 'symbols' | 'pages' | 'data' | 'history' | 'collab' | 'code' | 'commerce' | 'publish' | 'analytics' | 'a11y' | 'market' | 'layout') => {
-        setActiveTab(tab);
-    };
-
     // Hot reload effect - update runtime when flows/variables change
     useEffect(() => {
         if (runtimeRef.current && runtimeRef.current.isActive()) {
@@ -516,6 +543,57 @@ export const Editor = () => {
     // Handle Escape key to exit preview
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.ctrlKey && e.shiftKey) {
+                const key = e.key.toLowerCase();
+                const panelMap: Record<string, typeof panelState.activeLeftPanel> = {
+                    p: 'project',
+                    g: 'pages',
+                    b: 'blocks',
+                    f: 'files',
+                    a: 'assets',
+                    l: 'logic',
+                    d: 'data',
+                    s: 'seo',
+                    u: 'publish',
+                    y: 'analytics',
+                    x: 'accessibility',
+                    m: 'marketplace',
+                    t: 'layout',
+                    o: 'symbols',
+                    h: 'history',
+                    c: 'collab',
+                    k: 'code',
+                    e: 'commerce',
+                };
+
+                if (panelMap[key]) {
+                    e.preventDefault();
+                    setActiveLeftPanel(panelMap[key]);
+                    return;
+                }
+            }
+
+            if (e.ctrlKey && e.altKey) {
+                if (e.key === '1') {
+                    e.preventDefault();
+                    setActiveInspectorTab('styles');
+                    setRightDrawerOpen(true);
+                    return;
+                }
+                if (e.key === '2') {
+                    e.preventDefault();
+                    setActiveInspectorTab('traits');
+                    setRightDrawerOpen(true);
+                    return;
+                }
+                if (e.key === '3') {
+                    e.preventDefault();
+                    setActiveInspectorTab('layers');
+                    setRightDrawerOpen(true);
+                    return;
+                }
+            }
+
             if (e.key === 'Escape') {
                 if (editor?.Commands.isActive('preview')) {
                     editor.stopCommand('core:preview');
@@ -525,7 +603,7 @@ export const Editor = () => {
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [editor]);
+    }, [editor, panelState.activeLeftPanel, setActiveInspectorTab, setActiveLeftPanel, setRightDrawerOpen]);
 
     // Handle asset selection from Asset Manager
     const handleAssetSelect = useCallback((asset: { src: string }) => {
@@ -536,7 +614,245 @@ export const Editor = () => {
         }
     }, [editor]);
 
-    return (
+    const normalizeBlockMedia = useCallback((media?: unknown) => {
+        let raw: string | undefined;
+        if (typeof media === 'string') {
+            raw = media;
+        } else if (media && typeof media === 'object' && 'outerHTML' in (media as HTMLElement)) {
+            raw = (media as HTMLElement).outerHTML;
+        }
+
+        if (!raw) return undefined;
+        const trimmed = raw.trim();
+        if (!trimmed) return undefined;
+        if (trimmed.startsWith('data:')) return trimmed;
+        if (trimmed.startsWith('<svg') || trimmed.includes('<svg')) {
+            return `data:image/svg+xml;utf8,${encodeURIComponent(trimmed)}`;
+        }
+        return trimmed;
+    }, []);
+
+    const blockItems = useMemo(() => {
+        if (!editor) return [] as Array<{ id: string; label: string; category: string; media?: string; isFavorite?: boolean; lastUsed?: Date }>;
+        const all = editor.BlockManager.getAll();
+        return all.map((block: any) => {
+            const id = block.getId();
+            const category = block.get('category');
+            const categoryLabel = typeof category === 'string'
+                ? category
+                : category?.id || category?.label || 'General';
+            return {
+                id,
+                label: block.get('label') || id,
+                category: categoryLabel,
+                media: normalizeBlockMedia(block.get('media')),
+                isFavorite: isFavorite(id),
+                lastUsed: getLastUsed(id),
+            };
+        });
+    }, [editor, isFavorite, getLastUsed, normalizeBlockMedia]);
+
+    const handleBlockAdd = useCallback((block: { id: string }) => {
+        if (!editor) return;
+        const bmBlock = editor.BlockManager.get(block.id);
+        if (!bmBlock) return;
+        const content = bmBlock.get('content');
+        editor.addComponents(content);
+        trackBlockUsage(block.id);
+    }, [editor, trackBlockUsage]);
+
+    const leftPanelTitle = useMemo(() => {
+        switch (panelState.activeLeftPanel) {
+            case 'project': return 'Project';
+            case 'pages': return 'Pages';
+            case 'blocks': return 'Blocks';
+            case 'files': return 'Files';
+            case 'assets': return 'Assets';
+            case 'logic': return 'Logic';
+            case 'data': return 'Data';
+            case 'seo': return 'SEO';
+            case 'publish': return 'Publish';
+            case 'analytics': return 'Analytics';
+            case 'accessibility': return 'Accessibility';
+            case 'marketplace': return 'Marketplace';
+            case 'layout': return 'Layout';
+            case 'symbols': return 'Symbols';
+            case 'history': return 'History';
+            case 'collab': return 'Collaboration';
+            case 'code': return 'Code Injection';
+            case 'commerce': return 'Commerce';
+            default: return '';
+        }
+    }, [panelState.activeLeftPanel]);
+
+    const leftPanelContent = useMemo(() => {
+        switch (panelState.activeLeftPanel) {
+            case 'project':
+                return (
+                    <div className="p-4 space-y-4">
+                        <div className="bg-gray-800 rounded-lg p-3">
+                            <div className="text-xs text-gray-400">Current Project</div>
+                            <div className="text-sm font-semibold text-white mt-1">
+                                {currentProject?.name || 'No project selected'}
+                            </div>
+                        </div>
+                        <div className="bg-gray-800 rounded-lg p-3">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <div className="text-xs text-gray-400">UI Refresh</div>
+                                    <div className="text-sm text-white">New editor shell</div>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        const next = !uiRefreshEnabled;
+                                        localStorage.setItem('ui_refresh_enabled', next ? 'true' : 'false');
+                                        setUiRefreshEnabled(next);
+                                        window.location.reload();
+                                    }}
+                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${uiRefreshEnabled ? 'bg-blue-600' : 'bg-gray-600'}`}
+                                    aria-label="Toggle UI refresh"
+                                >
+                                    <span
+                                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${uiRefreshEnabled ? 'translate-x-6' : 'translate-x-1'}`}
+                                    />
+                                </button>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => setIsProjectPickerOpen(true)}
+                            className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors"
+                        >
+                            Open Project Picker
+                        </button>
+                    </div>
+                );
+            case 'blocks':
+                return (
+                    <EnhancedBlocksPanel
+                        blocks={blockItems}
+                        onBlockAdd={handleBlockAdd}
+                        onToggleFavorite={toggleFavorite}
+                    />
+                );
+            case 'files':
+                return (
+                    <div className="p-3">
+                        {!projectId && (
+                            <div className="text-xs text-gray-400">Select a project to view files.</div>
+                        )}
+                        {projectId && vfsLoading && (
+                            <div className="text-xs text-gray-400">Loading files...</div>
+                        )}
+                        {projectId && vfsError && (
+                            <div className="text-xs text-red-400">{vfsError}</div>
+                        )}
+                        {projectId && !vfsLoading && !vfsError && vfsTree && (
+                            <FileTree
+                                tree={vfsTree}
+                                selectedPath={vfsSelectedPath}
+                                onFileSelect={handleFileSelect}
+                                onFileAction={handleFileAction}
+                                currentFileId={currentFileId}
+                                onFileMove={handleFileMove}
+                            />
+                        )}
+                        {projectId && !vfsLoading && !vfsError && !vfsTree && (
+                            <div className="text-xs text-gray-400">No files found.</div>
+                        )}
+                    </div>
+                );
+            case 'pages':
+                return (
+                    <PageManager
+                        projectId={projectId}
+                        currentPageId={currentPageId}
+                        onPageSelect={handlePageSelect}
+                        onPageCreate={handlePageCreate}
+                    />
+                );
+            case 'assets':
+                return (
+                    <div className="p-4">
+                        <button
+                            onClick={() => setIsAssetManagerOpen(true)}
+                            className="w-full px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white text-sm rounded-lg transition-colors"
+                        >
+                            Open Asset Manager
+                        </button>
+                    </div>
+                );
+            case 'logic':
+                return <LogicPanel editor={editor} />;
+            case 'data':
+                return <DataModelPanel />;
+            case 'seo':
+                return <SEOPanel seoData={seoData} onUpdate={setSeoData} />;
+            case 'publish':
+                return <PublishingPanel editor={editor} />;
+            case 'analytics':
+                return <AnalyticsPanel />;
+            case 'accessibility':
+                return <AccessibilityPanel editor={editor} />;
+            case 'marketplace':
+                return <MarketplacePanel editor={editor} currentPageId={currentPageId} />;
+            case 'layout':
+                return <LayoutPanel />;
+            case 'symbols':
+                return <SymbolPanel editor={editor} />;
+            case 'history':
+                return <VersionHistoryPanel fileId={currentFileId} />;
+            case 'collab':
+                return <CollaborationPanel />;
+            case 'code':
+                return <CodeInjectionPanel />;
+            case 'commerce':
+                return <EcommercePanel />;
+            default:
+                return null;
+        }
+    }, [panelState.activeLeftPanel, currentProject, projectId, vfsLoading, vfsError, vfsTree, vfsSelectedPath, currentFileId, currentPageId, editor, blockItems, handleBlockAdd, toggleFavorite, handleFileSelect, handleFileAction, handleFileMove, handlePageSelect, handlePageCreate, seoData]);
+
+    const handlePreviewToggle = useCallback(() => {
+        if (!editor) return;
+        if (editor.Commands.isActive('preview')) {
+            editor.stopCommand('core:preview');
+        } else {
+            editor.runCommand('core:preview');
+        }
+    }, [editor]);
+
+    const handleUndo = useCallback(() => {
+        editor?.runCommand('core:undo');
+    }, [editor]);
+
+    const handleRedo = useCallback(() => {
+        editor?.runCommand('core:redo');
+    }, [editor]);
+
+    const canUndo = editor?.UndoManager?.hasUndo?.() ?? false;
+    const canRedo = editor?.UndoManager?.hasRedo?.() ?? false;
+
+    const currentDevice = useMemo(() => {
+        const device = editor?.getDevice?.();
+        if (!device) return 'desktop';
+        const lower = device.toLowerCase();
+        if (lower.includes('tablet')) return 'tablet';
+        if (lower.includes('mobile')) return 'mobile';
+        return 'desktop';
+    }, [editor]);
+
+    const handleDeviceToggle = useCallback((device: 'desktop' | 'tablet' | 'mobile') => {
+        if (!editor) return;
+        if (device === 'tablet') editor.setDevice('Tablet');
+        else if (device === 'mobile') editor.setDevice('Mobile');
+        else editor.setDevice('Desktop');
+    }, [editor]);
+
+    const handleLegacyTabClick = useCallback((tab: typeof legacyActiveTab) => {
+        setLegacyActiveTab(tab);
+    }, []);
+
+    const renderLegacyLayout = () => (
         <div className="h-screen w-full flex flex-col bg-[#0f0f23] text-slate-200 overflow-hidden relative">
             {/* Loading Overlay */}
             {!editor && (
@@ -549,35 +865,32 @@ export const Editor = () => {
             {!previewMode && <Toolbar editor={editor} onOpenAssetManager={() => setIsAssetManagerOpen(true)} />}
 
             <div className="flex-1 flex overflow-hidden">
-
                 {/* Left Sidebar - Blocks / Files */}
                 <aside className={`w-[280px] bg-[#1a1a2e] border-r border-[#2a2a4a] flex flex-col transition-all duration-300 ${previewMode ? 'hidden' : ''}`}>
                     <div className="border-b border-[#2a2a4a] bg-[#0a0a1a]">
                         <div className="flex items-center gap-2 p-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                            {leftTab === 'blocks' ? <Box size={14} /> : <Files size={14} />}
-                            {leftTab === 'blocks' ? 'Components & Blocks' : 'Project Files'}
+                            {legacyLeftTab === 'blocks' ? <Box size={14} /> : <Files size={14} />}
+                            {legacyLeftTab === 'blocks' ? 'Components & Blocks' : 'Project Files'}
                         </div>
                         <div className="grid grid-cols-2">
                             <button
-                                onClick={() => setLeftTab('blocks')}
-                                className={`px-3 py-2 text-xs font-medium border-t border-[#2a2a4a] ${leftTab === 'blocks' ? 'text-white bg-[#1a1a2e]' : 'text-slate-400 hover:text-white hover:bg-[#141428]'}`}
+                                onClick={() => setLegacyLeftTab('blocks')}
+                                className={`px-3 py-2 text-xs font-medium border-t border-[#2a2a4a] ${legacyLeftTab === 'blocks' ? 'text-white bg-[#1a1a2e]' : 'text-slate-400 hover:text-white hover:bg-[#141428]'}`}
                             >
                                 Blocks
                             </button>
                             <button
-                                onClick={() => setLeftTab('files')}
-                                className={`px-3 py-2 text-xs font-medium border-t border-[#2a2a4a] ${leftTab === 'files' ? 'text-white bg-[#1a1a2e]' : 'text-slate-400 hover:text-white hover:bg-[#141428]'}`}
+                                onClick={() => setLegacyLeftTab('files')}
+                                className={`px-3 py-2 text-xs font-medium border-t border-[#2a2a4a] ${legacyLeftTab === 'files' ? 'text-white bg-[#1a1a2e]' : 'text-slate-400 hover:text-white hover:bg-[#141428]'}`}
                             >
                                 Files
                             </button>
                         </div>
                     </div>
 
-                    {leftTab === 'blocks' && (
+                    {legacyLeftTab === 'blocks' && (
                         <>
                             <div id="blocks-container" className="flex-1 overflow-y-auto p-3"></div>
-
-                            {/* Asset Manager Button in Left Sidebar */}
                             <button
                                 onClick={() => setIsAssetManagerOpen(true)}
                                 className="m-3 p-3 flex items-center gap-2 text-sm text-slate-400 hover:text-white bg-[#0a0a1a] hover:bg-[#2a2a4a] border border-[#2a2a4a] rounded-lg transition-colors"
@@ -588,7 +901,7 @@ export const Editor = () => {
                         </>
                     )}
 
-                    {leftTab === 'files' && (
+                    {legacyLeftTab === 'files' && (
                         <div className="flex-1 overflow-y-auto p-3">
                             {!projectId && (
                                 <div className="text-xs text-slate-400">Select a project to view files.</div>
@@ -627,136 +940,128 @@ export const Editor = () => {
                 {/* Right Sidebar - Styles/Traits/Layers/Logic */}
                 <aside className={`w-[300px] bg-[#1a1a2e] border-l border-[#2a2a4a] flex flex-col transition-all duration-300 ${previewMode ? 'hidden' : ''}`}>
                     <div className="grid grid-cols-3 border-b border-[#2a2a4a] bg-[#0a0a1a]">
-                        <TabBtn
-                            active={activeTab === 'styles'}
+                        <LegacyTabBtn
+                            active={legacyActiveTab === 'styles'}
                             icon={<Paintbrush size={14} />}
                             label="Styles"
-                            onClick={() => handleTabClick('styles')}
+                            onClick={() => handleLegacyTabClick('styles')}
                         />
-                        <TabBtn
-                            active={activeTab === 'traits'}
+                        <LegacyTabBtn
+                            active={legacyActiveTab === 'traits'}
                             icon={<Cog size={14} />}
                             label="Settings"
-                            onClick={() => handleTabClick('traits')}
+                            onClick={() => handleLegacyTabClick('traits')}
                         />
-                        <TabBtn
-                            active={activeTab === 'layers'}
+                        <LegacyTabBtn
+                            active={legacyActiveTab === 'layers'}
                             icon={<Layers size={14} />}
                             label="Layers"
-                            onClick={() => handleTabClick('layers')}
+                            onClick={() => handleLegacyTabClick('layers')}
                         />
-                        <TabBtn
-                            active={activeTab === 'logic'}
+                        <LegacyTabBtn
+                            active={legacyActiveTab === 'logic'}
                             icon={<CircuitBoard size={14} />}
                             label="Logic"
-                            onClick={() => handleTabClick('logic')}
+                            onClick={() => handleLegacyTabClick('logic')}
                         />
-                        <TabBtn
-                            active={activeTab === 'symbols'}
+                        <LegacyTabBtn
+                            active={legacyActiveTab === 'symbols'}
                             icon={<Package size={14} />}
                             label="Symbols"
-                            onClick={() => handleTabClick('symbols')}
+                            onClick={() => handleLegacyTabClick('symbols')}
                         />
-                        <TabBtn
-                            active={activeTab === 'pages'}
+                        <LegacyTabBtn
+                            active={legacyActiveTab === 'pages'}
                             icon={<FileStack size={14} />}
                             label="Pages"
-                            onClick={() => handleTabClick('pages')}
+                            onClick={() => handleLegacyTabClick('pages')}
                         />
-                        <TabBtn
-                            active={activeTab === 'layout'}
+                        <LegacyTabBtn
+                            active={legacyActiveTab === 'layout'}
                             icon={<LayoutTemplate size={14} />}
                             label="Layout"
-                            onClick={() => handleTabClick('layout')}
+                            onClick={() => handleLegacyTabClick('layout')}
                         />
-                        <TabBtn
-                            active={activeTab === 'data'}
+                        <LegacyTabBtn
+                            active={legacyActiveTab === 'data'}
                             icon={<Database size={14} />}
                             label="Data"
-                            onClick={() => handleTabClick('data')}
+                            onClick={() => handleLegacyTabClick('data')}
                         />
-                        <TabBtn
-                            active={activeTab === 'history'}
+                        <LegacyTabBtn
+                            active={legacyActiveTab === 'history'}
                             icon={<History size={14} />}
                             label="History"
-                            onClick={() => handleTabClick('history')}
+                            onClick={() => handleLegacyTabClick('history')}
                         />
-                        <TabBtn
-                            active={activeTab === 'collab'}
+                        <LegacyTabBtn
+                            active={legacyActiveTab === 'collab'}
                             icon={<Users size={14} />}
                             label="Collab"
-                            onClick={() => handleTabClick('collab')}
+                            onClick={() => handleLegacyTabClick('collab')}
                         />
-                        <TabBtn
-                            active={activeTab === 'code'}
+                        <LegacyTabBtn
+                            active={legacyActiveTab === 'code'}
                             icon={<Code size={14} />}
                             label="Code"
-                            onClick={() => handleTabClick('code')}
+                            onClick={() => handleLegacyTabClick('code')}
                         />
-                        <TabBtn
-                            active={activeTab === 'commerce'}
+                        <LegacyTabBtn
+                            active={legacyActiveTab === 'commerce'}
                             icon={<ShoppingBag size={14} />}
                             label="Commerce"
-                            onClick={() => handleTabClick('commerce')}
+                            onClick={() => handleLegacyTabClick('commerce')}
                         />
-                        <TabBtn
-                            active={activeTab === 'publish'}
+                        <LegacyTabBtn
+                            active={legacyActiveTab === 'publish'}
                             icon={<Cloud size={14} />}
                             label="Publish"
-                            onClick={() => handleTabClick('publish')}
+                            onClick={() => handleLegacyTabClick('publish')}
                         />
-                        <TabBtn
-                            active={activeTab === 'analytics'}
+                        <LegacyTabBtn
+                            active={legacyActiveTab === 'analytics'}
                             icon={<BarChart3 size={14} />}
                             label="Analytics"
-                            onClick={() => handleTabClick('analytics')}
+                            onClick={() => handleLegacyTabClick('analytics')}
                         />
-                        <TabBtn
-                            active={activeTab === 'a11y'}
+                        <LegacyTabBtn
+                            active={legacyActiveTab === 'a11y'}
                             icon={<ShieldCheck size={14} />}
                             label="A11y"
-                            onClick={() => handleTabClick('a11y')}
+                            onClick={() => handleLegacyTabClick('a11y')}
                         />
-                        <TabBtn
-                            active={activeTab === 'market'}
+                        <LegacyTabBtn
+                            active={legacyActiveTab === 'market'}
                             icon={<Store size={14} />}
                             label="Market"
-                            onClick={() => handleTabClick('market')}
+                            onClick={() => handleLegacyTabClick('market')}
                         />
                     </div>
 
                     <div className="flex-1 overflow-y-auto">
-                        {/* Styles Tab */}
-                        <div className={activeTab === 'styles' ? '' : 'hidden'}>
+                        <div className={legacyActiveTab === 'styles' ? '' : 'hidden'}>
                             <div id="selectors-container" className="p-3"></div>
-                            {/* GrapesJS Style Manager Container */}
                             <div id="styles-container"></div>
                             <AutoLayoutPanel editor={editor} />
                             <StyleInspector editor={editor} />
                         </div>
 
-                        {/* Settings/Traits Tab - Using new PropertyEditor */}
-                        <div className={activeTab === 'traits' ? 'h-full' : 'hidden'}>
-                            {/* GrapesJS Trait Manager Container */}
+                        <div className={legacyActiveTab === 'traits' ? 'h-full' : 'hidden'}>
                             <div id="traits-container"></div>
                             <PropertyEditor editor={editor} />
                         </div>
 
-                        {/* Layers Tab */}
-                        <div id="layers-container" className={activeTab === 'layers' ? 'p-3' : 'hidden'}></div>
+                        <div id="layers-container" className={legacyActiveTab === 'layers' ? 'p-3' : 'hidden'}></div>
 
-                        {/* Logic Tab */}
-                        <div className={activeTab === 'logic' ? 'h-full' : 'hidden'}>
+                        <div className={legacyActiveTab === 'logic' ? 'h-full' : 'hidden'}>
                             <LogicPanel editor={editor} />
                         </div>
 
-                        {/* Symbols Tab */}
-                        <div className={activeTab === 'symbols' ? 'h-full' : 'hidden'}>
+                        <div className={legacyActiveTab === 'symbols' ? 'h-full' : 'hidden'}>
                             <SymbolPanel editor={editor} />
                         </div>
 
-                        {/* Pages Tab */}
-                        <div className={activeTab === 'pages' ? 'h-full' : 'hidden'}>
+                        <div className={legacyActiveTab === 'pages' ? 'h-full' : 'hidden'}>
                             <PageManager
                                 projectId={projectId}
                                 currentPageId={currentPageId}
@@ -765,57 +1070,148 @@ export const Editor = () => {
                             />
                         </div>
 
-                        {/* Layout Tab */}
-                        <div className={activeTab === 'layout' ? 'h-full' : 'hidden'}>
+                        <div className={legacyActiveTab === 'layout' ? 'h-full' : 'hidden'}>
                             <LayoutPanel />
                         </div>
 
-                        {/* Data Model Tab */}
-                        <div className={activeTab === 'data' ? 'h-full' : 'hidden'}>
+                        <div className={legacyActiveTab === 'data' ? 'h-full' : 'hidden'}>
                             <DataModelPanel />
                         </div>
 
-                        {/* History Tab */}
-                        <div className={activeTab === 'history' ? 'h-full' : 'hidden'}>
+                        <div className={legacyActiveTab === 'history' ? 'h-full' : 'hidden'}>
                             <VersionHistoryPanel fileId={currentFileId} />
                         </div>
 
-                        {/* Collaboration Tab */}
-                        <div className={activeTab === 'collab' ? 'h-full' : 'hidden'}>
+                        <div className={legacyActiveTab === 'collab' ? 'h-full' : 'hidden'}>
                             <CollaborationPanel />
                         </div>
 
-                        {/* Code Injection Tab */}
-                        <div className={activeTab === 'code' ? 'h-full' : 'hidden'}>
+                        <div className={legacyActiveTab === 'code' ? 'h-full' : 'hidden'}>
                             <CodeInjectionPanel />
                         </div>
 
-                        {/* Commerce Tab */}
-                        <div className={activeTab === 'commerce' ? 'h-full' : 'hidden'}>
+                        <div className={legacyActiveTab === 'commerce' ? 'h-full' : 'hidden'}>
                             <EcommercePanel />
                         </div>
 
-                        {/* Publishing Tab */}
-                        <div className={activeTab === 'publish' ? 'h-full' : 'hidden'}>
+                        <div className={legacyActiveTab === 'publish' ? 'h-full' : 'hidden'}>
                             <PublishingPanel editor={editor} />
                         </div>
 
-                        {/* Analytics Tab */}
-                        <div className={activeTab === 'analytics' ? 'h-full' : 'hidden'}>
+                        <div className={legacyActiveTab === 'analytics' ? 'h-full' : 'hidden'}>
                             <AnalyticsPanel />
                         </div>
 
-                        {/* Accessibility Tab */}
-                        <div className={activeTab === 'a11y' ? 'h-full' : 'hidden'}>
+                        <div className={legacyActiveTab === 'a11y' ? 'h-full' : 'hidden'}>
                             <AccessibilityPanel editor={editor} />
                         </div>
 
-                        {/* Marketplace Tab */}
-                        <div className={activeTab === 'market' ? 'h-full' : 'hidden'}>
+                        <div className={legacyActiveTab === 'market' ? 'h-full' : 'hidden'}>
                             <MarketplacePanel editor={editor} currentPageId={currentPageId} />
                         </div>
                     </div>
                 </aside>
+            </div>
+
+            <AssetManager
+                editor={editor}
+                isOpen={isAssetManagerOpen}
+                onClose={() => setIsAssetManagerOpen(false)}
+                onSelect={handleAssetSelect}
+            />
+
+            {previewMode && createPortal(
+                <button
+                    onClick={() => {
+                        editor?.stopCommand('core:preview');
+                    }}
+                    className="fixed bottom-6 right-6 flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-lg hover:shadow-indigo-500/40 transition-all font-medium"
+                    style={{ zIndex: 2147483647, pointerEvents: 'auto' }}
+                >
+                    <EyeOff size={18} />
+                    <span>Exit Preview</span>
+                </button>,
+                document.body
+            )}
+        </div>
+    );
+
+    if (!uiRefreshEnabled) {
+        return renderLegacyLayout();
+    }
+
+    return (
+        <div className="h-screen w-full flex flex-col bg-gray-950 text-slate-200 overflow-hidden relative">
+            {/* Loading Overlay */}
+            {!editor && (
+                <div className="fixed inset-0 bg-gray-950 z-[9999] flex flex-col items-center justify-center">
+                    <div className="w-12 h-12 border-4 border-gray-800 border-t-blue-500 rounded-full animate-spin"></div>
+                    <p className="mt-4 text-slate-400 text-sm">Loading Editor...</p>
+                </div>
+            )}
+
+            {!previewMode && (
+                <WorkspaceHeader
+                    pageName={currentPageName || 'Untitled Page'}
+                    onPageNameClick={() => setActiveLeftPanel('pages')}
+                    onDeviceToggle={handleDeviceToggle}
+                    currentDevice={currentDevice}
+                    onPreview={handlePreviewToggle}
+                    onUndo={handleUndo}
+                    onRedo={handleRedo}
+                    canUndo={canUndo}
+                    canRedo={canRedo}
+                />
+            )}
+
+            <div className="flex-1 flex overflow-hidden">
+                {!previewMode && <LeftRail />}
+
+                {!previewMode && panelState.activeLeftPanel && (
+                    <LeftPanel title={leftPanelTitle}>
+                        {leftPanelContent}
+                    </LeftPanel>
+                )}
+
+                {/* Canvas */}
+                <main
+                    className={`flex-1 relative bg-[#0a0a1a] transition-all duration-300 ${previewMode ? 'z-[100]' : ''}`}
+                    style={!previewMode ? { backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(99, 102, 241, 0.1) 1px, transparent 0)', backgroundSize: '20px 20px' } : {}}
+                >
+                    <div ref={editorRef} id="gjs" className="h-full border-none"></div>
+                </main>
+
+                {!previewMode && (
+                    <RightDrawer
+                        stylesContent={
+                            <div>
+                                <div id="selectors-container" className="p-3"></div>
+                                <div id="styles-container"></div>
+                                <AutoLayoutPanel editor={editor} />
+                                <StyleInspector editor={editor} />
+                            </div>
+                        }
+                        traitsContent={
+                            <div className="h-full">
+                                <div id="traits-container"></div>
+                                <PropertyEditor editor={editor} />
+                            </div>
+                        }
+                        layersContent={<div id="layers-container" className="p-3"></div>}
+                    />
+                )}
+            </div>
+
+            {!previewMode && (
+                <StatusBar
+                    saveState="saved"
+                    syncState="synced"
+                />
+            )}
+
+            {/* GrapesJS append targets (always mounted) */}
+            <div className="hidden">
+                <div id="blocks-container"></div>
             </div>
 
             {/* Asset Manager Modal */}
@@ -824,6 +1220,19 @@ export const Editor = () => {
                 isOpen={isAssetManagerOpen}
                 onClose={() => setIsAssetManagerOpen(false)}
                 onSelect={handleAssetSelect}
+            />
+
+            <EnhancedProjectPicker
+                isOpen={isProjectPickerOpen}
+                onClose={() => setIsProjectPickerOpen(false)}
+                onLoadProject={(project) => {
+                    setIsProjectPickerOpen(false);
+                    setActiveLeftPanel(null);
+                    setRightDrawerOpen(true);
+                    if (project) {
+                        setCurrentProject(project);
+                    }
+                }}
             />
 
             {/* Exit Preview Button - Rendered via Portal for guaranteed visibility */}
@@ -844,7 +1253,7 @@ export const Editor = () => {
     );
 };
 
-const TabBtn = ({ active, icon, label, onClick }: { active: boolean, icon: React.ReactNode, label: string, onClick: () => void }) => (
+const LegacyTabBtn = ({ active, icon, label, onClick }: { active: boolean; icon: React.ReactNode; label: string; onClick: () => void }) => (
     <button
         onClick={onClick}
         className={`flex-1 py-3 text-xs font-medium flex items-center justify-center gap-2 border-b-2 transition-colors ${active

@@ -10,8 +10,7 @@ import {
     HasMany,
     Unique,
     AllowNull,
-    IsEmail,
-    Index
+    IsEmail
 } from 'sequelize-typescript';
 
 /**
@@ -93,7 +92,7 @@ export class User extends Model {
     @HasMany(() => Organization, 'ownerId')
     declare ownedOrganizations: Organization[];
 
-    @HasMany(() => Permission)
+    @HasMany(() => Permission, 'userId')
     declare permissions: Permission[];
 
     /**
@@ -148,10 +147,10 @@ export class Organization extends Model {
     declare updatedAt: Date;
 
     // Associations defined via foreign keys
-    @HasMany(() => Permission)
+    @HasMany(() => Permission, 'organizationId')
     declare permissions: Permission[];
 
-    @HasMany(() => Subscription)
+    @HasMany(() => Subscription, 'organizationId')
     declare subscriptions: Subscription[];
 }
 
@@ -181,12 +180,10 @@ export class Permission extends Model {
     declare id: string;
 
     @AllowNull(false)
-    @Index
     @Column(DataType.UUID)
     declare userId: string;
 
     @AllowNull(false)
-    @Index
     @Column(DataType.STRING(100)) // MongoDB ObjectId as string
     declare projectId: string;
 
@@ -260,7 +257,6 @@ export class Subscription extends Model {
     declare id: string;
 
     @AllowNull(false)
-    @Index
     @Column(DataType.UUID)
     declare organizationId: string;
 

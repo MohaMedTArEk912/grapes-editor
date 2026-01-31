@@ -1,6 +1,6 @@
 import { Sequelize } from 'sequelize-typescript';
 import dotenv from 'dotenv';
-import { User, Organization, Permission, Subscription, Plan } from '../models/sql';
+import { User, Organization, Permission, Subscription } from '../models/sql';
 
 dotenv.config();
 
@@ -26,7 +26,7 @@ if (DATABASE_URL) {
     // Use connection string if provided
     sequelize = new Sequelize(DATABASE_URL, {
         dialect: 'postgres',
-        logging: process.env.NODE_ENV === 'development' ? console.log : false,
+        logging: false, // Disable SQL query logging
         pool: {
             max: 10,
             min: 0,
@@ -47,7 +47,7 @@ if (DATABASE_URL) {
         database: DB_NAME,
         username: DB_USER,
         password: DB_PASS,
-        logging: process.env.NODE_ENV === 'development' ? console.log : false,
+        logging: false, // Disable SQL query logging
         pool: {
             max: 10,
             min: 0,
@@ -61,7 +61,7 @@ if (DATABASE_URL) {
     });
 }
 
-sequelize.addModels([User, Organization, Permission, Subscription, Plan]);
+sequelize.addModels([User, Organization, Permission, Subscription]);
 
 /**
  * Test the database connection

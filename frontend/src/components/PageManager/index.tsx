@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     FileText,
     Plus,
@@ -10,7 +10,14 @@ import {
     X,
     Check,
     ExternalLink,
+    Folder,
+    FolderOpen,
+    ChevronRight,
+    Search,
 } from 'lucide-react';
+import { FixedSizeList, ListChildComponentProps } from 'react-window';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
+import { useElementSize } from '../../hooks/useElementSize';
 import {
     Page,
     getPages,
@@ -43,6 +50,18 @@ export const PageManager: React.FC<PageManagerProps> = ({
     const [newPageName, setNewPageName] = useState('');
     const [newPageSlug, setNewPageSlug] = useState('');
     const [draggedId, setDraggedId] = useState<string | null>(null);
+    const [searchQuery, setSearchQuery] = useState('');
+    const debouncedSearch = useDebouncedValue(searchQuery, 200);
+    const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({});
+    const { ref: treeRef, size: treeSize } = useElementSize<HTMLDivElement>();
+
+    interface PageTreeNode {
+        id: string;
+        name: string;
+        children: PageTreeNode[];
+        page?: Page;
+        path: string;
+    }
 
     // Fetch pages
     const fetchPages = useCallback(async () => {
@@ -190,6 +209,234 @@ export const PageManager: React.FC<PageManagerProps> = ({
         setShowEditModal(true);
     };
 
+    const filteredPages = useMemo(() => {
+        if (!debouncedSearch.trim()) return pages;
+        const query = debouncedSearch.toLowerCase();
+        return pages.filter((page) =>
+            page.name.toLowerCase().includes(query) ||
+            page.slug.toLowerCase().includes(query)
+        );
+    }, [pages, debouncedSearch]);
+
+    const pageTree = useMemo(() => {
+        const root: PageTreeNode = { id: 'root', name: 'root', children: [], path: '' };
+
+        const insertPage = (page: Page) => {
+            const slug = page.slug?.trim() || '';
+            const segments = slug.split('/').filter(Boolean);
+            let current = root;
+            let path = '';
+
+            if (segments.length === 0) {
+                current.children.push({
+                    id: page._id,
+                    name: page.name,
+                    children: [],
+                    page,
+                    path: page._id,
+                });
+                return;
+            }
+
+            segments.forEach((segment, index) => {
+                path = path ? `${path}/${segment}` : segment;
+                const isLeaf = index === segments.length - 1;
+                if (isLeaf) {
+                    current.children.push({
+                        id: page._id,
+                        name: segment,
+                        children: [],
+                        page,
+                        path,
+                    });
+                } else {
+                    let folder = current.children.find(
+                        (child) => child.name === segment && !child.page
+                    );
+                    if (!folder) {
+                        folder = {
+                            id: `folder-${path}`,
+                            name: segment,
+                            children: [],
+                            path,
+                        };
+                        current.children.push(folder);
+                    }
+                    current = folder;
+                }
+            });
+        };
+
+        filteredPages
+            .slice()
+            .sort((a, b) => a.order - b.order)
+            .forEach(insertPage);
+
+        return root;
+    }, [filteredPages]);
+
+    const toggleFolder = (path: string) => {
+        setCollapsedFolders((prev) => ({
+            ...prev,
+            [path]: !prev[path],
+        }));
+    };
+
+    const renderTreeNode = (node: PageTreeNode, depth = 0) => {
+        const paddingLeft = 8 + depth * 14;
+        const isCollapsed = collapsedFolders[node.path];
+
+        if (!node.page) {
+            return (
+                <div key={node.id}>
+                    <button
+                        onClick={() => toggleFolder(node.path)}
+                        className="w-full flex items-center gap-2 py-2 text-left text-xs text-slate-300 hover:text-white"
+                        style={{ paddingLeft }}
+                    >
+                        <ChevronRight
+                            size={14}
+                            className={`transition-transform ${isCollapsed ? '' : 'rotate-90'}`}
+                        />
+                        {isCollapsed ? (
+                            <Folder size={14} className="text-slate-400" />
+                        ) : (
+                            <FolderOpen size={14} className="text-slate-400" />
+                        )}
+                        <span className="truncate">{node.name}</span>
+                    </button>
+                    {!isCollapsed && node.children.map((child) => renderTreeNode(child, depth + 1))}
+                </div>
+            );
+        }
+
+        const page = node.page;
+
+        return (
+            <div
+                key={page._id}
+                draggable
+                onDragStart={() => handleDragStart(page._id)}
+                onDragOver={(e) => handleDragOver(e, page._id)}
+                onDragEnd={handleDragEnd}
+                className={`group flex items-center gap-2 py-2 rounded-md cursor-pointer transition-all ${page._id === currentPageId
+                        ? 'bg-indigo-500/20 border border-indigo-500'
+                        : 'bg-gray-800/60 hover:bg-gray-700/60'
+                    } ${draggedId === page._id ? 'opacity-50' : ''}`}
+                onClick={() => onPageSelect(page)}
+                style={{ paddingLeft }}
+            >
+                <GripVertical
+                    size={14}
+                    className="text-gray-500 cursor-grab active:cursor-grabbing"
+                />
+
+                <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                        <span className="font-medium text-sm truncate">
+                            {page.name}
+                        </span>
+                        {page.isHome && (
+                            <Home
+                                size={14}
+                                className="text-yellow-400"
+                                title="Home page"
+                            />
+                        )}
+                    </div>
+                    <div className="text-[11px] text-gray-400 truncate">
+                        /{page.slug}
+                    </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            window.open(`/preview/${projectId}/${page._id}`, '_blank');
+                        }}
+                        className="p-1 text-gray-400 hover:text-white"
+                        title="Open preview"
+                    >
+                        <ExternalLink size={14} />
+                    </button>
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            openEditModal(page);
+                        }}
+                        className="p-1 text-gray-400 hover:text-white"
+                        title="Edit settings"
+                    >
+                        <Settings size={14} />
+                    </button>
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            handleDuplicatePage(page._id);
+                        }}
+                        className="p-1 text-gray-400 hover:text-white"
+                        title="Duplicate"
+                    >
+                        <Copy size={14} />
+                    </button>
+                    {!page.isHome && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                handleSetHome(page._id);
+                            }}
+                            className="p-1 text-gray-400 hover:text-yellow-400"
+                            title="Set as home"
+                        >
+                            <Home size={14} />
+                        </button>
+                    )}
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeletePage(page._id);
+                        }}
+                        className="p-1 text-red-400 hover:text-red-300"
+                        title="Delete"
+                    >
+                        <Trash2 size={14} />
+                    </button>
+                </div>
+            </div>
+        );
+    };
+
+    const flattenedNodes = useMemo(() => {
+        type FlatNode = { kind: 'folder' | 'page'; node: PageTreeNode; depth: number };
+        const result: FlatNode[] = [];
+
+        const walk = (node: PageTreeNode, depth: number) => {
+            if (!node.page) {
+                result.push({ kind: 'folder', node, depth });
+                if (!collapsedFolders[node.path]) {
+                    node.children.forEach((child) => walk(child, depth + 1));
+                }
+            } else {
+                result.push({ kind: 'page', node, depth });
+            }
+        };
+
+        pageTree.children.forEach((child) => walk(child, 0));
+        return result;
+    }, [pageTree, collapsedFolders]);
+
+    const renderVirtualRow = ({ index, style }: ListChildComponentProps) => {
+        const item = flattenedNodes[index];
+        if (!item) return null;
+        return (
+            <div style={style}>
+                {renderTreeNode(item.node, item.depth)}
+            </div>
+        );
+    };
+
     if (loading && pages.length === 0) {
         return (
             <div className="p-4 text-slate-400 text-center">
@@ -228,91 +475,34 @@ export const PageManager: React.FC<PageManagerProps> = ({
                 </div>
             )}
 
-            {/* Page list */}
-            <div className="space-y-2">
-                {pages.map((page) => (
-                    <div
-                        key={page._id}
-                        draggable
-                        onDragStart={() => handleDragStart(page._id)}
-                        onDragOver={(e) => handleDragOver(e, page._id)}
-                        onDragEnd={handleDragEnd}
-                        className={`group flex items-center gap-2 p-3 rounded-lg cursor-pointer transition-all ${page._id === currentPageId
-                                ? 'bg-indigo-500/20 border border-indigo-500'
-                                : 'bg-gray-700 hover:bg-gray-600'
-                            } ${draggedId === page._id ? 'opacity-50' : ''}`}
-                        onClick={() => onPageSelect(page)}
+            {/* Search */}
+            <div className="mb-3">
+                <div className="relative">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                    <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Search pages..."
+                        className="w-full pl-9 pr-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                    />
+                </div>
+            </div>
+
+            {/* Page tree */}
+            <div className="space-y-1" ref={treeRef}>
+                {treeSize.height > 0 ? (
+                    <FixedSizeList
+                        height={treeSize.height}
+                        itemCount={flattenedNodes.length}
+                        itemSize={56}
+                        width={treeSize.width}
                     >
-                        <GripVertical
-                            size={16}
-                            className="text-gray-500 cursor-grab active:cursor-grabbing"
-                        />
-
-                        <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                                <span className="font-medium truncate">
-                                    {page.name}
-                                </span>
-                                {page.isHome && (
-                                    <Home
-                                        size={14}
-                                        className="text-yellow-400"
-                                        title="Home page"
-                                    />
-                                )}
-                            </div>
-                            <div className="text-xs text-gray-400 truncate">
-                                /{page.slug}
-                            </div>
-                        </div>
-
-                        {/* Actions */}
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    openEditModal(page);
-                                }}
-                                className="p-1 text-gray-400 hover:text-white"
-                                title="Edit settings"
-                            >
-                                <Settings size={14} />
-                            </button>
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDuplicatePage(page._id);
-                                }}
-                                className="p-1 text-gray-400 hover:text-white"
-                                title="Duplicate"
-                            >
-                                <Copy size={14} />
-                            </button>
-                            {!page.isHome && (
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleSetHome(page._id);
-                                    }}
-                                    className="p-1 text-gray-400 hover:text-yellow-400"
-                                    title="Set as home"
-                                >
-                                    <Home size={14} />
-                                </button>
-                            )}
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDeletePage(page._id);
-                                }}
-                                className="p-1 text-red-400 hover:text-red-300"
-                                title="Delete"
-                            >
-                                <Trash2 size={14} />
-                            </button>
-                        </div>
-                    </div>
-                ))}
+                        {renderVirtualRow}
+                    </FixedSizeList>
+                ) : (
+                    pageTree.children.map((node) => renderTreeNode(node, 0))
+                )}
             </div>
 
             {pages.length === 0 && !loading && (

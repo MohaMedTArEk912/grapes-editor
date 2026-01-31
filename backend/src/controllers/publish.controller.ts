@@ -188,7 +188,7 @@ export const scheduleVercel = async (req: Request, res: Response) => {
         }
 
         const schedule = await PublishSchedule.create({
-            projectId,
+            projectId: projectId as any,
             provider: 'vercel',
             name,
             html: html || '',
@@ -210,6 +210,7 @@ export const scheduleVercel = async (req: Request, res: Response) => {
 export const getSchedules = async (req: Request, res: Response) => {
     try {
         const { projectId } = req.params;
+        // @ts-ignore - Mongoose accepts strings for ObjectId at runtime
         const schedules = await PublishSchedule.find({ projectId }).sort({ scheduledAt: -1 });
         res.json(schedules);
     } catch (error: any) {
@@ -268,7 +269,7 @@ export const scheduleNetlify = async (req: Request, res: Response) => {
         }
 
         const schedule = await PublishSchedule.create({
-            projectId,
+            projectId: projectId as any,
             provider: 'netlify',
             name,
             html: html || '',
@@ -394,7 +395,7 @@ export const refreshSslStatus = async (req: Request, res: Response) => {
             const status = sslPayload?.state || sslPayload?.status || 'pending';
             const mappedStatus = status === 'issued' || status === 'ready' ? 'active' : status === 'error' ? 'failed' : 'pending';
 
-            await updateProjectPublishMeta(projectId, { sslStatus: mappedStatus });
+            await updateProjectPublishMeta(projectId as string, { sslStatus: mappedStatus });
             return res.json({ sslStatus: mappedStatus, provider: 'netlify', details: sslPayload });
         }
 
@@ -419,7 +420,7 @@ export const refreshSslStatus = async (req: Request, res: Response) => {
         }
 
         const verified = Boolean(domainPayload?.verified);
-        await updateProjectPublishMeta(projectId, {
+        await updateProjectPublishMeta(projectId as string, {
             domainStatus: verified ? 'verified' : 'provisioned',
             sslStatus: verified ? 'active' : 'pending',
         });

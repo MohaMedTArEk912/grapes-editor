@@ -138,6 +138,7 @@ export const getExperiments = async (req: Request, res: Response) => {
         const { projectId } = req.params;
         // @ts-ignore
         await ensureProjectOwner(projectId, req.user._id);
+        // @ts-ignore - Mongoose accepts strings for ObjectId at runtime
         const experiments = await Experiment.find({ projectId }).sort({ updatedAt: -1 });
         res.json(experiments);
     } catch (error: any) {
