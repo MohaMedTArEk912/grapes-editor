@@ -1,26 +1,17 @@
 {
-    "name": "grapes-editor-root",
+    "name": "grapes-editor",
     "version": "1.0.0",
     "private": true,
+    "description": "Grapes IDE - Desktop Visual Full-Stack Builder",
     "scripts": {
-        "frontend": "cd frontend && npm run dev",
-        "backend": "cd backend && cargo run",
-        "dev": "concurrently \"npm run backend\" \"npm run frontend\"",
-        "build:frontend": "cd frontend && npm run build",
-        "build:backend": "cd backend && cargo build --release",
-        "install:all": "cd frontend && npm install"
+        "dev": "cd desktop && npm run tauri dev",
+        "build": "cd desktop && npm run tauri build",
+        "tauri": "cd desktop && npm run tauri",
+        "install:all": "cd desktop && npm install"
     },
     "devDependencies": {
-        "autoprefixer": "^10.4.24",
-        "concurrently": "^8.2.2",
-        "postcss": "^8.5.6",
-        "tailwindcss": "^4.1.18"
+        "@tauri-apps/cli": "^2"
     },
-    "dependencies": {
-        "@monaco-editor/react": "^4.7.0",
-        "@tauri-apps/api": "^2.10.1",
-        "@types/ws": "^8.18.1",
-        "stripe": "^20.3.0",
-        "ws": "^8.19.0"
-    }
+    "dependencies": {}
 }
+

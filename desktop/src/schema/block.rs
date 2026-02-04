@@ -92,7 +92,7 @@ pub enum BlockType {
     Card,
     
     // Custom/Symbol
-    Symbol(String), // Reference to a shared component
+    Custom(String), // Reference to a shared component or custom type
 }
 
 /// Style value - supports different CSS value types

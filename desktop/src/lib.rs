@@ -16,6 +16,7 @@ pub mod commands;
 pub mod vfs;
 pub mod generator;
 pub mod storage;
+pub mod backend; // Backend API server
 
 // Re-exports
 pub use schema::ProjectSchema;

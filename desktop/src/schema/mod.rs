@@ -16,10 +16,10 @@ pub mod variable;
 pub mod common;
 
 // Re-export main types
-pub use block::{BlockSchema, BlockType, StyleValue};
-pub use api::{ApiSchema, HttpMethod, DataShape};
-pub use data_model::{DataModelSchema, FieldSchema, FieldType, RelationSchema, RelationType};
-pub use logic_flow::{LogicFlowSchema, LogicNode, LogicNodeType, TriggerType};
+pub use block::{BlockSchema, BlockType};
+pub use api::{ApiSchema, HttpMethod};
+pub use data_model::DataModelSchema;
+pub use logic_flow::LogicFlowSchema;
 pub use project::ProjectSchema;
-pub use variable::{VariableSchema, VariableType};
+pub use variable::VariableSchema;
 pub use common::PageSchema;

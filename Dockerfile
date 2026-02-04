@@ -1,40 +1,54 @@
+# Multi-stage build for Grapes IDE Desktop Application
+# This builds the complete desktop application with embedded backend and frontend
+
 # Stage 1: Build Frontend
 FROM node:18-alpine as frontend-builder
 WORKDIR /app/frontend
-COPY frontend/package*.json ./
+COPY desktop/src/frontend/package*.json ./
 RUN npm install
-COPY frontend/ .
+COPY desktop/src/frontend/ .
 RUN npm run build
 
-# Stage 2: Build Backend
-FROM rust:1.75-slim-bookworm as backend-builder
-WORKDIR /usr/src/app
-RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
-COPY backend/Cargo.toml .
-RUN mkdir src && echo "fn main() {}" > src/main.rs
-RUN cargo build --release
-COPY backend/ .
-RUN touch src/main.rs && cargo build --release
+# Stage 2: Build Desktop App (Tauri + Rust Backend)
+FROM rust:1.75-slim-bookworm as desktop-builder
+WORKDIR /app
+RUN apt-get update && apt-get install -y \
+    pkg-config libssl-dev \
+    libgtk-3-dev libwebkit2gtk-4.1-dev \
+    npm \
+    && rm -rf /var/lib/apt/lists/*
 
-# Stage 3: Final Runtime
+# Copy the desktop application
+COPY desktop/ .
+COPY --from=frontend-builder /app/frontend/dist ./src/frontend/dist
+
+# Build the Rust/Tauri application
+RUN cargo build --release
+
+# Stage 3: Final Runtime (Debian with built binaries)
 FROM debian:bookworm-slim
 WORKDIR /app
-RUN apt-get update && apt-get install -y libssl3 ca-certificates sqlite3 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y \
+    libssl3 \
+    ca-certificates \
+    sqlite3 \
+    libgtk-3-0 \
+    libwebkit2gtk-4.1-0 \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy backend binary
-COPY --from=backend-builder /usr/src/app/target/release/grapes-backend /app/grapes-backend
+# Copy the built desktop application
+COPY --from=desktop-builder /app/target/release/grapes-ide /app/grapes-ide
 
-# Copy frontend dist folder (backend expects it at ../frontend/dist)
-# But in docker we can place it anywhere and adjust main.rs or just match the path.
-# Let's match the path: /app/frontend/dist
-COPY --from=frontend-builder /app/frontend/dist /app/frontend/dist
+# Create data directory
+RUN mkdir -p /app/data
 
-# Expose port
+# Expose port (for backend API within the app)
 EXPOSE 3001
 
 # Environment variables
-ENV PORT=3001
 ENV RUST_LOG=info
+ENV PORT=3001
 
-# Run
-CMD ["./grapes-backend"]
+# For running the application (headless mode would require additional setup)
+# This is primarily for development. Production would use the actual binary differently
+CMD ["/app/grapes-ide"]

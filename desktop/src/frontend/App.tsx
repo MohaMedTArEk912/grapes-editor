@@ -4,7 +4,7 @@
  * Desktop-First Visual Full-Stack IDE
  */
 
-import { Component, onMount, Switch, Match } from "solid-js";
+import React, { useEffect } from "react";
 import "./index.css";
 
 // Components
@@ -18,39 +18,36 @@ import ApiList from "./components/Canvas/ApiList";
 import Inspector from "./components/Inspector/Inspector";
 
 // Stores
-// Stores
 import { loadProject, projectState } from "./stores/projectStore";
 // Context
 import { ToastProvider } from "./context/ToastContext";
 
-const App: Component = () => {
+const App: React.FC = () => {
   // Try to load any existing project on mount
-  onMount(async () => {
-    try {
-      await loadProject();
-    } catch (err) {
-      console.log("No project loaded on startup:", err);
-    }
-  });
+  useEffect(() => {
+    const loadInitialProject = async () => {
+      try {
+        await loadProject();
+      } catch (err) {
+        console.log("No project loaded on startup:", err);
+      }
+    };
+    loadInitialProject();
+  }, []);
 
   // Render the appropriate canvas based on active tab
   const renderCanvas = () => {
-    return (
-      <Switch fallback={<Canvas />}>
-        <Match when={projectState.activeTab === "canvas"}>
-          <Canvas />
-        </Match>
-        <Match when={projectState.activeTab === "logic"}>
-          <LogicCanvas />
-        </Match>
-        <Match when={projectState.activeTab === "api"}>
-          <ApiList />
-        </Match>
-        <Match when={projectState.activeTab === "erd"}>
-          <ERDCanvas />
-        </Match>
-      </Switch>
-    );
+    switch (projectState.activeTab) {
+      case "logic":
+        return <LogicCanvas />;
+      case "api":
+        return <ApiList />;
+      case "erd":
+        return <ERDCanvas />;
+      case "canvas":
+      default:
+        return <Canvas />;
+    }
   };
 
   return (
