@@ -16,12 +16,16 @@ import {
     generateFrontend,
     generateBackend,
     generateDatabase,
+    downloadProjectZip,
+    setViewport,
 } from "../../stores/projectStore";
 import CodePreviewModal from "../Modals/CodePreviewModal";
+import { useToast } from "../../context/ToastContext";
 
 const Toolbar: Component = () => {
     const [showNewMenu, setShowNewMenu] = createSignal(false);
     const [showExportMenu, setShowExportMenu] = createSignal(false);
+    const toast = useToast();
 
     // Generation State
     const [previewData, setPreviewData] = createSignal<{ title: string; files: { path: string; content: string }[] } | null>(null);
@@ -29,7 +33,12 @@ const Toolbar: Component = () => {
     const handleNewProject = async () => {
         const name = prompt("Enter project name:");
         if (name) {
-            await createProject(name);
+            try {
+                await createProject(name);
+                toast.success(`Project "${name}" created`);
+            } catch (err) {
+                toast.error(`Failed to create project: ${err}`);
+            }
         }
     };
 
@@ -37,6 +46,7 @@ const Toolbar: Component = () => {
         try {
             let files;
             let title;
+            toast.info(`Generating ${type} code...`);
             if (type === 'frontend') {
                 files = await generateFrontend();
                 title = "Generated React Code";
@@ -49,9 +59,10 @@ const Toolbar: Component = () => {
             }
             setPreviewData({ title, files });
             setShowExportMenu(false);
+            toast.success(`${title} ready for preview`);
         } catch (err) {
             console.error("Generation failed:", err);
-            alert("Generation failed: " + err);
+            toast.error("Generation failed: " + err);
         }
     };
 
@@ -65,16 +76,41 @@ const Toolbar: Component = () => {
             a.download = `${projectState.project?.name || "project"}.json`;
             a.click();
             URL.revokeObjectURL(url);
+            toast.success("Project JSON exported");
         } catch (err) {
             console.error("Export failed:", err);
-            alert("Export failed: " + err);
+            toast.error("Export failed: " + err);
         }
+    };
+
+    const handleExportZip = async () => {
+        try {
+            toast.info("Preparing project ZIP...");
+            await downloadProjectZip();
+            toast.success("Project ZIP downloaded!");
+            setShowExportMenu(false);
+        } catch (err) {
+            toast.error("Failed to download ZIP: " + err);
+        }
+    };
+
+    const handleDeployVercel = () => {
+        toast.info("To deploy to Vercel:");
+        toast.info("1. Download Source Code (ZIP)");
+        toast.info("2. Unzip and run 'npm install'");
+        toast.info("3. Run 'vercel deploy'");
+        window.open("https://vercel.com/docs/cli/deploying-from-cli", "_blank");
     };
 
     const handleAddBlock = async (blockType: string) => {
         const name = prompt(`Enter ${blockType} name:`);
         if (name) {
-            await addBlock(blockType, name);
+            try {
+                await addBlock(blockType, name);
+                toast.success(`${blockType} "${name}" added`);
+            } catch (err) {
+                toast.error(`Failed to add block: ${err}`);
+            }
         }
         setShowNewMenu(false);
     };
@@ -84,7 +120,12 @@ const Toolbar: Component = () => {
         if (name) {
             const path = prompt("Enter page path:", `/${name.toLowerCase()}`);
             if (path) {
-                await addPage(name, path);
+                try {
+                    await addPage(name, path);
+                    toast.success(`Page "${name}" created`);
+                } catch (err) {
+                    toast.error(`Failed to create page: ${err}`);
+                }
             }
         }
         setShowNewMenu(false);
@@ -93,7 +134,12 @@ const Toolbar: Component = () => {
     const handleAddModel = async () => {
         const name = prompt("Enter model name (PascalCase):");
         if (name) {
-            await addDataModel(name);
+            try {
+                await addDataModel(name);
+                toast.success(`Model "${name}" created`);
+            } catch (err) {
+                toast.error(`Failed to create model: ${err}`);
+            }
         }
         setShowNewMenu(false);
     };
@@ -105,7 +151,12 @@ const Toolbar: Component = () => {
             if (path) {
                 const name = prompt("Enter endpoint name:");
                 if (name) {
-                    await addApi(method.toUpperCase(), path, name);
+                    try {
+                        await addApi(method.toUpperCase(), path, name);
+                        toast.success(`API "${name}" created`);
+                    } catch (err) {
+                        toast.error(`Failed to create API: ${err}`);
+                    }
                 }
             }
         }
@@ -191,6 +242,37 @@ const Toolbar: Component = () => {
             {/* Spacer */}
             <div class="flex-1" />
 
+            {/* Viewport Controls */}
+            <div class="flex items-center gap-1 bg-black/20 p-0.5 rounded-lg border border-white/5 mx-4 hidden md:flex">
+                <button
+                    class={`btn-ghost !p-1.5 hover:text-white ${projectState.viewport === 'desktop' ? 'bg-white/10 text-white shadow-sm' : 'text-ide-text-muted'}`}
+                    onClick={() => setViewport('desktop')}
+                    title="Desktop View (100%)"
+                >
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                </button>
+                <button
+                    class={`btn-ghost !p-1.5 hover:text-white ${projectState.viewport === 'tablet' ? 'bg-white/10 text-white shadow-sm' : 'text-ide-text-muted'}`}
+                    onClick={() => setViewport('tablet')}
+                    title="Tablet View (768px)"
+                >
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                    </svg>
+                </button>
+                <button
+                    class={`btn-ghost !p-1.5 hover:text-white ${projectState.viewport === 'mobile' ? 'bg-white/10 text-white shadow-sm' : 'text-ide-text-muted'}`}
+                    onClick={() => setViewport('mobile')}
+                    title="Mobile View (375px)"
+                >
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                    </svg>
+                </button>
+            </div>
+
             {/* Secondary Actions */}
             <div class="flex items-center gap-2">
                 <div class="relative">
@@ -221,7 +303,10 @@ const Toolbar: Component = () => {
                             <MenuButton onClick={() => handleGenerate('backend')} icon="server">NestJS Runtime</MenuButton>
                             <MenuButton onClick={() => handleGenerate('database')} icon="database">Prisma Schema</MenuButton>
                             <div class="border-t border-ide-border my-1.5" />
-                            <MenuButton onClick={() => alert("Deployment pipeline starting...")} icon="package">
+                            <MenuButton onClick={handleExportZip} icon="package">
+                                <span class="text-white font-bold">Download Source Code (ZIP)</span>
+                            </MenuButton>
+                            <MenuButton onClick={handleDeployVercel} icon="zap">
                                 <span class="text-indigo-400 font-bold">Deploy to Vercel</span>
                             </MenuButton>
                         </div>

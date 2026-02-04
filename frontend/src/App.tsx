@@ -18,7 +18,10 @@ import ApiList from "./components/Canvas/ApiList";
 import Inspector from "./components/Inspector/Inspector";
 
 // Stores
+// Stores
 import { loadProject, projectState } from "./stores/projectStore";
+// Context
+import { ToastProvider } from "./context/ToastContext";
 
 const App: Component = () => {
   // Try to load any existing project on mount
@@ -51,12 +54,14 @@ const App: Component = () => {
   };
 
   return (
-    <IDELayout
-      toolbar={<Toolbar />}
-      fileTree={<FileTree />}
-      canvas={renderCanvas()}
-      inspector={<Inspector />}
-    />
+    <ToastProvider>
+      <IDELayout
+        toolbar={<Toolbar />}
+        fileTree={<FileTree />}
+        canvas={renderCanvas()}
+        inspector={<Inspector />}
+      />
+    </ToastProvider>
   );
 };
 

@@ -244,6 +244,14 @@ export function useApi() {
 
         generateDatabase: () =>
             apiCall<{ files: { path: string; content: string }[] }>('POST', '/api/generate/database'),
+
+        downloadZip: async () => {
+            const response = await fetch(`${API_BASE_URL}/api/generate/zip`, {
+                method: 'GET',
+            });
+            if (!response.ok) throw new Error("Failed to generate ZIP");
+            return response.blob();
+        }
     };
 }
 

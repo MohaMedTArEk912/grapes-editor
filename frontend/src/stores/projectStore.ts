@@ -16,6 +16,7 @@ interface ProjectState {
     selectedBlockId: string | null;
     selectedPageId: string | null;
     activeTab: "canvas" | "logic" | "api" | "erd";
+    viewport: "desktop" | "tablet" | "mobile";
 }
 
 // Initial state
@@ -26,6 +27,7 @@ const initialState: ProjectState = {
     selectedBlockId: null,
     selectedPageId: null,
     activeTab: "canvas",
+    viewport: "desktop",
 };
 
 // Create the store
@@ -224,6 +226,21 @@ export async function generateDatabase(): Promise<{ path: string; content: strin
 }
 
 /**
+ * Download the project as a ZIP file
+ */
+export async function downloadProjectZip(): Promise<void> {
+    const blob = await api.downloadZip();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${state.project?.name || "grapes-project"}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+/**
  * Select a block
  */
 export function selectBlock(blockId: string | null): void {
@@ -243,6 +260,13 @@ export function selectPage(pageId: string): void {
  */
 export function setActiveTab(tab: "canvas" | "logic" | "api" | "erd"): void {
     setState("activeTab", tab);
+}
+
+/**
+ * Set the viewport size
+ */
+export function setViewport(viewport: "desktop" | "tablet" | "mobile"): void {
+    setState("viewport", viewport);
 }
 
 /**

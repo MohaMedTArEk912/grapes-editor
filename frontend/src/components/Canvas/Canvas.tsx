@@ -14,6 +14,7 @@ import {
     addBlock,
 } from "../../stores/projectStore";
 import { BlockSchema } from "../../hooks/useTauri";
+import { useToast } from "../../context/ToastContext";
 
 const Canvas: Component = () => {
     const selectedPage = createMemo(() => getSelectedPage());
@@ -38,7 +39,7 @@ const Canvas: Component = () => {
 
     return (
         <div
-            class="h-full bg-ide-bg flex flex-col relative"
+            class="h-full bg-ide-bg flex flex-col relative overflow-auto p-2"
             onDragOver={handleDragOver}
             onDrop={handleDrop}
         >
@@ -55,7 +56,14 @@ const Canvas: Component = () => {
                     }
                 >
                     {/* Page Container */}
-                    <div class="bg-white rounded-lg shadow-2xl mx-auto max-w-5xl min-h-[600px]">
+                    <div
+                        class="bg-white rounded-lg shadow-2xl mx-auto transition-all duration-300 ease-in-out border border-transparent flex flex-col"
+                        classList={{
+                            'w-full min-h-full': projectState.viewport === 'desktop',
+                            'w-[768px] min-h-[800px]': projectState.viewport === 'tablet',
+                            'w-[375px] min-h-[667px]': projectState.viewport === 'mobile',
+                        }}
+                    >
                         {/* Page Header */}
                         <div class="bg-slate-100 rounded-t-lg px-4 py-2 flex items-center gap-2 border-b">
                             <div class="flex gap-1.5">
@@ -212,6 +220,7 @@ const BlockRenderer: Component<BlockRendererProps> = (props) => {
 
 // Welcome Screen Component
 const WelcomeScreen: Component = () => {
+    const toast = useToast();
     return (
         <div class="h-full flex items-center justify-center p-12 bg-[#050508]">
             <div class="max-w-4xl w-full grid grid-cols-1 lg:grid-cols-2 gap-12 items-center animate-fade-up">
@@ -233,7 +242,7 @@ const WelcomeScreen: Component = () => {
                     <div class="flex flex-wrap gap-4">
                         <button
                             class="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition-all shadow-lg shadow-indigo-500/20 active:scale-95 flex items-center gap-2"
-                            onClick={() => alert("Use the top-left 'New' button to start!")}
+                            onClick={() => toast.info("Use the top-left 'New' button to start!")}
                         >
                             Get Started
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

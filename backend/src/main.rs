@@ -64,6 +64,7 @@ async fn main() {
         .route("/api/generate/frontend", post(routes::generate::generate_frontend))
         .route("/api/generate/backend", post(routes::generate::generate_backend))
         .route("/api/generate/database", post(routes::generate::generate_database))
+        .route("/api/generate/zip", get(routes::generate::generate_zip))
         
         // Static file serving (frontend)
         .fallback_service({
