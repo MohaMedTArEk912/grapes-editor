@@ -21,6 +21,7 @@ export interface ProjectSchema {
     data_models: DataModelSchema[];
     variables: VariableSchema[];
     settings: ProjectSettings;
+    root_path?: string;
 }
 
 export interface BlockSchema {
@@ -32,19 +33,14 @@ export interface BlockSchema {
     slot?: string;
     order: number;
     properties: Record<string, unknown>;
-    styles: Record<string, StyleValue>;
+    styles: Record<string, string | number | boolean>;
+    responsive_styles: Record<string, Record<string, string | number | boolean>>;
     bindings: Record<string, DataBinding>;
     event_handlers: EventHandler[];
     archived: boolean;
 }
 
-export interface StyleValue {
-    default?: string;
-    sm?: string;
-    md?: string;
-    lg?: string;
-    xl?: string;
-}
+export type StyleValue = string | number | boolean;
 
 export interface DataBinding {
     type: string;
@@ -203,6 +199,15 @@ export function useApi() {
         exportProjectJson: () =>
             apiCall<string>('GET', '/api/project/export'),
 
+        setProjectRoot: (path: string) =>
+            apiCall<boolean>('POST', '/api/project/sync/root', { path }),
+
+        syncToDisk: () =>
+            apiCall<boolean>('POST', '/api/project/sync/now'),
+
+        syncDiskToProject: () =>
+            apiCall<boolean>('POST', '/api/project/sync/from_disk'),
+
         // Block operations
         addBlock: (blockType: string, name: string, parentId?: string) =>
             apiCall<BlockSchema>('POST', '/api/blocks', {
@@ -216,7 +221,7 @@ export function useApi() {
 
         updateBlockStyle: (blockId: string, style: string, value: string) =>
             apiCall<BlockSchema>('PUT', `/api/blocks/${blockId}`, {
-                property: `style.${style}`,
+                property: `styles.${style}`,
                 value,
             }),
 

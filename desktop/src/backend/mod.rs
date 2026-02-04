@@ -13,7 +13,6 @@ pub mod error;
 pub mod db;
 
 // Schema is now at the root level
-use crate::schema;
 
 pub use state::AppState as BackendAppState;
 pub use error::ApiError;
@@ -35,6 +34,9 @@ pub fn create_router(state: BackendAppState) -> Router {
         .route("/api/project", post(routes::project::create_project))
         .route("/api/project/import", post(routes::project::import_project))
         .route("/api/project/export", get(routes::project::export_project))
+        .route("/api/project/sync/root", post(routes::project::set_sync_root))
+        .route("/api/project/sync/now", post(routes::project::trigger_sync))
+        .route("/api/project/sync/from_disk", post(routes::project::sync_disk_to_memory))
         
         // Block routes
         .route("/api/blocks", post(routes::blocks::add_block))

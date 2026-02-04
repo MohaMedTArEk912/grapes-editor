@@ -1,5 +1,5 @@
 /**
- * Grapes IDE - Main Application
+ * Grapes IDE - Main Application - React version
  * 
  * Desktop-First Visual Full-Stack IDE
  */
@@ -16,13 +16,18 @@ import LogicCanvas from "./components/Canvas/LogicCanvas";
 import ERDCanvas from "./components/Canvas/ERDCanvas";
 import ApiList from "./components/Canvas/ApiList";
 import Inspector from "./components/Inspector/Inspector";
+import Terminal from "./components/Terminal/Terminal";
 
 // Stores
-import { loadProject, projectState } from "./stores/projectStore";
+import { loadProject } from "./stores/projectStore";
+// Hooks
+import { useProjectStore } from "./hooks/useProjectStore";
 // Context
 import { ToastProvider } from "./context/ToastContext";
 
 const App: React.FC = () => {
+  const { activeTab } = useProjectStore();
+
   // Try to load any existing project on mount
   useEffect(() => {
     const loadInitialProject = async () => {
@@ -37,7 +42,7 @@ const App: React.FC = () => {
 
   // Render the appropriate canvas based on active tab
   const renderCanvas = () => {
-    switch (projectState.activeTab) {
+    switch (activeTab) {
       case "logic":
         return <LogicCanvas />;
       case "api":
@@ -57,6 +62,7 @@ const App: React.FC = () => {
         fileTree={<FileTree />}
         canvas={renderCanvas()}
         inspector={<Inspector />}
+        terminal={<Terminal />}
       />
     </ToastProvider>
   );

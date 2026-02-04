@@ -45,6 +45,12 @@ pub struct BlockSchema {
     
     /// Block order within parent (for sorting)
     pub order: i32,
+    
+    /// Path on the physical file system (if this block is a separate component)
+    pub physical_path: Option<String>,
+    
+    /// Hash of the block's content for sync detection
+    pub version_hash: Option<String>,
 }
 
 /// Available block types
@@ -172,6 +178,8 @@ impl BlockSchema {
             events: HashMap::new(),
             archived: false,
             order: 0,
+            physical_path: None,
+            version_hash: None,
         }
     }
     

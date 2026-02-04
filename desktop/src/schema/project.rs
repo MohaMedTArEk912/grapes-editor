@@ -62,6 +62,9 @@ pub struct ProjectSchema {
     
     /// Project-wide settings
     pub settings: ProjectSettings,
+
+    /// Root directory on the physical file system (if exported/synced)
+    pub root_path: Option<String>,
 }
 
 /// Project-wide settings
@@ -230,6 +233,7 @@ impl ProjectSchema {
             data_models: Vec::new(),
             variables: Vec::new(),
             settings: ProjectSettings::default(),
+            root_path: None,
         }
     }
     

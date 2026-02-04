@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 use crate::schema::ProjectSchema;
-use crate::db::Database;
+use crate::backend::db::Database;
 
 /// Shared application state
 #[derive(Clone)]

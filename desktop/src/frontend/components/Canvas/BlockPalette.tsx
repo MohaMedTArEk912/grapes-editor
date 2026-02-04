@@ -1,10 +1,10 @@
 /**
- * BlockPalette Component
+ * BlockPalette Component - React version
  * 
  * Draggable palette of block types that can be dropped on the canvas.
  */
 
-import { Component, For, createSignal, Show } from "solid-js";
+import React, { useState } from "react";
 import { addBlock } from "../../stores/projectStore";
 import PromptModal from "../UI/PromptModal";
 import { useToast } from "../../context/ToastContext";
@@ -45,7 +45,7 @@ const blockCategories: BlockCategory[] = [
         name: "Media",
         blocks: [
             { type: "image", name: "Image", icon: "M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z", description: "Image" },
-            { type: "video", name: "Video", icon: "M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z", description: "Video player" },
+            { type: "video", name: "Video", icon: "M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z", description: "Video player" },
             { type: "icon", name: "Icon", icon: "M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z", description: "Icon" },
         ],
     },
@@ -72,34 +72,34 @@ const blockCategories: BlockCategory[] = [
     },
 ];
 
-const BlockPalette: Component = () => {
-    const [expandedCategory, setExpandedCategory] = createSignal<string | null>("Layout");
-    const [promptState, setPromptState] = createSignal<{ blockType: string; blockName: string } | null>(null);
+const BlockPalette: React.FC = () => {
+    const [expandedCategory, setExpandedCategory] = useState<string | null>("Layout");
+    const [promptState, setPromptState] = useState<{ blockType: string; blockName: string } | null>(null);
     const toast = useToast();
 
-    const handleAddBlock = async (blockType: string, blockName: string) => {
+    const handleAddBlock = (blockType: string, blockName: string) => {
         setPromptState({ blockType, blockName });
     };
 
     return (
-        <div class="h-full overflow-auto bg-ide-sidebar">
-            <div class="p-3 border-b border-ide-border">
-                <h3 class="text-xs font-semibold uppercase tracking-wider text-ide-text-muted">
+        <div className="h-full overflow-auto bg-ide-sidebar">
+            <div className="p-3 border-b border-ide-border">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-ide-text-muted">
                     Block Palette
                 </h3>
             </div>
 
-            <Show when={promptState()}>
+            {promptState && (
                 <PromptModal
-                    isOpen={!!promptState()}
-                    title={`Add ${promptState()!.blockName} block`}
+                    isOpen={!!promptState}
+                    title={`Add ${promptState.blockName} block`}
                     confirmText="Add"
                     fields={[
                         {
                             name: "name",
                             label: "Block name",
-                            placeholder: promptState()!.blockName,
-                            value: promptState()!.blockName,
+                            placeholder: promptState.blockName,
+                            value: promptState.blockName,
                             required: true,
                         },
                     ]}
@@ -107,64 +107,61 @@ const BlockPalette: Component = () => {
                     onSubmit={async (values) => {
                         try {
                             const name = values.name.trim();
-                            await addBlock(promptState()!.blockType, name);
-                            toast.success(`${promptState()!.blockName} "${name}" added`);
+                            await addBlock(promptState.blockType, name);
+                            toast.success(`${promptState.blockName} "${name}" added`);
                         } catch (err) {
                             toast.error(`Failed to add block: ${err}`);
                         }
                     }}
                 />
-            </Show>
+            )}
 
-            <div class="p-2">
-                <For each={blockCategories}>
-                    {(category) => (
-                        <div class="mb-2">
-                            {/* Category Header */}
-                            <button
-                                class="w-full text-left px-2 py-1.5 text-xs font-semibold uppercase tracking-wider text-ide-text-muted hover:text-ide-text flex items-center gap-2 transition-colors"
-                                onClick={() => setExpandedCategory(expandedCategory() === category.name ? null : category.name)}
+            <div className="p-2">
+                {blockCategories.map((category) => (
+                    <div key={category.name} className="mb-2">
+                        {/* Category Header */}
+                        <button
+                            className="w-full text-left px-2 py-1.5 text-xs font-semibold uppercase tracking-wider text-ide-text-muted hover:text-ide-text flex items-center gap-2 transition-colors"
+                            onClick={() => setExpandedCategory(expandedCategory === category.name ? null : category.name)}
+                        >
+                            <svg
+                                className={`w-3 h-3 transition-transform ${expandedCategory === category.name ? "rotate-90" : ""}`}
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
                             >
-                                <svg
-                                    class={`w-3 h-3 transition-transform ${expandedCategory() === category.name ? "rotate-90" : ""}`}
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
-                                >
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-                                </svg>
-                                {category.name}
-                            </button>
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                            </svg>
+                            {category.name}
+                        </button>
 
-                            {/* Block Items */}
-                            {expandedCategory() === category.name && (
-                                <div class="grid grid-cols-2 gap-1 mt-1">
-                                    <For each={category.blocks}>
-                                        {(block) => (
-                                            <button
-                                                class="flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-ide-panel text-ide-text-muted hover:text-ide-text transition-colors group cursor-grab active:cursor-grabbing"
-                                                onClick={() => handleAddBlock(block.type, block.name)}
-                                                title={block.description}
-                                                draggable="true"
-                                                onDragStart={(e) => {
-                                                    e.dataTransfer?.setData("application/grapes-block", block.type);
-                                                    e.dataTransfer!.effectAllowed = "copy";
-                                                }}
-                                            >
-                                                <div class="w-10 h-10 rounded-lg bg-ide-accent/10 group-hover:bg-ide-accent/20 flex items-center justify-center transition-colors">
-                                                    <svg class="w-5 h-5 text-ide-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d={block.icon} />
-                                                    </svg>
-                                                </div>
-                                                <span class="text-[10px] font-medium">{block.name}</span>
-                                            </button>
-                                        )}
-                                    </For>
-                                </div>
-                            )}
-                        </div>
-                    )}
-                </For>
+                        {/* Block Items */}
+                        {expandedCategory === category.name && (
+                            <div className="grid grid-cols-2 gap-1 mt-1">
+                                {category.blocks.map((block) => (
+                                    <button
+                                        key={block.type}
+                                        className="flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-ide-panel text-ide-text-muted hover:text-ide-text transition-colors group cursor-grab active:cursor-grabbing"
+                                        onClick={() => handleAddBlock(block.type, block.name)}
+                                        title={block.description}
+                                        draggable="true"
+                                        onDragStart={(e) => {
+                                            e.dataTransfer.setData("application/grapes-block", block.type);
+                                            e.dataTransfer.effectAllowed = "copy";
+                                        }}
+                                    >
+                                        <div className="w-10 h-10 rounded-lg bg-ide-accent/10 group-hover:bg-ide-accent/20 flex items-center justify-center transition-colors">
+                                            <svg className="w-5 h-5 text-ide-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d={block.icon} />
+                                            </svg>
+                                        </div>
+                                        <span className="text-[10px] font-medium">{block.name}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                ))}
             </div>
         </div>
     );

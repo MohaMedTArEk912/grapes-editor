@@ -1,22 +1,29 @@
 /**
- * Modal Component
+ * Modal Component - React version
  * 
  * Reusable modal dialog component.
  */
 
-import { Component, JSX, Show, createEffect, onCleanup } from "solid-js";
-import { Portal } from "solid-js/web";
+import React, { useEffect } from "react";
+import { createPortal } from "react-dom";
 
 interface ModalProps {
     isOpen: boolean;
     onClose: () => void;
     title: string;
-    children: JSX.Element;
+    children: React.ReactNode;
     size?: "sm" | "md" | "lg" | "xl";
     showCloseButton?: boolean;
 }
 
-const Modal: Component<ModalProps> = (props) => {
+const Modal: React.FC<ModalProps> = ({
+    isOpen,
+    onClose,
+    title,
+    children,
+    size = "md",
+    showCloseButton = true
+}) => {
     const sizeClasses = {
         sm: "max-w-sm",
         md: "max-w-md",
@@ -25,65 +32,66 @@ const Modal: Component<ModalProps> = (props) => {
     };
 
     // Handle escape key
-    createEffect(() => {
-        if (props.isOpen) {
+    useEffect(() => {
+        if (isOpen) {
             const handleKeyDown = (e: KeyboardEvent) => {
                 if (e.key === "Escape") {
-                    props.onClose();
+                    onClose();
                 }
             };
             document.addEventListener("keydown", handleKeyDown);
-            onCleanup(() => document.removeEventListener("keydown", handleKeyDown));
+            return () => document.removeEventListener("keydown", handleKeyDown);
         }
-    });
+    }, [isOpen, onClose]);
 
     // Prevent body scroll when modal is open
-    createEffect(() => {
-        if (props.isOpen) {
+    useEffect(() => {
+        if (isOpen) {
             document.body.style.overflow = "hidden";
-            onCleanup(() => {
+            return () => {
                 document.body.style.overflow = "";
-            });
+            };
         }
-    });
+    }, [isOpen]);
 
-    return (
-        <Show when={props.isOpen}>
-            <Portal>
-                {/* Backdrop */}
+    if (!isOpen) return null;
+
+    return createPortal(
+        <>
+            {/* Backdrop */}
+            <div
+                className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm animate-fade-in"
+                onClick={onClose}
+            />
+
+            {/* Modal Container */}
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
                 <div
-                    class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm animate-fade-in"
-                    onClick={props.onClose}
-                />
-
-                {/* Modal Container */}
-                <div class="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
-                    <div
-                        class={`w-full ${sizeClasses[props.size || "md"]} bg-ide-panel rounded-xl shadow-2xl border border-ide-border pointer-events-auto animate-scale-in`}
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        {/* Header */}
-                        <div class="flex items-center justify-between px-5 py-4 border-b border-ide-border">
-                            <h2 class="text-lg font-semibold text-ide-text">{props.title}</h2>
-                            <Show when={props.showCloseButton !== false}>
-                                <button
-                                    class="p-1.5 rounded-lg text-ide-text-muted hover:text-ide-text hover:bg-ide-bg transition-colors"
-                                    onClick={props.onClose}
-                                    aria-label="Close modal"
-                                >
-                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                                    </svg>
-                                </button>
-                            </Show>
-                        </div>
-
-                        {/* Content */}
-                        <div class="p-5">{props.children}</div>
+                    className={`w-full ${sizeClasses[size]} bg-ide-panel rounded-xl shadow-2xl border border-ide-border pointer-events-auto animate-scale-in`}
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    {/* Header */}
+                    <div className="flex items-center justify-between px-5 py-4 border-b border-ide-border">
+                        <h2 className="text-lg font-semibold text-ide-text">{title}</h2>
+                        {showCloseButton && (
+                            <button
+                                className="p-1.5 rounded-lg text-ide-text-muted hover:text-ide-text hover:bg-ide-bg transition-colors"
+                                onClick={onClose}
+                                aria-label="Close modal"
+                            >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        )}
                     </div>
+
+                    {/* Content */}
+                    <div className="p-5">{children}</div>
                 </div>
-            </Portal>
-        </Show>
+            </div>
+        </>,
+        document.body
     );
 };
 
@@ -99,7 +107,16 @@ interface ConfirmModalProps {
     variant?: "danger" | "warning" | "info";
 }
 
-export const ConfirmModal: Component<ConfirmModalProps> = (props) => {
+export const ConfirmModal: React.FC<ConfirmModalProps> = ({
+    isOpen,
+    onClose,
+    onConfirm,
+    title,
+    message,
+    confirmText = "Confirm",
+    cancelText = "Cancel",
+    variant = "info"
+}) => {
     const variantClasses = {
         danger: "bg-ide-error hover:bg-red-600",
         warning: "bg-yellow-500 hover:bg-yellow-600",
@@ -107,23 +124,23 @@ export const ConfirmModal: Component<ConfirmModalProps> = (props) => {
     };
 
     return (
-        <Modal isOpen={props.isOpen} onClose={props.onClose} title={props.title} size="sm">
-            <div class="text-ide-text-muted mb-6">{props.message}</div>
-            <div class="flex justify-end gap-2">
+        <Modal isOpen={isOpen} onClose={onClose} title={title} size="sm">
+            <div className="text-ide-text-muted mb-6">{message}</div>
+            <div className="flex justify-end gap-2">
                 <button
-                    class="btn-ghost"
-                    onClick={props.onClose}
+                    className="btn-ghost"
+                    onClick={onClose}
                 >
-                    {props.cancelText || "Cancel"}
+                    {cancelText}
                 </button>
                 <button
-                    class={`px-4 py-2 rounded-lg text-white font-medium transition-colors ${variantClasses[props.variant || "info"]}`}
+                    className={`px-4 py-2 rounded-lg text-white font-medium transition-colors ${variantClasses[variant]}`}
                     onClick={() => {
-                        props.onConfirm();
-                        props.onClose();
+                        onConfirm();
+                        onClose();
                     }}
                 >
-                    {props.confirmText || "Confirm"}
+                    {confirmText}
                 </button>
             </div>
         </Modal>
@@ -137,7 +154,7 @@ interface ToastProps {
     onDismiss: () => void;
 }
 
-export const Toast: Component<ToastProps> = (props) => {
+export const Toast: React.FC<ToastProps> = ({ message, type, onDismiss }) => {
     const typeStyles = {
         success: "bg-ide-success text-white",
         error: "bg-ide-error text-white",
@@ -153,31 +170,30 @@ export const Toast: Component<ToastProps> = (props) => {
     };
 
     // Auto-dismiss after 4 seconds
-    createEffect(() => {
-        const timer = setTimeout(props.onDismiss, 4000);
-        onCleanup(() => clearTimeout(timer));
-    });
+    useEffect(() => {
+        const timer = setTimeout(onDismiss, 4000);
+        return () => clearTimeout(timer);
+    }, [onDismiss]);
 
-    return (
-        <Portal>
-            <div class="fixed bottom-4 right-4 z-50 animate-slide-in-right">
-                <div class={`flex items-center gap-3 px-4 py-3 rounded-lg shadow-xl ${typeStyles[props.type]}`}>
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={typeIcons[props.type]} />
+    return createPortal(
+        <div className="fixed bottom-4 right-4 z-50 animate-slide-in-right">
+            <div className={`flex items-center gap-3 px-4 py-3 rounded-lg shadow-xl ${typeStyles[type]}`}>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={typeIcons[type]} />
+                </svg>
+                <span className="font-medium">{message}</span>
+                <button
+                    className="ml-2 p-1 hover:bg-white/20 rounded transition-colors"
+                    onClick={onDismiss}
+                    aria-label="Dismiss"
+                >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
                     </svg>
-                    <span class="font-medium">{props.message}</span>
-                    <button
-                        class="ml-2 p-1 hover:bg-white/20 rounded transition-colors"
-                        onClick={props.onDismiss}
-                        aria-label="Dismiss"
-                    >
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                    </button>
-                </div>
+                </button>
             </div>
-        </Portal>
+        </div>,
+        document.body
     );
 };
 

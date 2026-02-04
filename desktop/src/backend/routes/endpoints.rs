@@ -6,7 +6,8 @@ use axum::{
 };
 use serde::Deserialize;
 
-use crate::{AppState, ApiError};
+use crate::backend::state::AppState;
+use crate::backend::error::ApiError;
 use crate::schema::{ApiSchema, HttpMethod};
 
 /// Add endpoint request

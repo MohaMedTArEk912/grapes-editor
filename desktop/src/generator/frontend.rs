@@ -19,12 +19,14 @@ impl<'a> FrontendGenerator<'a> {
     pub fn generate(&self) -> GeneratedFrontend {
         let mut files = Vec::new();
         
-        // Generate each page
+        // Generate each page in its own feature folder
         for page in &self.project.pages {
             if !page.archived {
                 let code = self.generate_page(page);
+                let feature_name = page.name.to_lowercase().replace(' ', "-");
+                let pascal_name = crate::generator::pascal_case(&page.name);
                 files.push(GeneratedFile {
-                    path: format!("src/pages/{}.tsx", page.name),
+                    path: format!("src/features/{}/{}.tsx", feature_name, pascal_name),
                     content: code,
                 });
             }
@@ -59,15 +61,16 @@ impl<'a> FrontendGenerator<'a> {
             jsx.push_str(&self.generate_block_jsx(block, 2));
         }
         
-        format!(r#"import React from 'react';
+        format!(r#"// @grapes-page id="{id}"
+import React from 'react';
 
-export function {name}Page() {{
+export default function {name}() {{
     return (
-        <div className="min-h-screen">
+        <div className="min-h-screen bg-white">
 {jsx}        </div>
     );
 }}
-"#, name = page.name, jsx = jsx)
+"#, id = page.id, name = crate::generator::pascal_case(&page.name), jsx = jsx)
     }
     
     /// Generate JSX for a block and its children
@@ -89,31 +92,46 @@ export function {name}Page() {{
         
         let mut jsx = String::new();
         
+        // Add structural markers
+        jsx.push_str(&format!("{}/* @grapes-block id=\"{}\" */\n", indent_str, block.id));
+
         if self_closing {
             jsx.push_str(&format!("{}<{} className=\"{}\" />\n", indent_str, tag, classes));
         } else {
-            jsx.push_str(&format!("{}<{} className=\"{}\">\n", indent_str, tag, classes));
+            jsx.push_str(&format!("{}<{} className=\"{}\">", indent_str, tag, classes));
             
-            // Generate children
-            for child_id in &block.children {
-                if let Some(child) = self.project.find_block(child_id) {
-                    jsx.push_str(&self.generate_block_jsx(child, indent + 1));
-                }
-            }
-            
+            let mut has_complex_content = false;
+
             // Add text content if present
             if let Some(text) = block.properties.get("text") {
                 if let Some(s) = text.as_str() {
-                    jsx.push_str(&format!("{}    {}\n", indent_str, s));
+                    jsx.push_str(s);
+                }
+            }
+
+            // Generate children
+            if !block.children.is_empty() {
+                jsx.push('\n');
+                has_complex_content = true;
+                for child_id in &block.children {
+                    if let Some(child) = self.project.find_block(child_id) {
+                        jsx.push_str(&self.generate_block_jsx(child, indent + 1));
+                    }
                 }
             }
             
-            jsx.push_str(&format!("{}</{}>\n", indent_str, tag));
+            if has_complex_content {
+                jsx.push_str(&format!("{}</{}>\n", indent_str, tag));
+            } else {
+                jsx.push_str(&format!("</{}>\n", tag));
+            }
         }
+
+        jsx.push_str(&format!("{}/* @grapes-block-end */\n", indent_str));
         
         jsx
     }
-    
+
     /// Generate App.tsx with routing
     fn generate_app(&self) -> String {
         let mut imports = String::new();
@@ -121,14 +139,16 @@ export function {name}Page() {{
         
         for page in &self.project.pages {
             if !page.archived {
+                let p_name = crate::generator::pascal_case(&page.name);
+                let f_name = page.name.to_lowercase().replace(' ', "-");
                 imports.push_str(&format!(
-                    "import {{ {name}Page }} from './pages/{name}';\n",
-                    name = page.name
+                    "import {} from './features/{}/{}';\n",
+                    p_name, f_name, p_name
                 ));
                 routes.push_str(&format!(
-                    "                <Route path=\"{path}\" element={{<{name}Page />}} />\n",
+                    "                <Route path=\"{path}\" element={{<{name} />}} />\n",
                     path = page.path,
-                    name = page.name
+                    name = p_name
                 ));
             }
         }
@@ -140,6 +160,7 @@ function App() {{
     return (
         <BrowserRouter>
             <Routes>
+                <Route path="/" element={{<div className="p-8 text-center text-gray-500">Welcome to Grapes App</div>}} />
 {routes}            </Routes>
         </BrowserRouter>
     );

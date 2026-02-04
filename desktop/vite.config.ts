@@ -4,10 +4,10 @@ import react from "@vitejs/plugin-react";
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
-  
+
   // Vite options tailored for Tauri to prevent too much magic
   clearScreen: false,
-  
+
   server: {
     port: 1420,
     strictPort: true,
@@ -19,7 +19,7 @@ export default defineConfig({
   },
 
   build: {
-    minify: !process.env.TAURI_DEBUG ? "terser" : false,
+    minify: !process.env.TAURI_DEBUG ? "esbuild" : false,
     sourcemap: !!process.env.TAURI_DEBUG,
   },
 });

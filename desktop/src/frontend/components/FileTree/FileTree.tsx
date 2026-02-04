@@ -1,11 +1,13 @@
 /**
- * FileTree Component
+ * FileTree Component - React version
  * 
  * VS Code-style file tree navigation for the project's virtual files.
+ * Updated to reflect the physical feature-based directory structure.
  */
 
-import { Component, For, Show, createSignal } from "solid-js";
-import { projectState, selectPage } from "../../stores/projectStore";
+import React, { useState } from "react";
+import { useProjectStore } from "../../hooks/useProjectStore";
+import { selectPage } from "../../stores/projectStore";
 
 interface FileTreeItemProps {
     name: string;
@@ -17,26 +19,30 @@ interface FileTreeItemProps {
     onClick?: () => void;
 }
 
-const FileTreeItem: Component<FileTreeItemProps> = (props) => {
-    const [expanded, setExpanded] = createSignal(true);
+const FileTreeItem: React.FC<FileTreeItemProps> = ({
+    name,
+    icon,
+    entityId,
+    isDirectory,
+    children,
+    depth,
+    onClick
+}) => {
+    const [expanded, setExpanded] = useState(true);
+    const { selectedPageId } = useProjectStore();
 
     const handleClick = () => {
-        if (props.isDirectory) {
-            setExpanded(!expanded());
-        } else if (props.onClick) {
-            props.onClick();
+        if (isDirectory) {
+            setExpanded(!expanded);
+        } else if (onClick) {
+            onClick();
         }
     };
 
-    const isSelected = () => {
-        if (props.icon === "file-text" && !props.isDirectory) {
-            return projectState.selectedPageId === props.entityId;
-        }
-        return false;
-    };
+    const isSelected = icon === "file-text" && !isDirectory && selectedPageId === entityId;
 
-    const getIconPath = (icon: string): string => {
-        switch (icon) {
+    const getIconPath = (iconName: string): string => {
+        switch (iconName) {
             case "folder":
                 return "M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z";
             case "file-text":
@@ -55,193 +61,188 @@ const FileTreeItem: Component<FileTreeItemProps> = (props) => {
     };
 
     return (
-        <div class="select-none">
+        <div className="select-none">
             <div
-                class={`group flex items-center gap-2 px-3 py-1.5 cursor-pointer text-[12px] transition-all border-l-2 ${isSelected()
+                className={`group flex items-center gap-2 px-3 py-1.5 cursor-pointer text-[12px] transition-all border-l-2 ${isSelected
                     ? "bg-indigo-500/10 border-indigo-500 text-white"
                     : "border-transparent text-ide-text-muted hover:bg-white/5 hover:text-white"
                     }`}
-                style={{ "padding-left": `${props.depth * 12 + 12}px` }}
+                style={{ paddingLeft: `${depth * 12 + 12}px` }}
                 onClick={handleClick}
             >
                 {/* Expand/Collapse Arrow for directories */}
-                <div class="w-3 flex items-center justify-center">
-                    <Show when={props.isDirectory}>
+                <div className="w-3 flex items-center justify-center">
+                    {isDirectory && (
                         <svg
-                            class={`w-2.5 h-2.5 transition-transform ${expanded() ? "rotate-90" : ""}`}
+                            className={`w-2.5 h-2.5 transition-transform ${expanded ? "rotate-90" : ""}`}
                             fill="none"
                             stroke="currentColor"
                             viewBox="0 0 24 24"
                         >
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M9 5l7 7-7 7" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M9 5l7 7-7 7" />
                         </svg>
-                    </Show>
+                    )}
                 </div>
 
                 {/* Icon */}
                 <svg
-                    class={`w-3.5 h-3.5 ${props.isDirectory ? "text-amber-400/80" : isSelected() ? "text-indigo-400" : "text-ide-text-muted/60 group-hover:text-indigo-400"}`}
+                    className={`w-3.5 h-3.5 ${isDirectory ? "text-amber-400/80" : isSelected ? "text-indigo-400" : "text-ide-text-muted/60 group-hover:text-indigo-400"}`}
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
                 >
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={getIconPath(props.icon)} />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={getIconPath(icon)} />
                 </svg>
 
                 {/* Name */}
-                <span class={`truncate ${isSelected() ? "font-bold" : "font-medium"}`}>
-                    {props.name}
+                <span className={`truncate ${isSelected ? "font-bold" : "font-medium"}`}>
+                    {name}
                 </span>
             </div>
 
             {/* Children */}
-            <Show when={props.isDirectory && expanded() && props.children}>
-                <div class="animate-fade-in">
-                    <For each={props.children}>
-                        {(child) => <FileTreeItem {...child} depth={props.depth + 1} />}
-                    </For>
+            {isDirectory && expanded && children && (
+                <div className="animate-fade-in">
+                    {children.map((child, index) => (
+                        <FileTreeItem key={child.entityId + index} {...child} depth={depth + 1} />
+                    ))}
                 </div>
-            </Show>
+            )}
         </div>
     );
 };
 
-const FileTree: Component = () => {
-    // Build file tree from project state
+const FileTree: React.FC = () => {
+    const { project } = useProjectStore();
+
+    // Build file tree from project state - feature-based architecture
     const getFileTree = (): FileTreeItemProps[] => {
-        const project = projectState.project;
         if (!project) return [];
 
         const tree: FileTreeItemProps[] = [];
 
-        // Pages folder
-        const pages: FileTreeItemProps[] = project.pages
+        // Client Source
+        const clientPages: FileTreeItemProps[] = project.pages
             .filter((p) => !p.archived)
             .map((page) => ({
-                name: `${page.name}.page`,
+                name: `${page.name}.tsx`,
                 icon: "file-text",
                 entityId: page.id,
                 isDirectory: false,
-                depth: 1,
+                depth: 2,
                 onClick: () => selectPage(page.id),
             }));
 
-        tree.push({
-            name: "Pages",
-            icon: "folder",
-            entityId: "pages",
-            isDirectory: true,
-            children: pages,
-            depth: 0,
-        });
-
-        // Components folder
-        const components: FileTreeItemProps[] = project.blocks
-            .filter((b) => !b.archived && !b.parent_id)
-            .map((block) => ({
-                name: `${block.name}.component`,
-                icon: "box",
-                entityId: block.id,
-                isDirectory: false,
+        const clientFeatures: FileTreeItemProps[] = [
+            {
+                name: "pages",
+                icon: "folder",
+                entityId: "client-pages",
+                isDirectory: true,
+                children: clientPages,
                 depth: 1,
-            }));
+            }
+        ];
 
         tree.push({
-            name: "Components",
+            name: "client",
             icon: "folder",
-            entityId: "components",
+            entityId: "client-root",
             isDirectory: true,
-            children: components,
+            children: [
+                {
+                    name: "src",
+                    icon: "folder",
+                    entityId: "client-src",
+                    isDirectory: true,
+                    children: clientFeatures,
+                    depth: 1,
+                }
+            ],
             depth: 0,
         });
 
-        // API folder
-        const apis: FileTreeItemProps[] = project.apis
+        // Server Source
+        const serverRoutes: FileTreeItemProps[] = project.apis
             .filter((a) => !a.archived)
             .map((api) => ({
-                name: `${api.name}.api`,
+                name: `${api.name.toLowerCase()}.service.ts`,
                 icon: "zap",
                 entityId: api.id,
                 isDirectory: false,
-                depth: 1,
+                depth: 2,
             }));
 
         tree.push({
-            name: "API",
+            name: "server",
             icon: "folder",
-            entityId: "api",
+            entityId: "server-root",
             isDirectory: true,
-            children: apis,
+            children: [
+                {
+                    name: "src",
+                    icon: "folder",
+                    entityId: "server-src",
+                    isDirectory: true,
+                    children: [
+                        {
+                            name: "services",
+                            icon: "folder",
+                            entityId: "server-services",
+                            isDirectory: true,
+                            children: serverRoutes,
+                            depth: 2,
+                        }
+                    ],
+                    depth: 1,
+                }
+            ],
             depth: 0,
         });
 
-        // Models folder
-        const models: FileTreeItemProps[] = project.data_models
-            .filter((m) => !m.archived)
-            .map((model) => ({
-                name: `${model.name}.model`,
-                icon: "database",
-                entityId: model.id,
-                isDirectory: false,
-                depth: 1,
-            }));
-
+        // Config files
         tree.push({
-            name: "Models",
-            icon: "folder",
-            entityId: "models",
-            isDirectory: true,
-            children: models,
+            name: "grapes.config.json",
+            icon: "file-text",
+            entityId: "root-config",
+            isDirectory: false,
             depth: 0,
         });
 
-        // Logic flows folder
-        const flows: FileTreeItemProps[] = project.logic_flows
-            .filter((f) => !f.archived)
-            .map((flow) => ({
-                name: `${flow.name}.flow`,
-                icon: "git-branch",
-                entityId: flow.id,
-                isDirectory: false,
-                depth: 1,
-            }));
-
         tree.push({
-            name: "Logic",
-            icon: "folder",
-            entityId: "logic",
-            isDirectory: true,
-            children: flows,
+            name: "package.json",
+            icon: "file-text",
+            entityId: "root-pkg",
+            isDirectory: false,
             depth: 0,
         });
 
         return tree;
     };
 
-    return (
-        <div class="py-2">
-            <Show
-                when={projectState.project}
-                fallback={
-                    <div class="px-6 py-12 text-center animate-fade-in">
-                        <div class="w-12 h-12 mx-auto mb-4 rounded-xl bg-white/5 flex items-center justify-center text-ide-text-muted/40">
-                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                            </svg>
-                        </div>
-                        <p class="text-[12px] font-bold text-ide-text-muted uppercase tracking-widest">No Project</p>
-                        <p class="mt-2 text-[10px] text-ide-text-muted/60 leading-relaxed px-4">
-                            Select or create a project to see the file tree structure.
-                        </p>
-                    </div>
-                }
-            >
-                <div class="space-y-[1px]">
-                    <For each={getFileTree()}>
-                        {(item) => <FileTreeItem {...item} />}
-                    </For>
+    if (!project) {
+        return (
+            <div className="px-6 py-12 text-center animate-fade-in">
+                <div className="w-12 h-12 mx-auto mb-4 rounded-xl bg-white/5 flex items-center justify-center text-ide-text-muted/40">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                    </svg>
                 </div>
-            </Show>
+                <p className="text-[12px] font-bold text-ide-text-muted uppercase tracking-widest">No Project</p>
+                <p className="mt-2 text-[10px] text-ide-text-muted/60 leading-relaxed px-4">
+                    Select or create a project to see the file tree structure.
+                </p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="py-2">
+            <div className="space-y-[1px]">
+                {getFileTree().map((item) => (
+                    <FileTreeItem key={item.entityId} {...item} />
+                ))}
+            </div>
         </div>
     );
 };

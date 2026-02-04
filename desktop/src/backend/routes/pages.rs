@@ -6,7 +6,8 @@ use axum::{
 };
 use serde::Deserialize;
 
-use crate::{AppState, ApiError};
+use crate::backend::state::AppState;
+use crate::backend::error::ApiError;
 use crate::schema::PageSchema;
 
 /// Add page request
@@ -32,6 +33,13 @@ pub async fn add_page(
     
     let result = page.clone();
     project.add_page(page);
+    
+    // Auto-sync
+    if let Some(root) = &project.root_path {
+        let engine = crate::generator::sync_engine::SyncEngine::new(root);
+        let _ = engine.sync_page_to_disk(&result.id, &project);
+    }
+    
     state.set_project(project).await;
     
     Ok(Json(result))

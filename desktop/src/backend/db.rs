@@ -146,6 +146,7 @@ impl Database {
                 logic_flows: Vec::new(),
                 data_models: Vec::new(),
                 variables: Vec::new(),
+                root_path: None,
             })
         })?;
         
@@ -162,6 +163,8 @@ impl Database {
                     root_block_id: row.get(4)?,
                     archived: row.get(5)?,
                     meta: serde_json::from_str(&row.get::<_, String>(6)?).unwrap_or_default(),
+                    physical_path: None,
+                    version_hash: None,
                 })
             })?;
             for p in pages { project.pages.push(p?); }
@@ -200,6 +203,8 @@ impl Database {
                     children: Vec::new(),
                     responsive_styles: std::collections::HashMap::new(),
                     classes: Vec::new(),
+                    physical_path: None,
+                    version_hash: None,
                 })
             })?;
             for b in blocks { project.blocks.push(b?); }

@@ -25,12 +25,15 @@ pub use schema::ProjectSchema;
 pub struct AppState {
     /// Current project (None if no project is open)
     pub project: Mutex<Option<ProjectSchema>>,
+    /// Active development process
+    pub dev_process: Mutex<Option<std::process::Child>>,
 }
 
 impl Default for AppState {
     fn default() -> Self {
         Self {
             project: Mutex::new(None),
+            dev_process: Mutex::new(None),
         }
     }
 }
@@ -136,6 +139,12 @@ fn update_block_property(
     block.properties.insert(property, value);
     project.touch();
     
+    // Auto-sync to disk if root path is set
+    if let Some(root) = &project.root_path {
+        let engine = crate::generator::sync_engine::SyncEngine::new(root);
+        let _ = engine.sync_page_to_disk_by_block(&block_id, project);
+    }
+    
     Ok(())
 }
 
@@ -151,8 +160,14 @@ fn update_block_style(
     let project = state_lock.as_mut().ok_or("No project open")?;
     
     let block = project.find_block_mut(&block_id).ok_or("Block not found")?;
-    block.styles.insert(style, schema::StyleValue::String(value));
+    block.styles.insert(style, crate::schema::block::StyleValue::String(value));
     project.touch();
+    
+    // Auto-sync to disk if root path is set
+    if let Some(root) = &project.root_path {
+        let engine = crate::generator::sync_engine::SyncEngine::new(root);
+        let _ = engine.sync_page_to_disk_by_block(&block_id, project);
+    }
     
     Ok(())
 }
@@ -186,8 +201,15 @@ fn add_page(
     
     let page_clone = page.clone();
     project.add_page(page);
+    project.touch();
     
-    log::info!("Added page: {}", page_clone.name);
+    // Auto-sync to disk if root path is set
+    if let Some(root) = &project.root_path {
+        let engine = crate::generator::sync_engine::SyncEngine::new(root);
+        let _ = engine.sync_page_to_disk(&page_clone.id, project);
+    }
+    
+    log::info!("Added page: {}", page_clone.id);
     Ok(page_clone)
 }
 
@@ -230,6 +252,117 @@ fn add_api(
     
     log::info!("Added API: {} {}", method, api_clone.path);
     Ok(api_clone)
+}
+
+/// Set the physical path for the project root
+#[tauri::command]
+fn set_project_root(
+    state: State<AppState>,
+    path: String,
+) -> Result<(), String> {
+    let mut state_lock = state.project.lock().map_err(|_| "Lock failed")?;
+    let project = state_lock.as_mut().ok_or("No project open")?;
+    
+    project.root_path = Some(path.clone());
+    
+    // Initialize structure
+    let engine = crate::generator::sync_engine::SyncEngine::new(path);
+    engine.init_project_structure(project).map_err(|e| e.to_string())?;
+    
+    Ok(())
+}
+
+/// Manually trigger a full sync to disk
+#[tauri::command]
+fn sync_to_disk(
+    state: State<AppState>,
+) -> Result<(), String> {
+    let mut state_lock = state.project.lock().map_err(|_| "Lock failed")?;
+    let project = state_lock.as_mut().ok_or("No project open")?;
+    
+    let root = project.root_path.as_ref().ok_or("No root path set")?;
+    let engine = crate::generator::sync_engine::SyncEngine::new(root);
+    
+    // Sync all pages
+    for page in &project.pages {
+        if !page.archived {
+            engine.sync_page_to_disk(&page.id, project).map_err(|e| e.to_string())?;
+        }
+    }
+    
+    Ok(())
+}
+
+/// Sync changes from disk back to the project schema
+#[tauri::command]
+fn sync_disk_to_project(
+    state: State<AppState>,
+) -> Result<(), String> {
+    let mut state_lock = state.project.lock().map_err(|_| "Lock failed")?;
+    let project = state_lock.as_mut().ok_or("No project open")?;
+    
+    let root = project.root_path.as_ref().ok_or("No root path set")?;
+    let engine = crate::generator::sync_engine::SyncEngine::new(root);
+    
+    engine.sync_disk_to_project(project).map_err(|e| e.to_string())?;
+    
+    Ok(())
+}
+
+/// Spawn the development server (npm run dev)
+#[tauri::command]
+fn start_dev_server(
+    state: State<AppState>,
+) -> Result<u32, String> {
+    let project_lock = state.project.lock().map_err(|_| "Lock failed")?;
+    let project = project_lock.as_ref().ok_or("No project open")?;
+    let root = project.root_path.as_ref().ok_or("No root path set")?;
+    
+    // Check if process already running
+    let mut dev_lock = state.dev_process.lock().map_err(|_| "Lock failed")?;
+    if let Some(mut child) = dev_lock.take() {
+        let _ = child.kill();
+    }
+    
+    log::info!("Starting dev server in: {}", root);
+    
+    // On Windows, we often need to run cmd /C npm
+    let child = if cfg!(target_os = "windows") {
+        std::process::Command::new("cmd")
+            .args(["/C", "npm", "run", "dev"])
+            .current_dir(root)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+    } else {
+        std::process::Command::new("npm")
+            .arg("run")
+            .arg("dev")
+            .current_dir(root)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+    }.map_err(|e| format!("Failed to start dev server: {}", e))?;
+        
+    let pid = child.id();
+    *dev_lock = Some(child);
+    
+    Ok(pid)
+}
+
+/// Stop the development server
+#[tauri::command]
+fn stop_dev_server(
+    state: State<AppState>,
+) -> Result<(), String> {
+    let mut dev_lock = state.dev_process.lock().map_err(|_| "Lock failed")?;
+    if let Some(mut child) = dev_lock.take() {
+        child.kill().map_err(|e| format!("Failed to kill process: {}", e))?;
+        log::info!("Stopped dev server");
+    }
+    Ok(())
 }
 
 // ============================================================================
@@ -312,6 +445,13 @@ pub fn run() {
             add_data_model,
             // API commands
             add_api,
+            // Sync commands
+            set_project_root,
+            sync_to_disk,
+            sync_disk_to_project,
+            // Terminal commands
+            start_dev_server,
+            stop_dev_server,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

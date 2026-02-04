@@ -2,7 +2,8 @@
 //! 
 //! Generates Prisma schema and SQL migrations from data models.
 
-use crate::schema::{ProjectSchema, DataModelSchema, FieldType, RelationType};
+use crate::schema::{ProjectSchema, DataModelSchema};
+use crate::schema::data_model::{FieldType, RelationType};
 
 /// Database code generator
 pub struct DatabaseGenerator<'a> {

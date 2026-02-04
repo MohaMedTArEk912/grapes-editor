@@ -22,6 +22,12 @@ pub struct PageSchema {
     
     /// Whether this page is archived (soft deleted)
     pub archived: bool,
+    
+    /// Path on the physical file system (relative to root)
+    pub physical_path: Option<String>,
+    
+    /// Hash of the file content for sync detection
+    pub version_hash: Option<String>,
 }
 
 /// SEO metadata for a page
@@ -58,6 +64,8 @@ impl PageSchema {
             root_block_id: None,
             meta: PageMeta::default(),
             archived: false,
+            physical_path: None,
+            version_hash: None,
         }
     }
 }
