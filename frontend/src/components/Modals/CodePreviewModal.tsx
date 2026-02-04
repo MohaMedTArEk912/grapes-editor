@@ -1,4 +1,5 @@
 import { Component, For, createSignal } from "solid-js";
+import { useToast } from "../../context/ToastContext";
 
 interface CodeFile {
     path: string;
@@ -14,6 +15,7 @@ interface CodePreviewModalProps {
 const CodePreviewModal: Component<CodePreviewModalProps> = (props) => {
     const [selectedFileIndex, setSelectedFileIndex] = createSignal(0);
     const currentFile = () => props.files[selectedFileIndex()];
+    const toast = useToast();
 
     return (
         <div class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
@@ -60,7 +62,7 @@ const CodePreviewModal: Component<CodePreviewModalProps> = (props) => {
                             <button
                                 onClick={() => {
                                     navigator.clipboard.writeText(currentFile()?.content || "");
-                                    alert("Copied to clipboard!");
+                                    toast.success("Copied to clipboard!");
                                 }}
                                 class="hover:text-white transition-colors"
                             >

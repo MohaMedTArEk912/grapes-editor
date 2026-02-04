@@ -21,25 +21,47 @@ import {
 } from "../../stores/projectStore";
 import CodePreviewModal from "../Modals/CodePreviewModal";
 import { useToast } from "../../context/ToastContext";
+import PromptModal, { PromptField } from "../UI/PromptModal";
 
 const Toolbar: Component = () => {
     const [showNewMenu, setShowNewMenu] = createSignal(false);
     const [showExportMenu, setShowExportMenu] = createSignal(false);
     const toast = useToast();
 
+    type PromptConfig = {
+        title: string;
+        fields: PromptField[];
+        confirmText?: string;
+        onSubmit: (values: Record<string, string>) => Promise<void> | void;
+    };
+
+    const [promptConfig, setPromptConfig] = createSignal<PromptConfig | null>(null);
+    const closePrompt = () => setPromptConfig(null);
+
     // Generation State
     const [previewData, setPreviewData] = createSignal<{ title: string; files: { path: string; content: string }[] } | null>(null);
 
     const handleNewProject = async () => {
-        const name = prompt("Enter project name:");
-        if (name) {
-            try {
-                await createProject(name);
-                toast.success(`Project "${name}" created`);
-            } catch (err) {
-                toast.error(`Failed to create project: ${err}`);
-            }
-        }
+        setPromptConfig({
+            title: "New Project",
+            confirmText: "Create",
+            fields: [
+                {
+                    name: "name",
+                    label: "Project name",
+                    placeholder: "My Grapes App",
+                    required: true,
+                },
+            ],
+            onSubmit: async (values) => {
+                try {
+                    await createProject(values.name.trim());
+                    toast.success(`Project "${values.name.trim()}" created`);
+                } catch (err) {
+                    toast.error(`Failed to create project: ${err}`);
+                }
+            },
+        });
     };
 
     const handleGenerate = async (type: 'frontend' | 'backend' | 'database') => {
@@ -103,64 +125,128 @@ const Toolbar: Component = () => {
     };
 
     const handleAddBlock = async (blockType: string) => {
-        const name = prompt(`Enter ${blockType} name:`);
-        if (name) {
-            try {
-                await addBlock(blockType, name);
-                toast.success(`${blockType} "${name}" added`);
-            } catch (err) {
-                toast.error(`Failed to add block: ${err}`);
-            }
-        }
         setShowNewMenu(false);
+        setPromptConfig({
+            title: `Add ${blockType} block`,
+            confirmText: "Add",
+            fields: [
+                {
+                    name: "name",
+                    label: "Block name",
+                    placeholder: `${blockType} block`,
+                    value: blockType,
+                    required: true,
+                },
+            ],
+            onSubmit: async (values) => {
+                try {
+                    const name = values.name.trim();
+                    await addBlock(blockType, name);
+                    toast.success(`${blockType} "${name}" added`);
+                } catch (err) {
+                    toast.error(`Failed to add block: ${err}`);
+                }
+            },
+        });
     };
 
     const handleAddPage = async () => {
-        const name = prompt("Enter page name:");
-        if (name) {
-            const path = prompt("Enter page path:", `/${name.toLowerCase()}`);
-            if (path) {
+        setShowNewMenu(false);
+        setPromptConfig({
+            title: "New Page",
+            confirmText: "Create",
+            fields: [
+                {
+                    name: "name",
+                    label: "Page name",
+                    placeholder: "Home",
+                    required: true,
+                },
+                {
+                    name: "path",
+                    label: "Page path",
+                    placeholder: "/home",
+                    required: true,
+                },
+            ],
+            onSubmit: async (values) => {
                 try {
+                    const name = values.name.trim();
+                    const path = values.path.trim() || `/${name.toLowerCase()}`;
                     await addPage(name, path);
                     toast.success(`Page "${name}" created`);
                 } catch (err) {
                     toast.error(`Failed to create page: ${err}`);
                 }
-            }
-        }
-        setShowNewMenu(false);
+            },
+        });
     };
 
     const handleAddModel = async () => {
-        const name = prompt("Enter model name (PascalCase):");
-        if (name) {
-            try {
-                await addDataModel(name);
-                toast.success(`Model "${name}" created`);
-            } catch (err) {
-                toast.error(`Failed to create model: ${err}`);
-            }
-        }
         setShowNewMenu(false);
+        setPromptConfig({
+            title: "New Data Model",
+            confirmText: "Create",
+            fields: [
+                {
+                    name: "name",
+                    label: "Model name",
+                    placeholder: "User",
+                    helperText: "Use PascalCase (e.g., User, BlogPost)",
+                    required: true,
+                },
+            ],
+            onSubmit: async (values) => {
+                try {
+                    const name = values.name.trim();
+                    await addDataModel(name);
+                    toast.success(`Model "${name}" created`);
+                } catch (err) {
+                    toast.error(`Failed to create model: ${err}`);
+                }
+            },
+        });
     };
 
     const handleAddApi = async () => {
-        const method = prompt("Enter HTTP method (GET, POST, PUT, DELETE):", "GET");
-        if (method) {
-            const path = prompt("Enter API path:", "/");
-            if (path) {
-                const name = prompt("Enter endpoint name:");
-                if (name) {
-                    try {
-                        await addApi(method.toUpperCase(), path, name);
-                        toast.success(`API "${name}" created`);
-                    } catch (err) {
-                        toast.error(`Failed to create API: ${err}`);
-                    }
-                }
-            }
-        }
         setShowNewMenu(false);
+        setPromptConfig({
+            title: "New API Endpoint",
+            confirmText: "Create",
+            fields: [
+                {
+                    name: "method",
+                    label: "HTTP method",
+                    placeholder: "GET",
+                    value: "GET",
+                    required: true,
+                },
+                {
+                    name: "path",
+                    label: "Path",
+                    placeholder: "/",
+                    value: "/",
+                    required: true,
+                },
+                {
+                    name: "name",
+                    label: "Endpoint name",
+                    placeholder: "ListUsers",
+                    required: true,
+                },
+            ],
+            onSubmit: async (values) => {
+                try {
+                    const method = values.method.trim().toUpperCase();
+                    const path = values.path.trim();
+                    const name = values.name.trim();
+                    await addApi(method, path, name);
+                    toast.success(`API "${name}" created`);
+                } catch (err) {
+                    toast.error(`Failed to create API: ${err}`);
+                }
+            },
+        });
     };
 
     return (
@@ -320,6 +406,17 @@ const Toolbar: Component = () => {
                     title={previewData()!.title}
                     files={previewData()!.files}
                     onClose={() => setPreviewData(null)}
+                />
+            </Show>
+
+            <Show when={promptConfig()}>
+                <PromptModal
+                    isOpen={!!promptConfig()}
+                    title={promptConfig()!.title}
+                    fields={promptConfig()!.fields}
+                    confirmText={promptConfig()!.confirmText}
+                    onClose={closePrompt}
+                    onSubmit={promptConfig()!.onSubmit}
                 />
             </Show>
         </div>

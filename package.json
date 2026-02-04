@@ -4,11 +4,11 @@
     "private": true,
     "scripts": {
         "frontend": "cd frontend && npm run dev",
-        "backend": "cd backend && npm run dev",
+        "backend": "cd backend && cargo run",
         "dev": "concurrently \"npm run backend\" \"npm run frontend\"",
         "build:frontend": "cd frontend && npm run build",
-        "build:backend": "cd backend && npm run build",
-        "install:all": "cd frontend && npm install && cd ../backend && npm install"
+        "build:backend": "cd backend && cargo build --release",
+        "install:all": "cd frontend && npm install"
     },
     "devDependencies": {
         "autoprefixer": "^10.4.24",

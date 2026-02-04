@@ -271,8 +271,10 @@ impl LogicNode {
 }
 
 /// Helper struct for building common action data
+#[allow(dead_code)]
 pub struct ActionData;
 
+#[allow(dead_code)]
 impl ActionData {
     /// Create SetVariable action data
     pub fn set_variable(name: &str, value: Value) -> Value {

@@ -8,20 +8,31 @@
 import { Component, For, Show, createSignal, createMemo } from "solid-js";
 import { projectState, addDataModel } from "../../stores/projectStore";
 import { DataModelSchema, FieldSchema } from "../../hooks/useTauri";
+import PromptModal, { PromptField } from "../UI/PromptModal";
+import { useToast } from "../../context/ToastContext";
 
 const ERDCanvas: Component = () => {
     const [selectedModelId, setSelectedModelId] = createSignal<string | null>(null);
     const [zoom, setZoom] = createSignal(1);
+    const [promptOpen, setPromptOpen] = createSignal(false);
+    const toast = useToast();
+
+    const modelFields: PromptField[] = [
+        {
+            name: "name",
+            label: "Model name",
+            placeholder: "User",
+            helperText: "Use PascalCase (e.g., User, BlogPost)",
+            required: true,
+        },
+    ];
 
     const models = createMemo(() =>
         projectState.project?.data_models.filter(m => !m.archived) || []
     );
 
     const handleAddModel = async () => {
-        const name = prompt("Enter model name (PascalCase):");
-        if (name) {
-            await addDataModel(name);
-        }
+        setPromptOpen(true);
     };
 
     return (
@@ -54,6 +65,22 @@ const ERDCanvas: Component = () => {
                     {models().length} models
                 </span>
             </div>
+
+            <PromptModal
+                isOpen={promptOpen()}
+                title="New Data Model"
+                fields={modelFields}
+                confirmText="Create"
+                onClose={() => setPromptOpen(false)}
+                onSubmit={async (values) => {
+                    try {
+                        await addDataModel(values.name.trim());
+                        toast.success(`Model "${values.name.trim()}" created`);
+                    } catch (err) {
+                        toast.error(`Failed to create model: ${err}`);
+                    }
+                }}
+            />
 
             {/* ERD Canvas Area */}
             <div class="flex-1 overflow-auto p-8">

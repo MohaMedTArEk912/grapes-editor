@@ -127,8 +127,7 @@ import {{ Controller, {method} }} from '@nestjs/common';
 export class {name}Controller {{
   @{method}()
   async handle{name}() {{
-    // TODO: Implement logic
-    return {{ success: true }};
+    return {{ success: true, message: '{name} handled', path: '{base_path}' }};
   }}
 }}
 "#,

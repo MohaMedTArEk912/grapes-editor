@@ -6,9 +6,13 @@
 
 import { Component, For, Show, createSignal, createMemo } from "solid-js";
 import { projectState, addApi } from "../../stores/projectStore";
+import PromptModal from "../UI/PromptModal";
+import { useToast } from "../../context/ToastContext";
 
 const ApiList: Component = () => {
     const [selectedApiId, setSelectedApiId] = createSignal<string | null>(null);
+    const [promptOpen, setPromptOpen] = createSignal(false);
+    const toast = useToast();
 
     const apis = createMemo(() =>
         projectState.project?.apis.filter(a => !a.archived) || []
@@ -19,16 +23,7 @@ const ApiList: Component = () => {
     );
 
     const handleAddApi = async () => {
-        const method = prompt("HTTP method (GET, POST, PUT, DELETE):", "GET");
-        if (!method) return;
-
-        const path = prompt("API path:", "/api/");
-        if (!path) return;
-
-        const name = prompt("Endpoint name:");
-        if (!name) return;
-
-        await addApi(method.toUpperCase(), path, name);
+        setPromptOpen(true);
     };
 
     const getMethodColor = (method: string): string => {
@@ -110,6 +105,29 @@ const ApiList: Component = () => {
                     </Show>
                 </div>
             </div>
+
+            <PromptModal
+                isOpen={promptOpen()}
+                title="New API Endpoint"
+                confirmText="Create"
+                fields={[
+                    { name: "method", label: "HTTP method", placeholder: "GET", value: "GET", required: true },
+                    { name: "path", label: "API path", placeholder: "/api/", value: "/api/", required: true },
+                    { name: "name", label: "Endpoint name", placeholder: "ListUsers", required: true },
+                ]}
+                onClose={() => setPromptOpen(false)}
+                onSubmit={async (values) => {
+                    try {
+                        const method = values.method.trim().toUpperCase();
+                        const path = values.path.trim();
+                        const name = values.name.trim();
+                        await addApi(method, path, name);
+                        toast.success(`API "${name}" created`);
+                    } catch (err) {
+                        toast.error(`Failed to create API: ${err}`);
+                    }
+                }}
+            />
 
             {/* API Detail Panel */}
             <div class="flex-1 overflow-auto bg-ide-bg">

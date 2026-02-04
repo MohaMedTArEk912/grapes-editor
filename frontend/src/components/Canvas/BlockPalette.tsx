@@ -4,8 +4,10 @@
  * Draggable palette of block types that can be dropped on the canvas.
  */
 
-import { Component, For, createSignal } from "solid-js";
+import { Component, For, createSignal, Show } from "solid-js";
 import { addBlock } from "../../stores/projectStore";
+import PromptModal from "../UI/PromptModal";
+import { useToast } from "../../context/ToastContext";
 
 interface BlockCategory {
     name: string;
@@ -72,12 +74,11 @@ const blockCategories: BlockCategory[] = [
 
 const BlockPalette: Component = () => {
     const [expandedCategory, setExpandedCategory] = createSignal<string | null>("Layout");
+    const [promptState, setPromptState] = createSignal<{ blockType: string; blockName: string } | null>(null);
+    const toast = useToast();
 
     const handleAddBlock = async (blockType: string, blockName: string) => {
-        const name = prompt(`Enter name for ${blockName}:`, blockName);
-        if (name) {
-            await addBlock(blockType, name);
-        }
+        setPromptState({ blockType, blockName });
     };
 
     return (
@@ -87,6 +88,33 @@ const BlockPalette: Component = () => {
                     Block Palette
                 </h3>
             </div>
+
+            <Show when={promptState()}>
+                <PromptModal
+                    isOpen={!!promptState()}
+                    title={`Add ${promptState()!.blockName} block`}
+                    confirmText="Add"
+                    fields={[
+                        {
+                            name: "name",
+                            label: "Block name",
+                            placeholder: promptState()!.blockName,
+                            value: promptState()!.blockName,
+                            required: true,
+                        },
+                    ]}
+                    onClose={() => setPromptState(null)}
+                    onSubmit={async (values) => {
+                        try {
+                            const name = values.name.trim();
+                            await addBlock(promptState()!.blockType, name);
+                            toast.success(`${promptState()!.blockName} "${name}" added`);
+                        } catch (err) {
+                            toast.error(`Failed to add block: ${err}`);
+                        }
+                    }}
+                />
+            </Show>
 
             <div class="p-2">
                 <For each={blockCategories}>

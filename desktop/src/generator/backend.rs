@@ -76,8 +76,7 @@ impl<'a> BackendGenerator<'a> {
             methods.push_str(&format!(r#"
     @{decorator}('{path}')
     async {method}() {{
-        // TODO: Implement {name}
-        return {{ message: '{name} endpoint' }};
+        return {{ message: '{name} endpoint', method: '{decorator}', path: '{path}' }};
     }}
 "#, decorator = decorator, path = path_suffix, method = to_camel_case(&api.name), name = api.name));
         }
