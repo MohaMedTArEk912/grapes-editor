@@ -327,6 +327,24 @@ impl ProjectSchema {
         }
         false
     }
+
+    /// Update a page in the project
+    pub fn update_page(&mut self, page: PageSchema) {
+        if let Some(p) = self.pages.iter_mut().find(|p| p.id == page.id) {
+            *p = page;
+            self.touch();
+        }
+    }
+
+    /// Archive a page by ID (soft delete)
+    pub fn archive_page(&mut self, id: &str) -> bool {
+        if let Some(page) = self.pages.iter_mut().find(|p| p.id == id) {
+            page.archived = true;
+            self.touch();
+            return true;
+        }
+        false
+    }
     
     /// Serialize to JSON string
     pub fn to_json(&self) -> Result<String, serde_json::Error> {

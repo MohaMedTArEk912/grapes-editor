@@ -69,6 +69,13 @@ pub struct ReadFileQuery {
     pub path: String,
 }
 
+/// Write file request
+#[derive(Debug, Deserialize)]
+pub struct WriteFileRequest {
+    pub path: String,
+    pub content: String,
+}
+
 /// Read file response
 #[derive(Debug, Serialize)]
 pub struct FileContentResponse {
@@ -380,5 +387,36 @@ pub async fn read_file(
     Ok(Json(FileContentResponse {
         content,
         path: query.path,
+    }))
+}
+
+/// Write file content
+pub async fn write_file(
+    State(state): State<AppState>,
+    Json(req): Json<WriteFileRequest>,
+) -> Result<Json<FileContentResponse>, ApiError> {
+    let project = state.get_project().await
+        .ok_or_else(|| ApiError::NotFound("No project loaded".into()))?;
+
+    let root_path = project.root_path.as_ref()
+        .ok_or_else(|| ApiError::BadRequest("Project root path not set".into()))?;
+
+    let file_path = validate_path(root_path, &req.path)?;
+
+    if file_path.is_dir() {
+        return Err(ApiError::BadRequest("Path is a directory, not a file".into()));
+    }
+
+    if let Some(parent) = file_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| ApiError::Internal(format!("Failed to create parent directories: {}", e)))?;
+    }
+
+    fs::write(&file_path, &req.content)
+        .map_err(|e| ApiError::Internal(format!("Failed to write file: {}", e)))?;
+
+    Ok(Json(FileContentResponse {
+        content: req.content,
+        path: req.path,
     }))
 }

@@ -19,18 +19,18 @@ const IDESettingsModal: React.FC<IDESettingsModalProps> = ({ isOpen, onClose }) 
                 {/* Appearance Section */}
                 <div className="animate-fade-in">
                     <div className="flex items-center justify-between mb-8 px-1">
-                        <label className="text-[10px] font-black text-white/40 uppercase tracking-[0.2em]">
+                        <label className="text-[10px] font-black text-[var(--ide-text-secondary)] uppercase tracking-[0.2em]">
                             System Appearance
                         </label>
                     </div>
 
                     {/* Theme Toggle */}
-                    <div className="group bg-white/[0.03] border border-white/5 rounded-3xl p-6 transition-all duration-500 hover:bg-white/[0.05] hover:border-white/10">
+                    <div className="group bg-[var(--ide-bg-elevated)] border border-[var(--ide-border)] rounded-3xl p-6 transition-all duration-500 hover:border-[var(--ide-border-strong)]">
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-5">
-                                <div className="w-14 h-14 rounded-2xl bg-white/5 border border-white/5 flex items-center justify-center shadow-2xl group-hover:scale-110 group-hover:rotate-3 transition-all duration-500">
+                                <div className="w-14 h-14 rounded-2xl bg-[var(--ide-bg-panel)] border border-[var(--ide-border)] flex items-center justify-center shadow-2xl group-hover:scale-110 group-hover:rotate-3 transition-all duration-500">
                                     {theme === "dark" ? (
-                                        <svg className="w-6 h-6 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <svg className="w-6 h-6 text-[var(--ide-text-secondary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
                                         </svg>
                                     ) : (
@@ -40,8 +40,8 @@ const IDESettingsModal: React.FC<IDESettingsModalProps> = ({ isOpen, onClose }) 
                                     )}
                                 </div>
                                 <div className="space-y-0.5">
-                                    <p className="text-[11px] font-black text-white uppercase tracking-widest">Interface Theme</p>
-                                    <p className="text-[10px] text-white/20 font-black uppercase tracking-tighter italic">
+                                    <p className="text-[11px] font-black text-[var(--ide-text)] uppercase tracking-widest">Interface Theme</p>
+                                    <p className="text-[10px] text-[var(--ide-text-muted)] font-black uppercase tracking-tighter italic">
                                         Currently: {theme === "dark" ? "Onyx Black" : "Pure Light"}
                                     </p>
                                 </div>
@@ -52,7 +52,7 @@ const IDESettingsModal: React.FC<IDESettingsModalProps> = ({ isOpen, onClose }) 
                                 onClick={toggleTheme}
                                 className={`relative w-14 h-7 rounded-full transition-all duration-500 flex-shrink-0 p-1 ${theme === "light"
                                     ? "bg-indigo-500 shadow-[0_0_20px_-5px_rgba(99,102,241,0.5)]"
-                                    : "bg-white/10"
+                                    : "bg-[var(--ide-border-strong)]"
                                     }`}
                                 aria-label="Toggle theme"
                             >
@@ -66,8 +66,8 @@ const IDESettingsModal: React.FC<IDESettingsModalProps> = ({ isOpen, onClose }) 
                 </div>
 
                 {/* Info */}
-                <div className="pt-4 border-t border-white/5 text-center animate-fade-in" style={{ animationDelay: '100ms' }}>
-                    <p className="text-[10px] text-white/10 font-black uppercase tracking-[0.3em]">
+                <div className="pt-4 border-t border-[var(--ide-border)] text-center animate-fade-in" style={{ animationDelay: '100ms' }}>
+                    <p className="text-[10px] text-[var(--ide-text-muted)] font-black uppercase tracking-[0.3em]">
                         Precision Engineering • v0.1.0
                     </p>
                 </div>
@@ -75,7 +75,7 @@ const IDESettingsModal: React.FC<IDESettingsModalProps> = ({ isOpen, onClose }) 
                 <div className="flex gap-3 pt-4">
                     <button
                         onClick={onClose}
-                        className="flex-1 h-14 rounded-[1.5rem] bg-white text-black font-black text-[11px] uppercase tracking-widest hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl shadow-white/5"
+                        className="flex-1 h-14 rounded-[1.5rem] bg-[var(--ide-text)] text-[var(--ide-bg)] font-black text-[11px] uppercase tracking-widest hover:opacity-90 active:scale-[0.98] transition-all"
                     >
                         Save Configurations
                     </button>

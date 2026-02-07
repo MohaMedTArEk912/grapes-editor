@@ -282,9 +282,21 @@ export function useApi() {
         archiveBlock: (blockId: string) =>
             apiCall<boolean>('DELETE', `/api/blocks/${blockId}`),
 
+        moveBlock: (blockId: string, newParentId: string | null, index: number) =>
+            apiCall<boolean>('PUT', `/api/blocks/${blockId}/move`, {
+                new_parent_id: newParentId,
+                index,
+            }),
+
         // Page operations
         addPage: (name: string, path: string) =>
             apiCall<PageSchema>('POST', '/api/pages', { name, path }),
+
+        updatePage: (id: string, name?: string, path?: string) =>
+            apiCall<PageSchema>('PUT', `/api/pages/${id}`, { name, path }),
+
+        archivePage: (id: string) =>
+            apiCall<boolean>('DELETE', `/api/pages/${id}`),
 
         getPageContent: (id: string) =>
             apiCall<{ content: string }>('GET', `/api/pages/${id}/content`),
@@ -298,6 +310,9 @@ export function useApi() {
 
         deleteLogicFlow: (id: string) =>
             apiCall<boolean>('DELETE', `/api/logic/${id}`),
+
+        updateLogicFlow: (id: string, updates: { name?: string; nodes?: LogicNode[]; entry_node_id?: string | null; description?: string }) =>
+            apiCall<LogicFlowSchema>('PUT', `/api/logic/${id}`, updates),
 
         // Data model operations
         addDataModel: (name: string) =>
@@ -350,6 +365,9 @@ export function useApi() {
 
         readFileContent: (path: string) =>
             apiCall<{ content: string; path: string }>('GET', `/api/files/content?path=${encodeURIComponent(path)}`),
+
+        writeFileContent: (path: string, content: string) =>
+            apiCall<{ content: string; path: string }>('PUT', '/api/files/content', { path, content }),
 
         installDependencies: async () => {
             return apiCall<InstallResult>('POST', '/api/project/install');

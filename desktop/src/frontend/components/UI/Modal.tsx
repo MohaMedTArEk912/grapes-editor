@@ -60,25 +60,25 @@ const Modal: React.FC<ModalProps> = ({
         <>
             {/* Backdrop */}
             <div
-                className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm animate-fade-in"
+                className="fixed inset-0 z-50 bg-black/55 backdrop-blur-sm animate-fade-in"
                 onClick={onClose}
             />
 
             {/* Modal Container */}
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
                 <div
-                    className={`w-full ${sizeClasses[size]} bg-[#0a0a0b] rounded-[2.5rem] shadow-[0_32px_128px_-12px_rgba(0,0,0,0.8)] border border-white/10 pointer-events-auto animate-slide-up overflow-hidden`}
+                    className={`w-full ${sizeClasses[size]} bg-[var(--ide-bg-panel)] rounded-[2.5rem] shadow-[var(--ide-shadow)] border border-[var(--ide-border-strong)] pointer-events-auto animate-slide-up overflow-hidden`}
                     onClick={(e) => e.stopPropagation()}
                 >
                     {/* Header */}
                     <div className="flex items-center justify-between px-10 pt-10 pb-6">
-                        <h2 className="text-2xl font-black text-white tracking-tight italic uppercase">
+                        <h2 className="text-2xl font-black text-[var(--ide-text)] tracking-tight italic uppercase">
                             {title}
                             <span className="text-indigo-500 ml-1">.</span>
                         </h2>
                         {showCloseButton && (
                             <button
-                                className="w-10 h-10 rounded-2xl flex items-center justify-center text-white/20 hover:text-white hover:bg-white/5 transition-all"
+                                className="w-10 h-10 rounded-2xl flex items-center justify-center text-[var(--ide-text-muted)] hover:text-[var(--ide-text)] hover:bg-[var(--ide-bg-elevated)] transition-all"
                                 onClick={onClose}
                                 aria-label="Close modal"
                             >
@@ -121,23 +121,23 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
     variant = "info"
 }) => {
     const variantClasses = {
-        danger: "bg-ide-error hover:bg-red-600",
-        warning: "bg-yellow-500 hover:bg-yellow-600",
-        info: "bg-ide-accent hover:bg-indigo-600",
+        danger: "bg-red-500 hover:bg-red-600",
+        warning: "bg-yellow-500 hover:bg-yellow-600 text-black",
+        info: "bg-indigo-500 hover:bg-indigo-600",
     };
 
     return (
         <Modal isOpen={isOpen} onClose={onClose} title={title} size="sm">
-            <div className="text-ide-text-muted mb-6">{message}</div>
+            <div className="text-[var(--ide-text-secondary)] mb-6">{message}</div>
             <div className="flex justify-end gap-2">
                 <button
-                    className="btn-ghost"
+                    className="px-4 py-2 rounded-lg border border-[var(--ide-border)] text-[var(--ide-text-secondary)] hover:text-[var(--ide-text)] hover:bg-[var(--ide-bg-elevated)] transition-colors"
                     onClick={onClose}
                 >
                     {cancelText}
                 </button>
                 <button
-                    className={`px-4 py-2 rounded-lg text-white font-medium transition-colors ${variantClasses[variant]}`}
+                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${variantClasses[variant]}`}
                     onClick={() => {
                         onConfirm();
                         onClose();
@@ -159,10 +159,10 @@ interface ToastProps {
 
 export const Toast: React.FC<ToastProps> = ({ message, type, onDismiss }) => {
     const typeStyles = {
-        success: "bg-ide-success text-white",
-        error: "bg-ide-error text-white",
+        success: "bg-emerald-500 text-white",
+        error: "bg-red-500 text-white",
         warning: "bg-yellow-500 text-black",
-        info: "bg-ide-accent text-white",
+        info: "bg-indigo-500 text-white",
     };
 
     const typeIcons = {
@@ -186,7 +186,7 @@ export const Toast: React.FC<ToastProps> = ({ message, type, onDismiss }) => {
                 </svg>
                 <span className="font-medium">{message}</span>
                 <button
-                    className="ml-2 p-1 hover:bg-white/20 rounded transition-colors"
+                    className="ml-2 p-1 hover:bg-black/15 rounded transition-colors"
                     onClick={onDismiss}
                     aria-label="Dismiss"
                 >

@@ -36,9 +36,9 @@ const ERDCanvas: React.FC = () => {
     };
 
     return (
-        <div className="h-full flex flex-col bg-ide-bg">
+        <div className="h-full flex flex-col bg-[var(--ide-bg)]">
             {/* ERD Toolbar */}
-            <div className="h-10 bg-ide-sidebar border-b border-ide-border flex items-center px-4 gap-2">
+            <div className="h-10 bg-[var(--ide-bg-sidebar)] border-b border-[var(--ide-border)] flex items-center px-4 gap-2">
                 <button
                     className="btn-ghost flex items-center gap-1 text-sm"
                     onClick={handleAddModel}
@@ -48,20 +48,20 @@ const ERDCanvas: React.FC = () => {
                     </svg>
                     Add Model
                 </button>
-                <div className="w-px h-6 bg-ide-border" />
+                <div className="w-px h-6 bg-[var(--ide-border)]" />
                 <button className="btn-ghost text-sm" onClick={() => setZoom(z => Math.min(z + 0.1, 2))}>
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
                     </svg>
                 </button>
-                <span className="text-xs text-ide-text-muted">{Math.round(zoom * 100)}%</span>
+                <span className="text-xs text-[var(--ide-text-muted)]">{Math.round(zoom * 100)}%</span>
                 <button className="btn-ghost text-sm" onClick={() => setZoom(z => Math.max(z - 0.1, 0.5))}>
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 10H7" />
                     </svg>
                 </button>
                 <div className="flex-1" />
-                <span className="text-xs text-ide-text-muted">
+                <span className="text-xs text-[var(--ide-text-muted)]">
                     {models.length} models
                 </span>
             </div>
@@ -138,32 +138,32 @@ const ModelCard: React.FC<ModelCardProps> = ({ model, selected, onSelect }) => {
     return (
         <div
             className={`w-64 rounded-lg border overflow-hidden bg-ide-panel transition-all cursor-move ${selected
-                ? "border-ide-accent shadow-lg shadow-ide-accent/20"
-                : "border-ide-border hover:border-ide-accent/50"
+                ? "border-[var(--ide-primary)] shadow-lg shadow-indigo-500/20"
+                : "border-[var(--ide-border)] hover:border-indigo-500/50"
                 }`}
             onClick={onSelect}
         >
             {/* Model Header */}
             <div className="bg-gradient-to-r from-indigo-500 to-purple-600 px-4 py-3 flex items-center gap-2">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 text-[var(--ide-text)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
                 </svg>
-                <span className="font-semibold text-white">{model.name}</span>
+                <span className="font-semibold text-[var(--ide-text)]">{model.name}</span>
             </div>
 
             {/* Fields */}
-            <div className="divide-y divide-ide-border">
+            <div className="divide-y divide-[var(--ide-border)]">
                 {model.fields.length > 0 ? (
                     model.fields.map((field, idx) => <FieldRow key={idx} field={field} />)
                 ) : (
-                    <div className="px-4 py-3 text-xs text-ide-text-muted italic">
+                    <div className="px-4 py-3 text-xs text-[var(--ide-text-muted)] italic">
                         No fields defined
                     </div>
                 )}
             </div>
 
             {/* Footer */}
-            <div className="px-4 py-2 bg-ide-sidebar/50 flex items-center justify-between text-xs text-ide-text-muted">
+            <div className="px-4 py-2 bg-[var(--ide-bg-sidebar)] flex items-center justify-between text-xs text-[var(--ide-text-muted)]">
                 <span className="flex items-center gap-1">
                     {model.timestamps && (
                         <span className="px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400">timestamps</span>
@@ -173,7 +173,7 @@ const ModelCard: React.FC<ModelCardProps> = ({ model, selected, onSelect }) => {
                     )}
                 </span>
                 <button
-                    className="hover:text-ide-accent transition-colors"
+                    className="hover:text-[var(--ide-primary)] transition-colors"
                     onClick={(e) => {
                         e.stopPropagation();
                         addField(model.id, "newField", "string", true);
@@ -209,12 +209,12 @@ const FieldRow: React.FC<FieldRowProps> = ({ field }) => {
             case "uuid":
                 return "text-pink-400";
             default:
-                return "text-ide-text-muted";
+                return "text-[var(--ide-text-muted)]";
         }
     };
 
     return (
-        <div className="px-4 py-2 flex items-center gap-2 hover:bg-ide-bg/50 transition-colors">
+        <div className="px-4 py-2 flex items-center gap-2 hover:bg-[var(--ide-bg-elevated)] transition-colors">
             {/* Key Icon */}
             {field.primary_key && (
                 <svg className="w-3 h-3 text-yellow-400" fill="currentColor" viewBox="0 0 24 24">
@@ -223,10 +223,10 @@ const FieldRow: React.FC<FieldRowProps> = ({ field }) => {
             )}
 
             {/* Field Name */}
-            <span className="text-sm text-ide-text flex-1">
+            <span className="text-sm text-[var(--ide-text)] flex-1">
                 {field.name}
                 {!field.required && (
-                    <span className="text-ide-text-muted">?</span>
+                    <span className="text-[var(--ide-text-muted)]">?</span>
                 )}
             </span>
 
@@ -259,10 +259,10 @@ const EmptyERDState: React.FC<EmptyERDStateProps> = ({ onAdd }) => {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
                     </svg>
                 </div>
-                <h3 className="text-lg font-semibold text-ide-text mb-2">
+                <h3 className="text-lg font-semibold text-[var(--ide-text)] mb-2">
                     Database Designer
                 </h3>
-                <p className="text-sm text-ide-text-muted mb-4">
+                <p className="text-sm text-[var(--ide-text-muted)] mb-4">
                     Design your database schema visually. Create models, define fields, and set up relations.
                 </p>
                 <button className="btn-primary" onClick={onAdd}>

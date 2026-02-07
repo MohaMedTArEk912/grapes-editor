@@ -6,12 +6,20 @@ use axum::{
 use serde::Deserialize;
 use crate::backend::state::AppState;
 use crate::backend::error::ApiError;
-use crate::schema::logic_flow::{LogicFlowSchema, TriggerType, FlowContext};
+use crate::schema::logic_flow::{LogicFlowSchema, LogicNode, TriggerType, FlowContext};
 
 #[derive(Debug, Deserialize)]
 pub struct CreateLogicFlowRequest {
     pub name: String,
     pub context: String, // "frontend" or "backend"
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateLogicFlowRequest {
+    pub name: Option<String>,
+    pub nodes: Option<Vec<LogicNode>>,
+    pub entry_node_id: Option<Option<String>>,
+    pub description: Option<String>,
 }
 
 /// Create a new logic flow
@@ -73,6 +81,38 @@ pub async fn delete_logic_flow(
     if found {
         state.set_project(project).await;
     }
-    
+
     Ok(Json(found))
+}
+
+/// Update a logic flow (name, nodes, entry_node_id, description)
+pub async fn update_logic_flow(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(payload): Json<UpdateLogicFlowRequest>,
+) -> Result<Json<LogicFlowSchema>, ApiError> {
+    let mut project = state.get_project().await
+        .ok_or_else(|| ApiError::NotFound("No project loaded".into()))?;
+
+    let flow = project.logic_flows.iter_mut()
+        .find(|f| f.id == id)
+        .ok_or_else(|| ApiError::NotFound(format!("Logic flow '{}' not found", id)))?;
+
+    if let Some(name) = payload.name {
+        flow.name = name;
+    }
+    if let Some(description) = payload.description {
+        flow.description = Some(description);
+    }
+    if let Some(nodes) = payload.nodes {
+        flow.nodes = nodes;
+    }
+    if let Some(entry) = payload.entry_node_id {
+        flow.entry_node_id = entry;
+    }
+
+    let updated = flow.clone();
+    state.set_project(project).await;
+
+    Ok(Json(updated))
 }

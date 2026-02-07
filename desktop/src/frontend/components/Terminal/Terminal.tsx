@@ -110,9 +110,9 @@ const Terminal: React.FC = () => {
     };
 
     return (
-        <div className="h-full flex flex-col bg-[#0d0d14] border-t border-white/5">
+        <div className="h-full flex flex-col bg-[var(--ide-bg)] border-t border-[var(--ide-border)]">
             {/* Terminal Header */}
-            <div className="flex items-center justify-between px-4 py-2 bg-black/20 border-b border-white/5">
+            <div className="flex items-center justify-between px-4 py-2 bg-[var(--ide-chrome)] border-b border-[var(--ide-border)]">
                 <div className="flex items-center gap-2">
                     <div className="flex gap-1.5">
                         <div className={`w-2 h-2 rounded-full ${isRunning ? "bg-green-500 animate-pulse" : "bg-red-500/30"}`} />
@@ -124,7 +124,7 @@ const Terminal: React.FC = () => {
                 <div className="flex items-center gap-2">
                     {isRunning && (
                         <button
-                            className="text-[9px] font-bold text-red-400 bg-red-500/10 px-2 py-0.5 rounded border border-red-500/20 hover:bg-red-500/20"
+                    className="text-[9px] font-bold text-red-500 bg-red-500/10 px-2 py-0.5 rounded border border-red-500/20 hover:bg-red-500/20"
                             onClick={() => {
                                 setIsRunning(false);
                                 addLine("system", "Process terminated.");
@@ -159,7 +159,7 @@ const Terminal: React.FC = () => {
             </div>
 
             {/* Terminal Input */}
-            <div className="px-4 py-2 bg-black/20 border-t border-white/5 flex items-center gap-2">
+            <div className="px-4 py-2 bg-[var(--ide-chrome)] border-t border-[var(--ide-border)] flex items-center gap-2">
                 <span className="text-indigo-400 font-bold text-[11px]">$</span>
                 <input
                     type="text"
@@ -167,7 +167,7 @@ const Terminal: React.FC = () => {
                     onChange={(e) => setInputValue(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder="Type a command..."
-                    className="flex-1 bg-transparent text-[11px] text-white outline-none placeholder:text-ide-text-muted/30 font-mono"
+                    className="flex-1 bg-transparent text-[11px] text-[var(--ide-text)] outline-none placeholder:text-[var(--ide-text-muted)] font-mono"
                     autoFocus
                 />
             </div>

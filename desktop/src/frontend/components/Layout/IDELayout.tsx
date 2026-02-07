@@ -11,7 +11,9 @@
 
 import React, { useState } from "react";
 import { useProjectStore } from "../../hooks/useProjectStore";
-import { setActiveTab, closeProject, installProjectDependencies, clearInstallStatus } from "../../stores/projectStore";
+import { useEditorSettings } from "../../hooks/useEditorSettings";
+import { setActiveTab, setEditMode, closeProject, installProjectDependencies, clearInstallStatus, toggleInspector } from "../../stores/projectStore";
+import * as EditorSettingsStore from "../../stores/editorSettingsStore";
 import LogicCanvas from "../Canvas/LogicCanvas";
 import ApiList from "../Canvas/ApiList";
 import SchemaEditor from "../Editors/SchemaEditor";
@@ -19,12 +21,12 @@ import CodeEditor from "../Canvas/CodeEditor";
 import ProjectSettingsModal from "../Modals/ProjectSettingsModal";
 import ComponentPalette from "../Visual/ComponentPalette";
 import Inspector from "../Visual/Inspector";
+import WindowControls from "../UI/WindowControls";
 
 interface IDELayoutProps {
     toolbar: React.ReactNode;
     fileTree: React.ReactNode;
     canvas: React.ReactNode;
-    inspector?: React.ReactNode;
     terminal?: React.ReactNode;
 }
 
@@ -37,7 +39,8 @@ const IDELayout: React.FC<IDELayoutProps> = ({
     canvas,
     terminal
 }) => {
-    const { project, activeTab, editMode, loading, loadingMessage, installLog, installError } = useProjectStore();
+    const { project, activeTab, editMode, inspectorOpen, loading, loadingMessage, installLog, installError } = useProjectStore();
+    const editorSettings = useEditorSettings();
 
     // Sidebar state (only for Explorer)
     const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -55,20 +58,77 @@ const IDELayout: React.FC<IDELayoutProps> = ({
     };
 
     return (
-        <div className="h-screen w-screen flex flex-col bg-[#1e1e1e] text-[#cccccc] overflow-hidden">
+        <div className="h-screen w-screen flex flex-col bg-[var(--ide-bg)] text-[var(--ide-text)] overflow-hidden">
 
             {/* ===== TOP: Title Bar ===== */}
-            <header className="h-9 bg-[#323233] border-b border-[#252526] flex items-center px-4 select-none flex-shrink-0">
-                <span className="text-xs text-[#cccccc]/80 font-medium">
+            <header className="h-9 bg-[var(--ide-titlebar)] border-b border-[var(--ide-border)] flex items-center justify-between px-4 select-none flex-shrink-0">
+                <span className="text-xs text-[var(--ide-text-secondary)] font-medium">
                     {project?.name || "Untitled"} — Grapes IDE
                 </span>
+                <div className="flex items-center gap-2">
+                    <div className="flex bg-[var(--ide-chrome)] rounded-md overflow-hidden border border-[var(--ide-border)]">
+                        <button
+                            onClick={() => {
+                                if (activeTab !== "canvas") setActiveTab("canvas");
+                                void setEditMode("visual");
+                            }}
+                            className={`px-3 py-1 text-xs flex items-center gap-1.5 transition-colors ${editMode === "visual"
+                                ? "bg-[var(--ide-primary)] text-white"
+                                : "text-[var(--ide-text-secondary)] hover:text-[var(--ide-text)]"
+                                }`}
+                            title="Visual Editor"
+                        >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                            Visual
+                        </button>
+                        <button
+                            onClick={() => {
+                                if (activeTab !== "canvas") setActiveTab("canvas");
+                                void setEditMode("code");
+                            }}
+                            className={`px-3 py-1 text-xs flex items-center gap-1.5 transition-colors ${editMode === "code"
+                                ? "bg-[var(--ide-primary)] text-white"
+                                : "text-[var(--ide-text-secondary)] hover:text-[var(--ide-text)]"
+                                }`}
+                            title="Code Editor"
+                        >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                            </svg>
+                            Code
+                        </button>
+                    </div>
+
+                    {/* Inspector Toggle (Always visible in Visual Mode) */}
+                    {editMode === "visual" && (
+                        <button
+                            onClick={() => toggleInspector()}
+                            className={`h-6 px-2.5 flex items-center gap-1.5 rounded border transition-all text-[10px] font-bold uppercase tracking-wider ${inspectorOpen
+                                    ? "bg-[var(--ide-accent-subtle)] border-[var(--ide-primary)] text-[var(--ide-primary)] shadow-[0_0_8px_rgba(99,102,241,0.2)]"
+                                    : "bg-transparent border-[var(--ide-border-strong)] text-[var(--ide-text-secondary)] hover:text-[var(--ide-text)] hover:border-[var(--ide-text-secondary)]"
+                                }`}
+                            title={inspectorOpen ? "Hide Inspector" : "Show Inspector"}
+                        >
+                            <svg className={`w-3 h-3 transition-transform duration-300 ${inspectorOpen ? "" : "rotate-180"}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 5h1m0 0h10M5 19h10" />
+                            </svg>
+                            Inspector
+                        </button>
+                    )}
+
+                    <WindowControls />
+                </div>
             </header>
 
             {/* ===== MAIN CONTENT AREA ===== */}
             <div className="flex-1 flex overflow-hidden">
 
                 {/* ===== LEFT: Activity Bar (Icon Strip) ===== */}
-                <aside className="w-12 bg-[#333333] flex flex-col items-center py-2 flex-shrink-0">
+                <aside className="w-12 bg-[var(--ide-activity)] flex flex-col items-center py-2 flex-shrink-0 border-r border-[var(--ide-border)]">
                     <ActivityIcon
                         icon="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
                         label="Explorer"
@@ -77,14 +137,15 @@ const IDELayout: React.FC<IDELayoutProps> = ({
                     />
                     {/* Logic Tab - Code icon */}
                     <button
-                        className={`w-12 h-10 flex items-center justify-center relative group transition-colors ${activeTab === "logic" ? "text-white" : "text-[#858585] hover:text-white"
+                        className={`w-12 h-10 flex items-center justify-center relative group transition-colors ${activeTab === "logic" ? "text-[var(--ide-text)]" : "text-[var(--ide-text-secondary)] hover:text-[var(--ide-text)]"
                             }`}
                         onClick={() => handleViewTabClick("logic")}
-                        title="Logic"
+                        onDoubleClick={() => activeTab === "logic" && handleViewTabClick("canvas")}
+                        title="Logic (Double-click to close)"
                         aria-label="Logic"
                     >
                         {activeTab === "logic" && (
-                            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 bg-white" />
+                            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 bg-[var(--ide-primary)]" />
                         )}
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
@@ -93,14 +154,15 @@ const IDELayout: React.FC<IDELayoutProps> = ({
 
                     {/* API Tab - Globe/Network icon */}
                     <button
-                        className={`w-12 h-10 flex items-center justify-center relative group transition-colors ${activeTab === "api" ? "text-white" : "text-[#858585] hover:text-white"
+                        className={`w-12 h-10 flex items-center justify-center relative group transition-colors ${activeTab === "api" ? "text-[var(--ide-text)]" : "text-[var(--ide-text-secondary)] hover:text-[var(--ide-text)]"
                             }`}
                         onClick={() => handleViewTabClick("api")}
-                        title="API"
+                        onDoubleClick={() => activeTab === "api" && handleViewTabClick("canvas")}
+                        title="API (Double-click to close)"
                         aria-label="API"
                     >
                         {activeTab === "api" && (
-                            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 bg-white" />
+                            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 bg-[var(--ide-primary)]" />
                         )}
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
@@ -109,14 +171,15 @@ const IDELayout: React.FC<IDELayoutProps> = ({
 
                     {/* ERD / Schema Tab - Database icon */}
                     <button
-                        className={`w-12 h-10 flex items-center justify-center relative group transition-colors ${activeTab === "erd" ? "text-white" : "text-[#858585] hover:text-white"
+                        className={`w-12 h-10 flex items-center justify-center relative group transition-colors ${activeTab === "erd" ? "text-[var(--ide-text)]" : "text-[var(--ide-text-secondary)] hover:text-[var(--ide-text)]"
                             }`}
                         onClick={() => handleViewTabClick("erd")}
-                        title="Schema"
+                        onDoubleClick={() => activeTab === "erd" && handleViewTabClick("canvas")}
+                        title="Schema (Double-click to close)"
                         aria-label="Schema"
                     >
                         {activeTab === "erd" && (
-                            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 bg-white" />
+                            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 bg-[var(--ide-primary)]" />
                         )}
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
@@ -128,7 +191,7 @@ const IDELayout: React.FC<IDELayoutProps> = ({
 
                     {/* Home Button - returns to Dashboard */}
                     <button
-                        className="w-12 h-10 flex items-center justify-center relative group transition-colors text-[#858585] hover:text-white"
+                        className="w-12 h-10 flex items-center justify-center relative group transition-colors text-[var(--ide-text-secondary)] hover:text-[var(--ide-text)]"
                         onClick={closeProject}
                         title="Return to Dashboard"
                         aria-label="Return to Dashboard"
@@ -149,12 +212,12 @@ const IDELayout: React.FC<IDELayoutProps> = ({
 
                 {/* ===== LEFT: Conditional Sidebar (Explorer or Component Palette) ===== */}
                 {sidebarOpen && (
-                    <aside className="bg-[#252526] border-r border-[#1e1e1e] flex flex-col flex-shrink-0">
+                    <aside className="bg-[var(--ide-chrome)] border-r border-[var(--ide-border)] flex flex-col flex-shrink-0">
                         {editMode === "code" ? (
                             /* Code Mode: File Explorer */
                             <div className="w-60 flex flex-col h-full">
-                                <div className="h-9 px-4 flex items-center border-b border-[#1e1e1e]">
-                                    <span className="text-[11px] font-semibold text-[#bbbbbb] uppercase tracking-wider">
+                                <div className="h-9 px-4 flex items-center border-b border-[var(--ide-border)]">
+                                    <span className="text-[11px] font-semibold text-[var(--ide-text-secondary)] uppercase tracking-wider">
                                         Explorer
                                     </span>
                                 </div>
@@ -171,17 +234,17 @@ const IDELayout: React.FC<IDELayoutProps> = ({
 
                 {/* ===== CENTER: Editor Area + Inspector (Visual Mode) ===== */}
                 <div className="flex-1 flex overflow-hidden">
-                    <main className="flex-1 flex flex-col overflow-hidden bg-[#1e1e1e]">
+                    <main className="flex-1 flex flex-col overflow-hidden bg-[var(--ide-bg)]">
                         {/* Toolbar / Tab Bar */}
-                        <div className="h-9 bg-[#252526] border-b border-[#1e1e1e] flex items-center flex-shrink-0">
+                        <div className="h-9 bg-[var(--ide-chrome)] border-b border-[var(--ide-border)] flex items-center flex-shrink-0">
                             {toolbar}
                         </div>
 
                         {/* Editor Content - switches based on activeTab */}
-                        <div className={`flex-1 overflow-auto relative ${terminalOpen ? 'h-[60%]' : ''}`}>
+                        <div className={`flex-1 relative ${terminalOpen ? 'h-[60%]' : ''}`}>
                             {loading && (
-                                <div className="absolute inset-0 bg-[#1e1e1e]/50 backdrop-blur-sm z-50 flex items-center justify-center">
-                                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#0e639c]"></div>
+                                <div className="absolute inset-0 bg-black/25 backdrop-blur-sm z-50 flex items-center justify-center">
+                                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--ide-primary)]"></div>
                                 </div>
                             )}
                             {activeTab === "canvas" && (editMode === "visual" ? canvas : <CodeEditor />)}
@@ -192,9 +255,9 @@ const IDELayout: React.FC<IDELayoutProps> = ({
 
                         {/* Terminal Panel (toggleable) */}
                         {terminalOpen && terminal && (
-                            <div className="h-[35%] border-t border-[#1e1e1e] bg-[#1e1e1e]">
-                                <div className="h-8 bg-[#252526] px-4 flex items-center gap-4 text-xs border-b border-[#1e1e1e]">
-                                    <span className="text-[#cccccc] font-medium">Terminal</span>
+                            <div className="h-[35%] border-t border-[var(--ide-border)] bg-[var(--ide-bg)]">
+                                <div className="h-8 bg-[var(--ide-chrome)] px-4 flex items-center gap-4 text-xs border-b border-[var(--ide-border)]">
+                                    <span className="text-[var(--ide-text)] font-medium">Terminal</span>
                                 </div>
                                 <div className="h-[calc(100%-2rem)] overflow-auto">
                                     {terminal}
@@ -203,34 +266,34 @@ const IDELayout: React.FC<IDELayoutProps> = ({
                         )}
                     </main>
 
-                    {/* Inspector Panel (Visual Mode Only) */}
-                    {editMode === "visual" && activeTab === "canvas" && <Inspector />}
+                    {/* Inspector Panel (Visual Mode Only - All Tabs) */}
+                    {editMode === "visual" && inspectorOpen && <Inspector />}
                 </div>
             </div>
 
             {/* NPM Install Loading Overlay */}
             {loadingMessage && (
-                <div className="fixed inset-0 bg-black/70 z-[100] flex items-center justify-center">
-                    <div className="bg-[#1e1e1e] p-8 rounded-xl shadow-2xl border border-[#0e639c]/30 max-w-2xl w-[90%]">
+                <div className="fixed inset-0 bg-black/55 z-[100] flex items-center justify-center">
+                    <div className="bg-[var(--ide-bg-panel)] p-8 rounded-xl shadow-2xl border border-[var(--ide-border-strong)] max-w-2xl w-[90%]">
                         <div className="flex items-center gap-4 mb-4">
                             {!installError && (
-                                <div className="animate-spin rounded-full h-10 w-10 border-4 border-[#0e639c] border-t-transparent"></div>
+                                <div className="animate-spin rounded-full h-10 w-10 border-4 border-[var(--ide-primary)] border-t-transparent"></div>
                             )}
                             {installError && (
                                 <div className="h-10 w-10 rounded-full border-4 border-red-500 flex items-center justify-center text-red-500 font-bold">!</div>
                             )}
                             <div>
-                                <h3 className="text-white text-lg font-semibold">Setting up project...</h3>
-                                <p className="text-[#858585] text-sm">{loadingMessage}</p>
+                                <h3 className="text-[var(--ide-text)] text-lg font-semibold">Setting up project...</h3>
+                                <p className="text-[var(--ide-text-secondary)] text-sm">{loadingMessage}</p>
                             </div>
                         </div>
                         {!installError && (
-                            <div className="w-full bg-[#2d2d2d] rounded-full h-1.5 overflow-hidden">
-                                <div className="h-full bg-[#0e639c] animate-pulse" style={{ width: '70%' }}></div>
+                            <div className="w-full bg-[var(--ide-bg-elevated)] rounded-full h-1.5 overflow-hidden">
+                                <div className="h-full bg-[var(--ide-primary)] animate-pulse" style={{ width: '70%' }}></div>
                             </div>
                         )}
                         {installLog && (
-                            <pre className="mt-4 max-h-64 overflow-auto text-xs bg-[#111] text-[#d4d4d4] p-3 rounded border border-[#2d2d2d] whitespace-pre-wrap">
+                            <pre className="mt-4 max-h-64 overflow-auto text-xs bg-[var(--ide-bg-elevated)] text-[var(--ide-text-secondary)] p-3 rounded border border-[var(--ide-border)] whitespace-pre-wrap">
                                 {installLog}
                             </pre>
                         )}
@@ -238,13 +301,13 @@ const IDELayout: React.FC<IDELayoutProps> = ({
                             <div className="mt-4 flex items-center justify-end gap-3">
                                 <button
                                     onClick={() => clearInstallStatus()}
-                                    className="px-3 py-1.5 text-sm rounded bg-[#2d2d2d] hover:bg-[#3a3a3a] text-white"
+                                    className="px-3 py-1.5 text-sm rounded bg-[var(--ide-bg-elevated)] hover:bg-[var(--ide-bg-sidebar)] text-[var(--ide-text)]"
                                 >
                                     Close
                                 </button>
                                 <button
                                     onClick={() => installProjectDependencies()}
-                                    className="px-3 py-1.5 text-sm rounded bg-[#0e639c] hover:bg-[#1177bb] text-white"
+                                    className="px-3 py-1.5 text-sm rounded bg-[var(--ide-primary)] hover:bg-[var(--ide-primary-hover)] text-white"
                                 >
                                     Retry
                                 </button>
@@ -254,23 +317,37 @@ const IDELayout: React.FC<IDELayoutProps> = ({
                 </div>
             )}
 
-            {/* ===== BOTTOM: Status Bar ===== */}
-            <footer className="h-6 bg-[#007acc] flex items-center px-3 text-[11px] text-white select-none flex-shrink-0">
+            {/* ===== BOTTOM: Enhanced Status Bar ===== */}
+            <footer className="h-6 bg-[var(--ide-statusbar)] flex items-center px-3 text-[11px] text-white select-none flex-shrink-0">
                 {/* Left side */}
                 <div className="flex items-center gap-4">
-                    <span>{project?.name || "No Project"}</span>
+                    <span className="font-medium">{project?.name || "No Project"}</span>
+                    {editMode === "code" && (
+                        <>
+                            <span className="opacity-60">|</span>
+                            <span className="opacity-90">Code Mode</span>
+                        </>
+                    )}
                 </div>
 
                 {/* Right side */}
                 <div className="ml-auto flex items-center gap-4">
-                    <span>Ln 1, Col 1</span>
-                    <span>UTF-8</span>
-                    <span>TypeScript React</span>
+                    <span className="opacity-90">UTF-8</span>
+                    <span className="opacity-90">LF</span>
+                    {editMode === "code" && (
+                        <button
+                            onClick={() => EditorSettingsStore.resetZoom()}
+                            className="hover:bg-white/20 px-2 py-0.5 rounded transition-colors opacity-90 hover:opacity-100"
+                            title="Click to reset zoom"
+                        >
+                            Zoom: {editorSettings.zoomLevel}%
+                        </button>
+                    )}
                     <button
                         onClick={() => setTerminalOpen(!terminalOpen)}
                         className="hover:bg-white/20 px-2 py-0.5 rounded transition-colors"
                     >
-                        Terminal
+                        {terminalOpen ? "Hide Terminal" : "Terminal"}
                     </button>
                 </div>
             </footer>
@@ -291,7 +368,7 @@ interface ActivityIconProps {
 
 const ActivityIcon: React.FC<ActivityIconProps> = ({ icon, label, active, onClick }) => (
     <button
-        className={`w-12 h-12 flex items-center justify-center relative group transition-colors ${active ? "text-white" : "text-[#858585] hover:text-white"
+        className={`w-12 h-12 flex items-center justify-center relative group transition-colors ${active ? "text-[var(--ide-text)]" : "text-[var(--ide-text-secondary)] hover:text-[var(--ide-text)]"
             }`}
         onClick={onClick}
         title={label}
@@ -299,7 +376,7 @@ const ActivityIcon: React.FC<ActivityIconProps> = ({ icon, label, active, onClic
     >
         {/* Active indicator bar */}
         {active && (
-            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 bg-white" />
+            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 bg-[var(--ide-primary)]" />
         )}
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d={icon} />

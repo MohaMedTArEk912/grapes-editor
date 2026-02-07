@@ -43,14 +43,14 @@ const ApiList: React.FC = () => {
     return (
         <div className="h-full flex">
             {/* API List */}
-            <div className="w-80 bg-ide-sidebar border-r border-ide-border flex flex-col flex-shrink-0">
+            <div className="w-80 bg-[var(--ide-bg-sidebar)] border-r border-[var(--ide-border)] flex flex-col flex-shrink-0">
                 {/* Header */}
-                <div className="h-10 px-4 flex items-center justify-between border-b border-ide-border">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-ide-text-muted">
+                <div className="h-10 px-4 flex items-center justify-between border-b border-[var(--ide-border)]">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-[var(--ide-text-muted)]">
                         API Endpoints
                     </span>
                     <button
-                        className="p-1 hover:bg-ide-panel rounded text-ide-text-muted hover:text-ide-accent transition-colors"
+                        className="p-1 hover:bg-[var(--ide-bg-panel)] rounded text-[var(--ide-text-muted)] hover:text-[var(--ide-text)] transition-colors"
                         onClick={handleAddApi}
                         aria-label="Add endpoint"
                     >
@@ -68,8 +68,8 @@ const ApiList: React.FC = () => {
                                 <button
                                     key={api.id}
                                     className={`w-full text-left p-3 rounded-lg transition-colors ${selectedApiId === api.id
-                                        ? "bg-ide-accent/20 border border-ide-accent/50"
-                                        : "hover:bg-ide-panel border border-transparent"
+                                        ? "bg-[var(--ide-accent-subtle)] border border-[var(--ide-border-strong)]"
+                                        : "hover:bg-[var(--ide-bg-panel)] border border-transparent"
                                         }`}
                                     onClick={() => setSelectedApiId(api.id)}
                                 >
@@ -77,19 +77,19 @@ const ApiList: React.FC = () => {
                                         <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${getMethodColor(api.method)}`}>
                                             {api.method}
                                         </span>
-                                        <span className="text-sm font-mono text-ide-text truncate">
+                                        <span className="text-sm font-mono text-[var(--ide-text)] truncate">
                                             {api.path}
                                         </span>
                                     </div>
-                                    <span className="text-xs text-ide-text-muted">{api.name}</span>
+                                    <span className="text-xs text-[var(--ide-text-muted)]">{api.name}</span>
                                 </button>
                             ))}
                         </div>
                     ) : (
-                        <div className="p-4 text-center text-ide-text-muted text-sm">
+                        <div className="p-4 text-center text-[var(--ide-text-muted)] text-sm">
                             <p>No API endpoints yet</p>
                             <button
-                                className="mt-2 text-ide-accent hover:underline"
+                                className="mt-2 text-[var(--ide-primary)] hover:underline"
                                 onClick={handleAddApi}
                             >
                                 Create your first endpoint
@@ -123,9 +123,9 @@ const ApiList: React.FC = () => {
             />
 
             {/* API Detail Panel */}
-            <div className="flex-1 overflow-auto bg-ide-bg">
+            <div className="flex-1 overflow-auto bg-[var(--ide-bg)]">
                 {!selectedApi ? (
-                    <div className="h-full flex items-center justify-center text-ide-text-muted">
+                    <div className="h-full flex items-center justify-center text-[var(--ide-text-muted)]">
                         <div className="text-center">
                             <svg className="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -140,32 +140,32 @@ const ApiList: React.FC = () => {
                             <span className={`text-sm font-mono px-2 py-1 rounded border ${getMethodColor(selectedApi.method)}`}>
                                 {selectedApi.method}
                             </span>
-                            <span className="text-xl font-mono text-ide-text">{selectedApi.path}</span>
+                            <span className="text-xl font-mono text-[var(--ide-text)]">{selectedApi.path}</span>
                         </div>
 
                         {/* Endpoint Name */}
                         <div className="mb-6">
-                            <h2 className="text-2xl font-bold text-ide-text">{selectedApi.name}</h2>
+                            <h2 className="text-2xl font-bold text-[var(--ide-text)]">{selectedApi.name}</h2>
                             {selectedApi.description && (
-                                <p className="mt-2 text-ide-text-muted">{selectedApi.description}</p>
+                                <p className="mt-2 text-[var(--ide-text-muted)]">{selectedApi.description}</p>
                             )}
                         </div>
 
                         {/* Sections */}
                         <div className="space-y-6">
                             {/* Request */}
-                            <div className="bg-ide-panel rounded-lg p-4 border border-ide-border">
-                                <h3 className="text-sm font-semibold text-ide-text mb-3">Request</h3>
-                                <div className="bg-ide-bg rounded p-3 font-mono text-sm text-ide-text-muted">
+                            <div className="bg-[var(--ide-bg-panel)] rounded-lg p-4 border border-[var(--ide-border)]">
+                                <h3 className="text-sm font-semibold text-[var(--ide-text)] mb-3">Request</h3>
+                                <div className="bg-[var(--ide-bg)] rounded p-3 font-mono text-sm text-[var(--ide-text-muted)]">
                                     <span className="text-green-400">{selectedApi.method}</span>{" "}
-                                    <span className="text-ide-text">{selectedApi.path}</span>
+                                    <span className="text-[var(--ide-text)]">{selectedApi.path}</span>
                                 </div>
                             </div>
 
                             {/* Response */}
-                            <div className="bg-ide-panel rounded-lg p-4 border border-ide-border">
-                                <h3 className="text-sm font-semibold text-ide-text mb-3">Response</h3>
-                                <div className="bg-ide-bg rounded p-3 font-mono text-sm text-ide-text-muted">
+                            <div className="bg-[var(--ide-bg-panel)] rounded-lg p-4 border border-[var(--ide-border)]">
+                                <h3 className="text-sm font-semibold text-[var(--ide-text)] mb-3">Response</h3>
+                                <div className="bg-[var(--ide-bg)] rounded p-3 font-mono text-sm text-[var(--ide-text-muted)]">
                                     <pre>{`{
   "success": true,
   "data": {}
@@ -174,22 +174,22 @@ const ApiList: React.FC = () => {
                             </div>
 
                             {/* Logic Flow */}
-                            <div className="bg-ide-panel rounded-lg p-4 border border-ide-border">
-                                <h3 className="text-sm font-semibold text-ide-text mb-3">Handler Logic</h3>
+                            <div className="bg-[var(--ide-bg-panel)] rounded-lg p-4 border border-[var(--ide-border)]">
+                                <h3 className="text-sm font-semibold text-[var(--ide-text)] mb-3">Handler Logic</h3>
                                 {!selectedApi.logic_flow_id ? (
-                                    <button className="w-full py-3 border-2 border-dashed border-ide-border rounded-lg text-ide-text-muted hover:border-ide-accent hover:text-ide-accent transition-colors">
+                                    <button className="w-full py-3 border-2 border-dashed border-[var(--ide-border)] rounded-lg text-[var(--ide-text-muted)] hover:border-[var(--ide-primary)] hover:text-[var(--ide-primary)] transition-colors">
                                         + Create Logic Flow
                                     </button>
                                 ) : (
-                                    <p className="text-sm text-ide-text-muted">
+                                    <p className="text-sm text-[var(--ide-text-muted)]">
                                         Connected to logic flow: {selectedApi.logic_flow_id}
                                     </p>
                                 )}
                             </div>
 
                             {/* Permissions */}
-                            <div className="bg-ide-panel rounded-lg p-4 border border-ide-border">
-                                <h3 className="text-sm font-semibold text-ide-text mb-3">Permissions</h3>
+                            <div className="bg-[var(--ide-bg-panel)] rounded-lg p-4 border border-[var(--ide-border)]">
+                                <h3 className="text-sm font-semibold text-[var(--ide-text)] mb-3">Permissions</h3>
                                 {selectedApi.permissions.length > 0 ? (
                                     <div className="flex flex-wrap gap-2">
                                         {selectedApi.permissions.map((perm, idx) => (
@@ -199,7 +199,7 @@ const ApiList: React.FC = () => {
                                         ))}
                                     </div>
                                 ) : (
-                                    <span className="text-sm text-ide-text-muted">Public (no authentication required)</span>
+                                    <span className="text-sm text-[var(--ide-text-muted)]">Public (no authentication required)</span>
                                 )}
                             </div>
                         </div>

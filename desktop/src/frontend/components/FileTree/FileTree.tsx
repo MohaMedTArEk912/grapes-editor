@@ -2,6 +2,9 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useProjectStore } from "../../hooks/useProjectStore";
 import { useApi, FileEntry } from "../../hooks/useTauri";
 import { refreshCurrentProject, selectFile } from "../../stores/projectStore";
+import PromptModal from "../UI/PromptModal";
+import ConfirmModal from "../Modals/ConfirmModal";
+import { useToast } from "../../context/ToastContext";
 
 interface FileTreeItemProps {
     entry: FileEntry;
@@ -18,14 +21,18 @@ const FileTreeItem: React.FC<FileTreeItemProps> = ({
     onFileSelect,
     selectedPath,
 }) => {
-    const [expanded, setExpanded] = useState(depth < 2);
+    const [expanded, setExpanded] = useState(false);
     const [children, setChildren] = useState<FileEntry[]>([]);
     const [loading, setLoading] = useState(false);
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+    const [createModalType, setCreateModalType] = useState<"file" | "folder" | null>(null);
+    const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
     const [isRenaming, setIsRenaming] = useState(false);
     const [newName, setNewName] = useState(entry.name);
 
     const api = useApi();
+    const toast = useToast();
     const isSelected = selectedPath === entry.path;
 
     // Load children when expanded
@@ -67,33 +74,37 @@ const FileTreeItem: React.FC<FileTreeItemProps> = ({
 
     const closeContextMenu = () => setContextMenu(null);
 
-    const handleNewFile = async () => {
-        closeContextMenu();
-        const fileName = prompt("Enter file name:");
-        if (!fileName?.trim()) return;
+    const getParentPath = () => (entry.is_directory ? entry.path : entry.path.split("/").slice(0, -1).join("/"));
 
-        try {
-            const parentPath = entry.is_directory ? entry.path : entry.path.split("/").slice(0, -1).join("/");
-            const newPath = parentPath ? `${parentPath}/${fileName}` : fileName;
-            await api.createFile(newPath, "");
-            onRefresh();
-        } catch (err) {
-            alert(`Failed to create file: ${err}`);
-        }
+    const handleNewFile = () => {
+        closeContextMenu();
+        setCreateModalType("file");
     };
 
-    const handleNewFolder = async () => {
+    const handleNewFolder = () => {
         closeContextMenu();
-        const folderName = prompt("Enter folder name:");
-        if (!folderName?.trim()) return;
+        setCreateModalType("folder");
+    };
+
+    const handleCreateEntry = async (values: Record<string, string>) => {
+        const name = values.name?.trim();
+        if (!name || !createModalType) return;
+
+        const parentPath = getParentPath();
+        const newPath = parentPath ? `${parentPath}/${name}` : name;
 
         try {
-            const parentPath = entry.is_directory ? entry.path : entry.path.split("/").slice(0, -1).join("/");
-            const newPath = parentPath ? `${parentPath}/${folderName}` : folderName;
-            await api.createFolder(newPath);
+            if (createModalType === "file") {
+                await api.createFile(newPath, "");
+                toast.success(`File "${name}" created`);
+            } else {
+                await api.createFolder(newPath);
+                toast.success(`Folder "${name}" created`);
+            }
             onRefresh();
         } catch (err) {
-            alert(`Failed to create folder: ${err}`);
+            const resource = createModalType === "file" ? "file" : "folder";
+            toast.error(`Failed to create ${resource}: ${err}`);
         }
     };
 
@@ -114,26 +125,30 @@ const FileTreeItem: React.FC<FileTreeItemProps> = ({
             const newPath = parentPath ? `${parentPath}/${newName}` : newName;
             await api.renameFile(entry.path, newPath);
             setIsRenaming(false);
+            toast.success(`Renamed to "${newName}"`);
             onRefresh();
         } catch (err) {
-            alert(`Failed to rename: ${err}`);
+            toast.error(`Failed to rename: ${err}`);
             setIsRenaming(false);
         }
     };
 
-    const handleDelete = async () => {
+    const handleDelete = () => {
         closeContextMenu();
-        const confirmMsg = entry.is_directory
-            ? `Delete folder "${entry.name}" and all its contents?`
-            : `Delete file "${entry.name}"?`;
+        setDeleteConfirmOpen(true);
+    };
 
-        if (!confirm(confirmMsg)) return;
-
+    const confirmDelete = async () => {
+        setIsDeleting(true);
         try {
             await api.deleteFile(entry.path);
+            toast.success(`${entry.is_directory ? "Folder" : "File"} "${entry.name}" deleted`);
+            setDeleteConfirmOpen(false);
             onRefresh();
         } catch (err) {
-            alert(`Failed to delete: ${err}`);
+            toast.error(`Failed to delete: ${err}`);
+        } finally {
+            setIsDeleting(false);
         }
     };
 
@@ -297,6 +312,40 @@ const FileTreeItem: React.FC<FileTreeItemProps> = ({
                     </div>
                 </>
             )}
+
+            <PromptModal
+                isOpen={createModalType !== null}
+                title={createModalType === "file" ? "Create New File" : "Create New Folder"}
+                confirmText={createModalType === "file" ? "Create File" : "Create Folder"}
+                fields={[
+                    {
+                        name: "name",
+                        label: createModalType === "file" ? "File Name" : "Folder Name",
+                        placeholder: createModalType === "file" ? "new-file.tsx" : "new-folder",
+                        required: true,
+                    },
+                ]}
+                onClose={() => setCreateModalType(null)}
+                onSubmit={handleCreateEntry}
+            />
+
+            <ConfirmModal
+                isOpen={deleteConfirmOpen}
+                title={entry.is_directory ? "Delete Folder" : "Delete File"}
+                message={entry.is_directory
+                    ? `Delete "${entry.name}" and all nested files? This action cannot be undone.`
+                    : `Delete "${entry.name}"? This action cannot be undone.`}
+                confirmText="Delete"
+                cancelText="Cancel"
+                variant="danger"
+                isLoading={isDeleting}
+                onConfirm={confirmDelete}
+                onCancel={() => {
+                    if (!isDeleting) {
+                        setDeleteConfirmOpen(false);
+                    }
+                }}
+            />
         </div>
     );
 };

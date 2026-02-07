@@ -60,8 +60,7 @@ impl<'a> FrontendGenerator<'a> {
             jsx.push_str(&self.generate_block_jsx(block, 2));
         }
         
-        format!(r#"// @grapes-page id="{id}"
-import React from 'react';
+        format!(r#"import React from 'react';
 
 export default function {name}() {{
     return (
@@ -69,7 +68,7 @@ export default function {name}() {{
 {jsx}        </div>
     );
 }}
-"#, id = page.id, name = crate::generator::pascal_case(&page.name), jsx = jsx)
+"#, name = crate::generator::pascal_case(&page.name), jsx = jsx)
     }
     
     /// Generate JSX for a block and its children

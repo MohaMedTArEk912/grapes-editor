@@ -69,7 +69,7 @@ const PromptModal: React.FC<PromptModalProps> = ({
                 {fields.map((field) => (
                     <div key={field.name} className="animate-fade-in" style={{ animationDelay: '50ms' }}>
                         <div className="flex items-center justify-between mb-2 px-1">
-                            <label className="text-[10px] font-black text-white/40 uppercase tracking-[0.2em]">
+                            <label className="text-[10px] font-black text-[var(--ide-text-secondary)] uppercase tracking-[0.2em]">
                                 {field.label}
                                 {field.required && (
                                     <span className="text-red-500/50 ml-1">*</span>
@@ -84,7 +84,7 @@ const PromptModal: React.FC<PromptModalProps> = ({
                                     onChange={(e) => updateValue(field.name, e.target.value)}
                                 >
                                     {field.options?.map((opt) => (
-                                        <option key={opt.value} value={opt.value} className="bg-[#0a0a0a] text-white">
+                                        <option key={opt.value} value={opt.value} className="bg-[var(--ide-bg-panel)] text-[var(--ide-text)]">
                                             {opt.label}
                                         </option>
                                     ))}
@@ -100,7 +100,7 @@ const PromptModal: React.FC<PromptModalProps> = ({
                             />
                         )}
                         {field.helperText && (
-                            <p className="text-[10px] text-white/20 mt-2 ml-1 italic">{field.helperText}</p>
+                            <p className="text-[10px] text-[var(--ide-text-muted)] mt-2 ml-1 italic">{field.helperText}</p>
                         )}
                     </div>
                 ))}
@@ -108,14 +108,14 @@ const PromptModal: React.FC<PromptModalProps> = ({
 
             <div className="flex gap-3 mt-10">
                 <button
-                    className="flex-1 h-12 rounded-2xl border border-white/5 text-white/40 font-black text-[10px] uppercase tracking-widest hover:bg-white/5 hover:text-white transition-all"
+                    className="flex-1 h-12 rounded-2xl border border-[var(--ide-border)] text-[var(--ide-text-secondary)] font-black text-[10px] uppercase tracking-widest hover:bg-[var(--ide-bg-elevated)] hover:text-[var(--ide-text)] transition-all"
                     onClick={onClose}
                     disabled={isSubmitting}
                 >
                     {cancelText}
                 </button>
                 <button
-                    className="flex-1 h-12 rounded-2xl bg-white text-black font-black text-[10px] uppercase tracking-widest hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-20 shadow-xl shadow-white/5"
+                    className="flex-1 h-12 rounded-2xl bg-[var(--ide-primary)] text-white font-black text-[10px] uppercase tracking-widest hover:bg-[var(--ide-primary-hover)] active:scale-[0.98] transition-all disabled:opacity-30 shadow-xl shadow-indigo-500/10"
                     disabled={!canSubmit || isSubmitting}
                     onClick={handleSubmit}
                 >

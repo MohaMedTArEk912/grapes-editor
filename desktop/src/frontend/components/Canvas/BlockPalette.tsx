@@ -147,6 +147,9 @@ const BlockPalette: React.FC = () => {
                                         draggable="true"
                                         onDragStart={(e) => {
                                             e.dataTransfer.setData("application/grapes-block", block.type);
+                                            // Fallbacks for environments where custom MIME types are stripped.
+                                            e.dataTransfer.setData("text/grapes-block", block.type);
+                                            e.dataTransfer.setData("text/plain", block.type);
                                             e.dataTransfer.effectAllowed = "copy";
                                         }}
                                     >

@@ -10,6 +10,13 @@ use crate::backend::state::AppState;
 use crate::backend::error::ApiError;
 use crate::schema::PageSchema;
 
+/// Update page request
+#[derive(Debug, Deserialize)]
+pub struct UpdatePageRequest {
+    pub name: Option<String>,
+    pub path: Option<String>,
+}
+
 /// Add page request
 #[derive(Debug, Deserialize)]
 pub struct AddPageRequest {
@@ -49,6 +56,56 @@ pub async fn add_page(
     state.set_project(project).await;
     
     Ok(Json(result))
+}
+
+/// Update a page
+pub async fn update_page(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(req): Json<UpdatePageRequest>,
+) -> Result<Json<PageSchema>, ApiError> {
+    let mut project = state.get_project().await
+        .ok_or_else(|| ApiError::NotFound("No project loaded".into()))?;
+    
+    let mut page = project.find_page(&id)
+        .ok_or_else(|| ApiError::NotFound("Page not found".into()))?
+        .clone();
+    
+    if let Some(name) = req.name {
+        page.name = name;
+    }
+    if let Some(path) = req.path {
+        page.path = path;
+    }
+    
+    project.update_page(page.clone());
+    state.set_project(project).await;
+    
+    Ok(Json(page))
+}
+
+/// Delete a page (soft delete/archive)
+pub async fn delete_page(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<bool>, ApiError> {
+    let mut project = state.get_project().await
+        .ok_or_else(|| ApiError::NotFound("No project loaded".into()))?;
+    
+    // Find page name before archiving for disk deletion
+    let page_name = project.find_page(&id).map(|p| p.name.clone());
+    
+    project.archive_page(&id);
+    
+    // Auto-sync deletion
+    if let (Some(root), Some(name)) = (&project.root_path, page_name) {
+        let engine = crate::generator::sync_engine::SyncEngine::new(root);
+        let _ = engine.delete_page_from_disk(&name, &project);
+    }
+    
+    state.set_project(project).await;
+    
+    Ok(Json(true))
 }
 
 /// Get physical page content from disk

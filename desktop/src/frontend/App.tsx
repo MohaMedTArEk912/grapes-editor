@@ -15,7 +15,6 @@ import Canvas from "./components/Canvas/Canvas";
 import LogicCanvas from "./components/Canvas/LogicCanvas";
 import ERDCanvas from "./components/Canvas/ERDCanvas";
 import ApiList from "./components/Canvas/ApiList";
-import Inspector from "./components/Inspector/Inspector";
 import Terminal from "./components/Terminal/Terminal";
 import DashboardView from "./components/Dashboard/DashboardView";
 import WorkspaceSetup from "./components/Dashboard/WorkspaceSetup";
@@ -87,7 +86,6 @@ const App: React.FC = () => {
           toolbar={<Toolbar />}
           fileTree={<FileTree />}
           canvas={renderCanvas()}
-          inspector={<Inspector />}
           terminal={<Terminal />}
         />
       </ToastProvider>

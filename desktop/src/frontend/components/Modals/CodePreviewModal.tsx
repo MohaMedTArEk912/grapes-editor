@@ -19,11 +19,11 @@ const CodePreviewModal: React.FC<CodePreviewModalProps> = ({ title, files, onClo
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
-            <div className="bg-ide-bg border border-ide-border rounded-xl shadow-2xl w-full max-w-4xl max-h-[80vh] flex flex-col overflow-hidden">
+            <div className="bg-[var(--ide-bg)] border border-[var(--ide-border)] rounded-xl shadow-2xl w-full max-w-4xl max-h-[80vh] flex flex-col overflow-hidden">
                 {/* Header */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-ide-border bg-ide-panel">
-                    <h3 className="text-lg font-bold text-ide-text">{title}</h3>
-                    <button onClick={onClose} className="text-ide-text-muted hover:text-ide-text">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--ide-border)] bg-[var(--ide-bg-panel)]">
+                    <h3 className="text-lg font-bold text-[var(--ide-text)]">{title}</h3>
+                    <button onClick={onClose} className="text-[var(--ide-text-muted)] hover:text-[var(--ide-text)]">
                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
                         </svg>
@@ -33,16 +33,16 @@ const CodePreviewModal: React.FC<CodePreviewModalProps> = ({ title, files, onClo
                 {/* Content */}
                 <div className="flex-1 flex overflow-hidden">
                     {/* Sidebar: File List */}
-                    <div className="w-64 border-r border-ide-border overflow-y-auto bg-ide-panel/30">
-                        <div className="px-4 py-3 text-xs font-bold text-ide-text-muted uppercase tracking-wider">
+                    <div className="w-64 border-r border-[var(--ide-border)] overflow-y-auto bg-[var(--ide-bg-panel)]">
+                        <div className="px-4 py-3 text-xs font-bold text-[var(--ide-text-muted)] uppercase tracking-wider">
                             Files
                         </div>
                         {files.map((file, index) => (
                             <button
                                 key={file.path + index}
                                 className={`w-full px-4 py-2 text-left text-sm flex items-center gap-2 transition-colors ${selectedFileIndex === index
-                                    ? "bg-ide-accent text-white"
-                                    : "text-ide-text-muted hover:bg-ide-panel hover:text-ide-text"
+                                    ? "bg-[var(--ide-primary)] text-white"
+                                    : "text-[var(--ide-text-muted)] hover:bg-[var(--ide-bg-elevated)] hover:text-[var(--ide-text)]"
                                     }`}
                                 onClick={() => setSelectedFileIndex(index)}
                             >
@@ -55,30 +55,30 @@ const CodePreviewModal: React.FC<CodePreviewModalProps> = ({ title, files, onClo
                     </div>
 
                     {/* Editor area */}
-                    <div className="flex-1 flex flex-col bg-[#0d1117] overflow-hidden">
-                        <div className="px-4 py-2 bg-black/20 text-xs text-ide-text-muted flex justify-between items-center">
+                    <div className="flex-1 flex flex-col bg-[var(--ide-bg-elevated)] overflow-hidden">
+                        <div className="px-4 py-2 bg-[var(--ide-bg-panel)] text-xs text-[var(--ide-text-muted)] flex justify-between items-center">
                             <span>{currentFile?.path}</span>
                             <button
                                 onClick={() => {
                                     navigator.clipboard.writeText(currentFile?.content || "");
                                     success("Copied to clipboard!");
                                 }}
-                                className="hover:text-white transition-colors"
+                                className="hover:text-[var(--ide-text)] transition-colors"
                             >
                                 Copy Code
                             </button>
                         </div>
-                        <pre className="flex-1 overflow-auto p-6 text-sm font-mono text-gray-300 leading-relaxed">
+                        <pre className="flex-1 overflow-auto p-6 text-sm font-mono text-[var(--ide-text-secondary)] leading-relaxed">
                             <code>{currentFile?.content}</code>
                         </pre>
                     </div>
                 </div>
 
                 {/* Footer */}
-                <div className="px-6 py-4 border-t border-ide-border bg-ide-panel text-right">
+                <div className="px-6 py-4 border-t border-[var(--ide-border)] bg-[var(--ide-bg-panel)] text-right">
                     <button
                         onClick={onClose}
-                        className="px-4 py-2 bg-ide-accent text-white rounded-lg hover:bg-ide-accent-hover transition-colors"
+                        className="px-4 py-2 bg-[var(--ide-primary)] text-white rounded-lg hover:bg-[var(--ide-primary-hover)] transition-colors"
                     >
                         Close
                     </button>

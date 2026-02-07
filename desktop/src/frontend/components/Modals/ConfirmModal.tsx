@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 
 interface ConfirmModalProps {
     isOpen: boolean;
@@ -14,16 +15,7 @@ interface ConfirmModalProps {
 
 /**
  * A premium confirmation modal component with rich visual design.
- * 
- * @param isOpen - Whether the modal is visible.
- * @param title - The title of the modal.
- * @param message - The message/body of the modal.
- * @param confirmText - Text for the confirm button (default: "Confirm").
- * @param cancelText - Text for the cancel button (default: "Cancel").
- * @param variant - Visual style: "danger", "warning", or "default".
- * @param onConfirm - Callback when user confirms.
- * @param onCancel - Callback when user cancels.
- * @param isLoading - Shows loading state on confirm button.
+ * Uses React Portals to ensure it renders outside any containing elements.
  */
 const ConfirmModal: React.FC<ConfirmModalProps> = ({
     isOpen,
@@ -36,7 +28,14 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
     onCancel,
     isLoading = false,
 }) => {
-    if (!isOpen) return null;
+    const [mounted, setMounted] = useState(false);
+
+    useEffect(() => {
+        setMounted(true);
+        return () => setMounted(false);
+    }, []);
+
+    if (!isOpen || !mounted) return null;
 
     const variantConfig = {
         danger: {
@@ -57,7 +56,7 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
             borderGlow: "shadow-[0_0_60px_-15px_rgba(245,158,11,0.5)]",
             iconBg: "bg-gradient-to-br from-amber-500/30 to-yellow-600/20",
             iconColor: "text-amber-400",
-            confirmBtn: "bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 shadow-lg shadow-amber-500/30",
+            confirmBtn: "bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-black shadow-lg shadow-amber-500/30",
             ring: "focus:ring-amber-500/50",
             icon: (
                 <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -82,42 +81,42 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
 
     const config = variantConfig[variant];
 
-    return (
+    return createPortal(
         <div
-            className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+            className="fixed inset-0 z-[9999] flex items-center justify-center p-4 overflow-y-auto"
             style={{ animation: "fadeIn 0.2s ease-out" }}
         >
             {/* Backdrop */}
             <div
-                className="absolute inset-0 bg-black/80 backdrop-blur-md"
+                className="fixed inset-0 bg-black/80 backdrop-blur-md"
                 onClick={onCancel}
             />
 
             {/* Modal Container */}
             <div
-                className={`relative w-full max-w-md overflow-hidden rounded-3xl border border-white/10 bg-[#0d0d0d]/95 ${config.borderGlow}`}
+                className={`relative w-full max-w-md overflow-hidden rounded-3xl border border-[var(--ide-border-strong)] bg-[var(--ide-bg-panel)] ${config.borderGlow}`}
                 style={{ animation: "scaleIn 0.25s ease-out" }}
             >
                 {/* Gradient Accent */}
                 <div className={`absolute inset-0 bg-gradient-to-b ${config.gradient} pointer-events-none`} />
 
                 {/* Decorative Orbs */}
-                <div className="absolute -top-20 -right-20 w-40 h-40 bg-gradient-to-br from-white/5 to-transparent rounded-full blur-3xl pointer-events-none" />
-                <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-gradient-to-tr from-white/5 to-transparent rounded-full blur-2xl pointer-events-none" />
+                <div className="absolute -top-20 -right-20 w-40 h-40 bg-gradient-to-br from-[var(--ide-text)]/8 to-transparent rounded-full blur-3xl pointer-events-none" />
+                <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-gradient-to-tr from-[var(--ide-text)]/8 to-transparent rounded-full blur-2xl pointer-events-none" />
 
                 {/* Content */}
                 <div className="relative p-8">
                     {/* Icon */}
                     <div className="flex justify-center mb-6">
-                        <div className={`w-20 h-20 rounded-2xl ${config.iconBg} ${config.iconColor} flex items-center justify-center border border-white/10 backdrop-blur-sm`}>
+                        <div className={`w-20 h-20 rounded-2xl ${config.iconBg} ${config.iconColor} flex items-center justify-center border border-[var(--ide-border)] backdrop-blur-sm`}>
                             {config.icon}
                         </div>
                     </div>
 
                     {/* Text */}
                     <div className="text-center mb-8">
-                        <h3 className="text-2xl font-bold text-white mb-3 tracking-tight">{title}</h3>
-                        <p className="text-base text-gray-400 leading-relaxed max-w-sm mx-auto">{message}</p>
+                        <h3 className="text-2xl font-bold text-[var(--ide-text)] mb-3 tracking-tight">{title}</h3>
+                        <p className="text-base text-[var(--ide-text-secondary)] leading-relaxed max-w-sm mx-auto">{message}</p>
                     </div>
 
                     {/* Actions */}
@@ -125,7 +124,7 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
                         <button
                             onClick={onCancel}
                             disabled={isLoading}
-                            className="flex-1 px-6 py-3.5 rounded-xl text-sm font-bold text-gray-300 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="flex-1 px-6 py-3.5 rounded-xl text-sm font-bold text-[var(--ide-text-secondary)] bg-[var(--ide-bg-elevated)] hover:bg-[var(--ide-bg-sidebar)] border border-[var(--ide-border)] hover:border-[var(--ide-border-strong)] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {cancelText}
                         </button>
@@ -157,19 +156,19 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
                     to { opacity: 1; }
                 }
                 @keyframes scaleIn {
-                    from { 
+                    from {
                         opacity: 0;
                         transform: scale(0.95) translateY(10px);
                     }
-                    to { 
+                    to {
                         opacity: 1;
                         transform: scale(1) translateY(0);
                     }
                 }
             `}</style>
-        </div>
+        </div>,
+        document.body
     );
 };
 
 export default ConfirmModal;
-

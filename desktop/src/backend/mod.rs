@@ -52,14 +52,18 @@ pub fn create_router(state: BackendAppState) -> Router {
         .route("/api/blocks", post(routes::blocks::add_block))
         .route("/api/blocks/:id", put(routes::blocks::update_block))
         .route("/api/blocks/:id", delete(routes::blocks::delete_block))
+        .route("/api/blocks/:id/move", put(routes::blocks::move_block))
         
         // Page routes
         .route("/api/pages", post(routes::pages::add_page))
+        .route("/api/pages/:id", put(routes::pages::update_page))
+        .route("/api/pages/:id", delete(routes::pages::delete_page))
         .route("/api/pages/:id/content", get(routes::pages::get_page_content))
         
         // Logic routes
         .route("/api/logic", get(routes::logic::get_logic_flows))
         .route("/api/logic", post(routes::logic::create_logic_flow))
+        .route("/api/logic/:id", put(routes::logic::update_logic_flow))
         .route("/api/logic/:id", delete(routes::logic::delete_logic_flow))
         
         // Data model routes
@@ -82,6 +86,7 @@ pub fn create_router(state: BackendAppState) -> Router {
         .route("/api/files/rename", put(routes::files::rename_file))
         .route("/api/files/delete", delete(routes::files::delete_file))
         .route("/api/files/content", get(routes::files::read_file))
+        .route("/api/files/content", put(routes::files::write_file))
         
         // CORS layer
         .layer(

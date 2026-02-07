@@ -291,7 +291,7 @@ server.listen(port, () => {
         let page_dir = self.root_path.join("client/page");
         fs::create_dir_all(&page_dir)?;
 
-        let mut page_content = format!("// @grapes-page id=\"{}\"\n", page.id);
+        let mut page_content = String::new();
         page_content.push_str("import React from 'react';\n\n");
         page_content.push_str(&format!("export default function {}() {{\n", pascal_case(&page.name)));
         page_content.push_str("  return (\n    <div className=\"min-h-screen bg-white\">\n");
@@ -310,6 +310,21 @@ server.listen(port, () => {
         fs::write(tsx_path, page_content)?;
         self.sync_app_routes_to_disk(project)?;
 
+        Ok(())
+    }
+
+    /// Delete a page's physical file from disk
+    pub fn delete_page_from_disk(&self, page_name: &str, project: &ProjectSchema) -> std::io::Result<()> {
+        let page_dir = self.root_path.join("client/page");
+        let tsx_path = page_dir.join(format!("{}.tsx", pascal_case(page_name)));
+        
+        if tsx_path.exists() {
+            fs::remove_file(tsx_path)?;
+        }
+        
+        // Always refresh routes
+        self.sync_app_routes_to_disk(project)?;
+        
         Ok(())
     }
 

@@ -26,6 +26,15 @@ pub struct UpdateBlockRequest {
     pub value: serde_json::Value,
 }
 
+/// Move block request
+#[derive(Debug, Deserialize)]
+pub struct MoveBlockRequest {
+    /// New parent block ID (None = move to root level)
+    pub new_parent_id: Option<String>,
+    /// Index within the new parent's children list
+    pub index: usize,
+}
+
 /// Add a new block
 pub async fn add_block(
     State(state): State<AppState>,
@@ -236,4 +245,59 @@ pub async fn delete_block(
     
     state.set_project(project).await;
     Ok(Json(success))
+}
+
+/// Move a block to a new parent and/or reorder it
+pub async fn move_block(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(req): Json<MoveBlockRequest>,
+) -> Result<Json<bool>, ApiError> {
+    let mut project = state.get_project().await
+        .ok_or_else(|| ApiError::NotFound("No project loaded".into()))?;
+
+    // Verify block exists
+    let old_parent_id = {
+        let block = project.find_block(&id)
+            .ok_or_else(|| ApiError::NotFound(format!("Block {} not found", id)))?;
+        block.parent_id.clone()
+    };
+
+    // 1. Remove from old parent's children
+    if let Some(ref old_pid) = old_parent_id {
+        if let Some(parent) = project.find_block_mut(old_pid) {
+            parent.children.retain(|cid| cid != &id);
+        }
+    }
+
+    // 2. Insert into new parent's children at the requested index
+    if let Some(ref new_pid) = req.new_parent_id {
+        if let Some(new_parent) = project.find_block_mut(new_pid) {
+            new_parent.children.retain(|cid| cid != &id);
+            let idx = req.index.min(new_parent.children.len());
+            new_parent.children.insert(idx, id.clone());
+        } else {
+            return Err(ApiError::NotFound(format!("New parent {} not found", new_pid)));
+        }
+    }
+
+    // 3. Update the block's parent_id
+    if let Some(block) = project.find_block_mut(&id) {
+        block.parent_id = req.new_parent_id.clone();
+    }
+
+    // 4. Auto-sync affected pages
+    if let Some(root) = &project.root_path {
+        let engine = crate::generator::sync_engine::SyncEngine::new(root);
+        for page in &project.pages {
+            if !page.archived {
+                if let Err(e) = engine.sync_page_to_disk(&page.id, &project) {
+                    log::error!("Auto-sync failed for page {}: {}", page.id, e);
+                }
+            }
+        }
+    }
+
+    state.set_project(project).await;
+    Ok(Json(true))
 }

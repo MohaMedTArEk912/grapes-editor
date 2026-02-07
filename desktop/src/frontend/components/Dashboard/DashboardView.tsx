@@ -1,14 +1,16 @@
 /**
  * DashboardView Component
- * 
+ *
  * Main landing screen to see all projects, search, create, and delete.
  */
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useProjectStore } from "../../hooks/useProjectStore";
 import { openProject, deleteProject, createProject } from "../../stores/projectStore";
 import { useToast } from "../../context/ToastContext";
+import { useTheme } from "../../context/ThemeContext";
 import IDESettingsModal from "../Modals/IDESettingsModal";
+import WindowControls from "../UI/WindowControls";
 
 interface ProjectSummary {
     id: string;
@@ -18,6 +20,7 @@ interface ProjectSummary {
 
 const DashboardView: React.FC = () => {
     const { projects, workspacePath, loading } = useProjectStore();
+    const { theme } = useTheme();
     const toast = useToast();
     const [searchQuery, setSearchQuery] = useState("");
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -25,8 +28,9 @@ const DashboardView: React.FC = () => {
     const [projectName, setProjectName] = useState("");
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
-    const filteredProjects = projects.filter(p =>
-        p.name.toLowerCase().includes(searchQuery.toLowerCase())
+    const filteredProjects = useMemo(
+        () => projects.filter((project) => project.name.toLowerCase().includes(searchQuery.toLowerCase())),
+        [projects, searchQuery]
     );
 
     const handleCreate = async (e: React.FormEvent) => {
@@ -51,92 +55,109 @@ const DashboardView: React.FC = () => {
         }
     };
 
+    const ambientBackground =
+        theme === "light"
+            ? "radial-gradient(circle at 14% -8%, rgba(148, 163, 184, 0.34), transparent 40%), radial-gradient(circle at 86% 10%, rgba(99, 102, 241, 0.14), transparent 34%), linear-gradient(180deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0))"
+            : "radial-gradient(circle at 20% 0%, rgba(99, 102, 241, 0.18), transparent 35%)";
+
     return (
-        <div className="min-h-screen bg-[#0a0a0a] flex flex-col p-8 md:p-12 overflow-y-auto selection:bg-indigo-500/30">
-            {/* Top Header */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12 animate-fade-in">
-                <div className="space-y-2">
-                    <h1 className="text-4xl font-black text-white tracking-tighter uppercase italic">
-                        Projects <span className="text-indigo-500">.</span>
-                    </h1>
-                    <div className="flex items-center gap-3 text-white/40 text-[10px] font-black uppercase tracking-[0.2em]">
-                        <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
-                        <span>Workspace</span>
-                        <span className="text-white/10">/</span>
-                        <span className="text-white/60 truncate max-w-xs">{workspacePath}</span>
+        <div className="relative min-h-screen bg-[var(--ide-bg)] text-[var(--ide-text)] overflow-y-auto selection:bg-indigo-500/30">
+            <div className="pointer-events-none absolute inset-0" style={{ background: ambientBackground }} />
+
+            <div className="relative z-10 p-6 md:p-10 lg:p-12 space-y-8">
+                {/* Top Header */}
+                <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-6 animate-fade-in">
+                    <div className="space-y-2">
+                        <h1 className="text-4xl font-black tracking-tighter uppercase italic">
+                            Projects <span className="text-indigo-500">.</span>
+                        </h1>
+                        <div className="flex items-center gap-3 text-[10px] font-black uppercase tracking-[0.2em] text-[var(--ide-text-muted)]">
+                            <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
+                            <span>Workspace</span>
+                            <span className="text-[var(--ide-border-strong)]">/</span>
+                            <span className="text-[var(--ide-text-secondary)] truncate max-w-xs md:max-w-md">
+                                {workspacePath || "Not configured"}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3">
+                        <button
+                            onClick={() => setShowSettingsModal(true)}
+                            className="p-2.5 rounded-xl text-[var(--ide-text-secondary)] hover:text-[var(--ide-text)] transition-all border border-[var(--ide-border)] hover:border-[var(--ide-border-strong)] hover:bg-[var(--ide-bg-elevated)]"
+                            title="IDE Settings"
+                        >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                <circle cx="12" cy="12" r="3" strokeWidth="2" />
+                            </svg>
+                        </button>
+
+                        <div className="relative group">
+                            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                                <svg className="w-4 h-4 text-[var(--ide-text-muted)] group-focus-within:text-[var(--ide-text-secondary)] transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                </svg>
+                            </div>
+                            <input
+                                type="text"
+                                placeholder="Search projects..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="bg-[var(--ide-bg-elevated)] border border-[var(--ide-border)] rounded-2xl pl-11 pr-4 py-2.5 text-sm text-[var(--ide-text)] placeholder:text-[var(--ide-text-muted)] focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500/40 transition-all w-full md:w-64"
+                            />
+                        </div>
+
+                        <button
+                            onClick={() => setIsCreateModalOpen(true)}
+                            className="btn-modern-primary !h-11 !px-8"
+                        >
+                            New Project
+                        </button>
+
+                        <WindowControls />
                     </div>
                 </div>
 
-                <div className="flex items-center gap-3">
-                    {/* Settings Button */}
-                    <button
-                        onClick={() => setShowSettingsModal(true)}
-                        className="p-2.5 hover:bg-white/5 rounded-xl text-white/40 hover:text-white transition-all border border-transparent hover:border-white/5"
-                        title="IDE Settings"
-                    >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                            <circle cx="12" cy="12" r="3" strokeWidth="2" />
-                        </svg>
-                    </button>
+                <div className="flex items-center justify-between text-xs text-[var(--ide-text-muted)] font-semibold">
+                    <span>{filteredProjects.length} project{filteredProjects.length === 1 ? "" : "s"}</span>
+                </div>
 
-                    <div className="w-px h-6 bg-white/5" />
-
-                    <div className="relative group">
-                        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                            <svg className="w-4 h-4 text-white/20 transition-colors group-focus-within:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                {/* Project Grid */}
+                {filteredProjects.length > 0 ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-fade-in pb-12">
+                        {filteredProjects.map((project, idx) => (
+                            <ProjectCard
+                                key={project.id}
+                                project={project}
+                                index={idx}
+                                onOpen={() => openProject(project.id)}
+                                onDelete={() => setConfirmDeleteId(project.id)}
+                            />
+                        ))}
+                    </div>
+                ) : (
+                    <div className="flex-1 min-h-[360px] flex flex-col items-center justify-center p-14 bg-[var(--ide-bg-elevated)] border-2 border-dashed border-[var(--ide-border)] rounded-3xl animate-fade-in transition-all">
+                        <div className="w-20 h-20 rounded-3xl bg-[var(--ide-bg-panel)] border border-[var(--ide-border)] flex items-center justify-center mb-6 shadow-[var(--ide-shadow)]">
+                            <svg className="w-9 h-9 text-[var(--ide-text-muted)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                             </svg>
                         </div>
-                        <input
-                            type="text"
-                            placeholder="Search projects..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="bg-white/5 border border-white/5 rounded-2xl pl-11 pr-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/5 transition-all w-full md:w-64"
-                        />
+                        <h3 className="text-2xl font-black mb-3">Welcome to Grapes IDE</h3>
+                        <p className="text-[var(--ide-text-secondary)] text-sm text-center max-w-sm mb-8 leading-relaxed font-medium">
+                            {searchQuery
+                                ? "No projects match your search criteria."
+                                : "Create your first project to start building with visual full-stack tools."}
+                        </p>
+                        <button
+                            onClick={() => setIsCreateModalOpen(true)}
+                            className="btn-modern-primary !h-12 !px-12"
+                        >
+                            Create Project
+                        </button>
                     </div>
-                    <button
-                        onClick={() => setIsCreateModalOpen(true)}
-                        className="btn-modern-primary !h-11 !px-8"
-                    >
-                        New Project
-                    </button>
-                </div>
+                )}
             </div>
-
-            {/* Project Grid */}
-            {filteredProjects.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 animate-fade-in delay-100 pb-12">
-                    {filteredProjects.map((project, idx) => (
-                        <ProjectCard
-                            key={project.id}
-                            project={project}
-                            index={idx}
-                            onOpen={() => openProject(project.id)}
-                            onDelete={() => setConfirmDeleteId(project.id)}
-                        />
-                    ))}
-                </div>
-            ) : (
-                <div className="flex-1 flex flex-col items-center justify-center p-20 bg-white/[0.02] border-2 border-dashed border-white/5 rounded-[3rem] animate-fade-in delay-100 group cursor-pointer hover:bg-white/[0.04] transition-all duration-500">
-                    <div className="w-24 h-24 rounded-3xl bg-white/5 border border-white/5 flex items-center justify-center mb-8 shadow-2xl group-hover:scale-110 transition-transform duration-500">
-                        <svg className="w-10 h-10 text-white/20 group-hover:text-indigo-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                        </svg>
-                    </div>
-                    <h3 className="text-2xl font-black text-white mb-3">Welcome to Grapes IDE</h3>
-                    <p className="text-white/40 text-sm text-center max-w-xs mb-10 leading-relaxed font-medium">
-                        {searchQuery ? "No projects match your search criteria." : "Experience the future of visual full-stack development. Create your first project to begin."}
-                    </p>
-                    <button
-                        onClick={() => setIsCreateModalOpen(true)}
-                        className="btn-modern-primary !h-12 !px-12"
-                    >
-                        Create Project
-                    </button>
-                </div>
-            )}
 
             {/* Modals */}
             <IDESettingsModal
@@ -147,16 +168,16 @@ const DashboardView: React.FC = () => {
             {/* Delete Confirmation */}
             {confirmDeleteId && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                    <div className="absolute inset-0 bg-black/80 backdrop-blur-xl animate-fade-in" onClick={() => setConfirmDeleteId(null)} />
-                    <div className="relative w-full max-w-sm bg-[#0e0e10] border border-white/10 rounded-3xl shadow-2xl p-8 animate-slide-up">
-                        <h3 className="text-lg font-black text-white mb-2">Delete Project?</h3>
-                        <p className="text-sm text-white/50 mb-6">
+                    <div className="absolute inset-0 bg-black/55 backdrop-blur-md animate-fade-in" onClick={() => setConfirmDeleteId(null)} />
+                    <div className="relative w-full max-w-sm bg-[var(--ide-bg-panel)] border border-[var(--ide-border-strong)] rounded-3xl shadow-[var(--ide-shadow)] p-8 animate-slide-up">
+                        <h3 className="text-lg font-black text-[var(--ide-text)] mb-2">Delete Project?</h3>
+                        <p className="text-sm text-[var(--ide-text-secondary)] mb-6">
                             This action cannot be undone. The project and all its data will be permanently removed.
                         </p>
                         <div className="flex gap-3">
                             <button
                                 onClick={() => setConfirmDeleteId(null)}
-                                className="flex-1 py-3 rounded-xl border border-white/10 text-white/60 font-bold text-xs uppercase tracking-wider hover:bg-white/5 transition-all"
+                                className="flex-1 py-3 rounded-xl border border-[var(--ide-border)] text-[var(--ide-text-secondary)] font-bold text-xs uppercase tracking-wider hover:bg-[var(--ide-bg-elevated)] hover:text-[var(--ide-text)] transition-all"
                             >
                                 Cancel
                             </button>
@@ -173,24 +194,24 @@ const DashboardView: React.FC = () => {
 
             {isCreateModalOpen && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                    <div className="absolute inset-0 bg-black/80 backdrop-blur-2xl animate-fade-in" onClick={() => setIsCreateModalOpen(false)} />
-                    <div className="relative w-full max-w-lg bg-[#0e0e10] border border-white/10 rounded-[2.5rem] shadow-[0_32px_128px_-12px_rgba(0,0,0,0.8)] overflow-hidden animate-slide-up">
-                        <div className="p-10">
+                    <div className="absolute inset-0 bg-black/55 backdrop-blur-xl animate-fade-in" onClick={() => setIsCreateModalOpen(false)} />
+                    <div className="relative w-full max-w-lg bg-[var(--ide-bg-panel)] border border-[var(--ide-border-strong)] rounded-[2rem] shadow-[var(--ide-shadow)] overflow-hidden animate-slide-up">
+                        <div className="p-8 md:p-10">
                             <div className="flex items-center gap-4 mb-8">
-                                <div className="w-12 h-12 rounded-2xl bg-white text-black flex items-center justify-center shadow-xl">
+                                <div className="w-12 h-12 rounded-2xl bg-[var(--ide-text)] text-[var(--ide-bg)] flex items-center justify-center shadow-xl">
                                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" />
                                     </svg>
                                 </div>
                                 <div>
-                                    <h2 className="text-2xl font-black text-white leading-tight">New Project</h2>
-                                    <p className="text-[10px] text-white/40 font-black uppercase tracking-widest mt-1">Full-Stack Scaffolding</p>
+                                    <h2 className="text-2xl font-black leading-tight text-[var(--ide-text)]">New Project</h2>
+                                    <p className="text-[10px] text-[var(--ide-text-muted)] font-black uppercase tracking-widest mt-1">Full-Stack Scaffolding</p>
                                 </div>
                             </div>
 
                             <form onSubmit={handleCreate} className="space-y-8">
                                 <div className="space-y-3">
-                                    <label className="text-xs font-black text-white/50 uppercase tracking-widest ml-1">
+                                    <label className="text-xs font-black text-[var(--ide-text-secondary)] uppercase tracking-widest ml-1">
                                         Project Identity
                                     </label>
                                     <input
@@ -199,7 +220,7 @@ const DashboardView: React.FC = () => {
                                         value={projectName}
                                         onChange={(e) => setProjectName(e.target.value)}
                                         placeholder="e.g. Neo-Commerce"
-                                        className="w-full bg-white/5 border border-white/5 rounded-2xl px-6 py-4 text-white font-bold text-lg focus:outline-none focus:ring-4 focus:ring-white/5 focus:border-white/10 transition-all placeholder:text-white/10"
+                                        className="w-full bg-[var(--ide-bg-elevated)] border border-[var(--ide-border)] rounded-2xl px-6 py-4 text-[var(--ide-text)] font-bold text-lg focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500/40 transition-all placeholder:text-[var(--ide-text-muted)]"
                                         required
                                     />
                                 </div>
@@ -208,14 +229,14 @@ const DashboardView: React.FC = () => {
                                     <button
                                         type="button"
                                         onClick={() => setIsCreateModalOpen(false)}
-                                        className="flex-1 py-4 rounded-2xl border border-white/5 text-white/60 font-black text-[11px] uppercase tracking-widest hover:bg-white/5 hover:text-white transition-all"
+                                        className="flex-1 py-4 rounded-2xl border border-[var(--ide-border)] text-[var(--ide-text-secondary)] font-black text-[11px] uppercase tracking-widest hover:bg-[var(--ide-bg-elevated)] hover:text-[var(--ide-text)] transition-all"
                                     >
                                         Dismiss
                                     </button>
                                     <button
                                         type="submit"
                                         disabled={loading || !projectName.trim()}
-                                        className="flex-1 py-4 rounded-2xl bg-white text-black font-black text-[11px] uppercase tracking-widest hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-20 shadow-xl shadow-white/5"
+                                        className="flex-1 py-4 rounded-2xl bg-[var(--ide-text)] text-[var(--ide-bg)] font-black text-[11px] uppercase tracking-widest hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-30"
                                     >
                                         {loading ? "Scaffolding..." : "Initialize"}
                                     </button>
@@ -236,41 +257,42 @@ const ProjectCard: React.FC<{
     onOpen: () => void;
     onDelete: () => void;
 }> = ({ project, index, onOpen, onDelete }) => {
+    const cardBackground = "linear-gradient(165deg, var(--ide-bg-elevated) 0%, var(--ide-bg-panel) 100%)";
+
     return (
         <div
-            className="group bg-white/5 border border-white/5 rounded-[2rem] p-8 hover:bg-white/[0.07] hover:border-white/10 transition-all duration-500 flex flex-col h-72 relative overflow-hidden cursor-pointer"
-            style={{ animationDelay: `${index * 50}ms` }}
+            className="group border border-[var(--ide-border)] rounded-3xl p-7 hover:border-[var(--ide-border-strong)] hover:shadow-[var(--ide-shadow-sm)] transition-all duration-300 flex flex-col h-64 relative overflow-hidden cursor-pointer"
+            style={{ animationDelay: `${index * 40}ms`, background: cardBackground }}
             onClick={onOpen}
         >
-            {/* Background Glow */}
-            <div className="absolute top-0 right-0 w-48 h-48 bg-indigo-500/10 blur-[80px] rounded-full -mr-24 -mt-24 group-hover:bg-indigo-500/20 transition-all duration-700" />
+            <div className="absolute -top-14 -right-14 w-44 h-44 bg-indigo-500/10 blur-[80px] rounded-full group-hover:bg-indigo-500/20 transition-all duration-500" />
 
             <div className="relative z-10 flex-1">
-                <div className="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:rotate-3 transition-all duration-500 shadow-2xl">
-                    <svg className="w-7 h-7 text-indigo-400 group-hover:text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="w-14 h-14 rounded-2xl bg-[var(--ide-bg-panel)] border border-[var(--ide-border)] flex items-center justify-center mb-5 group-hover:scale-105 transition-transform duration-300">
+                    <svg className="w-7 h-7 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                     </svg>
                 </div>
-                <h3 className="text-2xl font-black text-white mb-2 leading-tight tracking-tight group-hover:translate-x-1 transition-transform">{project.name}</h3>
+                <h3 className="text-2xl font-black text-[var(--ide-text)] mb-2 leading-tight tracking-tight">{project.name}</h3>
                 <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-white/30 font-black uppercase tracking-widest bg-white/5 px-2 py-1 rounded-md">
+                    <span className="text-[10px] text-[var(--ide-text-muted)] font-black uppercase tracking-widest bg-[var(--ide-bg-panel)] px-2 py-1 rounded-md border border-[var(--ide-border)]">
                         {new Date(project.updated_at).toLocaleDateString()}
                     </span>
-                    <span className="w-1 h-1 rounded-full bg-white/10" />
-                    <span className="text-[10px] text-white/30 font-black uppercase tracking-widest">
+                    <span className="w-1 h-1 rounded-full bg-[var(--ide-border-strong)]" />
+                    <span className="text-[10px] text-[var(--ide-text-muted)] font-black uppercase tracking-widest">
                         IDE v0.1.0
                     </span>
                 </div>
             </div>
 
-            <div className="relative z-10 flex items-center gap-3 mt-4 opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-500">
-                <div className="flex-1 text-[11px] font-black text-indigo-400 uppercase tracking-widest">Open Project</div>
+            <div className="relative z-10 flex items-center gap-3 mt-4 opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
+                <div className="flex-1 text-[11px] font-black text-indigo-500 uppercase tracking-widest">Open Project</div>
                 <button
                     onClick={(e) => {
                         e.stopPropagation();
                         onDelete();
                     }}
-                    className="p-3 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white rounded-xl transition-all shadow-lg"
+                    className="p-2.5 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white rounded-xl transition-all"
                     title="Delete Project"
                 >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

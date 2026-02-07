@@ -19,6 +19,7 @@ interface ProjectState {
     activeTab: "canvas" | "logic" | "api" | "erd";
     viewport: "desktop" | "tablet" | "mobile";
     editMode: "visual" | "code";
+    inspectorOpen: boolean;
     selectedFilePath: string | null;
 
     // Workspace state
@@ -40,6 +41,7 @@ const initialState: ProjectState = {
     activeTab: "canvas",
     viewport: "desktop",
     editMode: "visual",
+    inspectorOpen: true,
     workspacePath: null,
     projects: [],
     isDashboardActive: true,
@@ -296,27 +298,32 @@ export async function openProject(id: string): Promise<void> {
             }
         }
 
-        // CHECK IF node_modules EXISTS
-        if (project.root_path) {
-            try {
-                const listing = await api.listDirectory(project.root_path);
-                const hasNodeModules = listing.entries.some(
-                    e => e.name === 'node_modules' && e.is_directory
-                );
-
-                if (!hasNodeModules) {
-                    await installProjectDependencies();
-                }
-            } catch (err) {
-                console.error("Failed to check/install dependencies:", err);
-            }
-        }
-
+        // Show IDE immediately — don't block on dependency check
         updateState(() => ({
             project,
             selectedPageId: getFirstActivePageId(project),
             isDashboardActive: false
         }));
+
+        // CHECK IF node_modules EXISTS (non-blocking, runs in background)
+        if (project.root_path) {
+            const rootPath = project.root_path;
+            // Fire-and-forget: check client/node_modules (npm installs into client/ and server/)
+            (async () => {
+                try {
+                    const listing = await api.listDirectory(`${rootPath}/client`);
+                    const hasNodeModules = listing.entries.some(
+                        e => e.name === 'node_modules' && e.is_directory
+                    );
+
+                    if (!hasNodeModules) {
+                        await installProjectDependencies();
+                    }
+                } catch (err) {
+                    console.error("Failed to check/install dependencies:", err);
+                }
+            })();
+        }
     } catch (err) {
         updateState(() => ({ error: String(err) }));
         throw err;
@@ -344,7 +351,8 @@ export function closeProject(): void {
         project: null,
         isDashboardActive: true,
         selectedBlockId: null,
-        selectedPageId: null
+        selectedPageId: null,
+        inspectorOpen: true
     }));
 }
 
@@ -485,6 +493,55 @@ export async function archiveBlock(blockId: string): Promise<void> {
 }
 
 /**
+ * Move a block to a new parent and/or reorder it
+ */
+export async function moveBlock(
+    blockId: string,
+    newParentId: string | null,
+    index: number
+): Promise<void> {
+    await api.moveBlock(blockId, newParentId, index);
+    await loadProject();
+    isDirtyValue = true;
+}
+
+/**
+ * Update a block's canvas position (x, y) in a single batch.
+ * Only persists to backend DB — skips disk sync since position is visual metadata.
+ */
+export async function updateBlockPosition(
+    blockId: string,
+    x: number,
+    y: number
+): Promise<void> {
+    await api.updateBlockProperty(blockId, "x", x);
+    await api.updateBlockProperty(blockId, "y", y);
+    await loadProject();
+    isDirtyValue = true;
+}
+
+/**
+ * Add a new block at a specific canvas position.
+ * NOTE: We intentionally omit page_id here. The backend auto-nests blocks
+ * under a page root when page_id is provided, which breaks free-position
+ * layout (subsequent blocks get parent_id set and vanish from root).
+ * Blocks are kept as true root-level entries for the freeform canvas.
+ */
+export async function addBlockAtPosition(
+    blockType: string,
+    name: string,
+    x: number,
+    y: number
+): Promise<BlockSchema> {
+    const block = await api.addBlock(blockType, name);
+    await api.updateBlockProperty(block.id, "x", x);
+    await api.updateBlockProperty(block.id, "y", y);
+    await loadProject();
+    isDirtyValue = true;
+    return block;
+}
+
+/**
  * Add a new page
  */
 export async function addPage(name: string, path: string): Promise<PageSchema> {
@@ -507,6 +564,42 @@ export async function addPage(name: string, path: string): Promise<PageSchema> {
     }
 
     return page;
+}
+
+/**
+ * Update a page
+ */
+export async function updatePage(id: string, name?: string, path?: string): Promise<void> {
+    await api.updatePage(id, name, path);
+    await loadProject();
+    isDirtyValue = true;
+
+    if (state.editMode === "visual" && state.project?.root_path) {
+        await api.syncToDisk().catch(err =>
+            console.error("Auto-sync failed:", err)
+        );
+    }
+}
+
+/**
+ * Archive a page
+ */
+export async function archivePage(id: string): Promise<void> {
+    await api.archivePage(id);
+    await loadProject();
+    isDirtyValue = true;
+
+    // If the archived page was selected, select the first available page
+    if (state.selectedPageId === id) {
+        const nextId = getFirstActivePageId(state.project);
+        updateState(() => ({ selectedPageId: nextId }));
+    }
+
+    if (state.editMode === "visual" && state.project?.root_path) {
+        await api.syncToDisk().catch(err =>
+            console.error("Auto-sync failed:", err)
+        );
+    }
 }
 
 /**
@@ -665,8 +758,6 @@ export async function setEditMode(mode: "visual" | "code"): Promise<void> {
         return;
     }
 
-    const previousMode = state.editMode;
-
     // 1. Optimistic update - switch immediately for instant UI feedback
     updateState(() => ({ editMode: mode }));
 
@@ -683,11 +774,19 @@ export async function setEditMode(mode: "visual" | "code"): Promise<void> {
         }
     } catch (err) {
         console.error(`Failed to sync when switching to ${mode} mode:`, err);
-        // Rollback to previous mode on failure
-        updateState(() => ({ editMode: previousMode }));
+        // Keep the selected mode so the UI still switches even when sync fails.
+        // This avoids trapping users in one mode due transient filesystem/sync errors.
+        updateState(() => ({ error: `Sync failed while switching to ${mode} mode: ${String(err)}` }));
     } finally {
         updateState(() => ({ loading: false }));
     }
+}
+
+/**
+ * Toggle visual inspector visibility
+ */
+export function toggleInspector(): void {
+    updateState((prev) => ({ inspectorOpen: !prev.inspectorOpen }));
 }
 
 /**
@@ -717,6 +816,18 @@ export async function deleteLogicFlow(id: string): Promise<void> {
 }
 
 /**
+ * Update a logic flow (name, nodes, etc.)
+ */
+export async function updateLogicFlow(
+    id: string,
+    updates: { name?: string; nodes?: import("../hooks/useTauri").LogicNode[]; entry_node_id?: string | null; description?: string }
+): Promise<void> {
+    await api.updateLogicFlow(id, updates);
+    await loadProject();
+    isDirtyValue = true;
+}
+
+/**
  * Get physical page content from disk
  */
 export async function getPageContent(id: string): Promise<string> {
@@ -733,6 +844,14 @@ export async function getFileContent(path: string): Promise<string> {
 }
 
 /**
+ * Save physical file content to disk by relative project path.
+ */
+export async function saveFileContent(path: string, content: string): Promise<void> {
+    await api.writeFileContent(path, content);
+    isDirtyValue = true;
+}
+
+/**
  * Force a manual sync to disk
  */
 export async function syncToDisk(): Promise<void> {
@@ -745,6 +864,20 @@ export async function syncToDisk(): Promise<void> {
  */
 export async function listDirectory(path?: string) {
     return await api.listDirectory(path);
+}
+
+/**
+ * Create a new file
+ */
+export async function createFile(path: string, content?: string) {
+    return await api.createFile(path, content);
+}
+
+/**
+ * Delete a file
+ */
+export async function deleteFile(path: string) {
+    return await api.deleteFile(path);
 }
 
 /**

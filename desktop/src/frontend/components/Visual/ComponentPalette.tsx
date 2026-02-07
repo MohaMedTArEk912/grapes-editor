@@ -55,7 +55,7 @@ const COMPONENT_LIBRARY: ComponentCategory[] = [
 const ComponentPalette: React.FC = () => {
     const [searchQuery, setSearchQuery] = useState("");
     const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
-        new Set(COMPONENT_LIBRARY.map(cat => cat.name))
+        new Set()
     );
 
     const toggleCategory = (categoryName: string) => {
@@ -70,7 +70,19 @@ const ComponentPalette: React.FC = () => {
 
     const handleDragStart = (e: React.DragEvent, componentType: string) => {
         e.dataTransfer.setData("application/grapes-block", componentType);
+        e.dataTransfer.setData("text/grapes-block", componentType);
+        e.dataTransfer.setData("text/plain", componentType);
         e.dataTransfer.effectAllowed = "copy";
+
+        // Add a ghost image or styling if needed
+        const ghost = document.createElement('div');
+        ghost.className = 'px-3 py-1.5 rounded-lg text-xs font-bold shadow-2xl';
+        ghost.style.background = "linear-gradient(135deg, var(--ide-primary), var(--ide-primary-hover))";
+        ghost.style.color = "#ffffff";
+        ghost.innerText = componentType.toUpperCase();
+        document.body.appendChild(ghost);
+        e.dataTransfer.setDragImage(ghost, 0, 0);
+        setTimeout(() => document.body.removeChild(ghost), 0);
     };
 
     const filteredLibrary = COMPONENT_LIBRARY.map(category => ({
@@ -82,76 +94,74 @@ const ComponentPalette: React.FC = () => {
     })).filter(category => category.items.length > 0);
 
     return (
-        <div className="w-64 bg-[#252526] border-r border-[#1e1e1e] flex flex-col h-full">
-            {/* Header */}
-            <div className="h-9 bg-[#2d2d2d] px-3 flex items-center border-b border-[#1e1e1e]">
-                <span className="text-[11px] text-[#cccccc] font-semibold uppercase tracking-wider">
-                    Components
-                </span>
-            </div>
-
-            {/* Search */}
-            <div className="p-2 border-b border-[#1e1e1e]">
-                <input
-                    type="text"
-                    placeholder="Search components..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full bg-[#3c3c3c] text-[#cccccc] text-xs px-3 py-1.5 rounded border border-[#1e1e1e] focus:outline-none focus:border-[#0e639c]"
-                />
+        <div className="w-64 bg-[var(--ide-bg-sidebar)] border-r border-[var(--ide-border)] flex flex-col h-full">
+            {/* Search Section */}
+            <div className="p-4 space-y-4">
+                <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-[var(--ide-text-secondary)] font-bold uppercase tracking-[0.2em]">Components</span>
+                    <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
+                </div>
+                <div className="relative group">
+                    <input
+                        type="text"
+                        placeholder="Quick search..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full bg-[var(--ide-bg-panel)] text-[var(--ide-text)] text-[11px] pl-8 pr-3 py-2 rounded-lg border border-[var(--ide-border)] focus:outline-none focus:border-indigo-500/50 transition-all placeholder:text-[var(--ide-text-muted)]"
+                    />
+                    <svg className="absolute left-2.5 top-2.5 w-3 h-3 text-[var(--ide-text-muted)] group-focus-within:text-indigo-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                </div>
             </div>
 
             {/* Component List */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar">
+            <div className="flex-1 overflow-y-auto custom-scrollbar px-4 pb-4">
                 {filteredLibrary.length === 0 ? (
-                    <div className="p-4 text-center text-[#858585] text-xs">
-                        No components found
+                    <div className="flex flex-col items-center justify-center py-12 opacity-40">
+                        <svg className="w-10 h-10 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                        <span className="text-xs">No matches</span>
                     </div>
                 ) : (
                     filteredLibrary.map((category) => (
-                        <div key={category.name} className="border-b border-[#1e1e1e]">
+                        <div key={category.name} className="mb-6 animate-fade-in">
                             {/* Category Header */}
                             <button
                                 onClick={() => toggleCategory(category.name)}
-                                className="w-full px-3 py-2 flex items-center gap-2 hover:bg-[#2a2d2e] transition-colors text-left"
+                                className="w-full py-2 flex items-center gap-2 group mb-2"
                             >
                                 <svg
-                                    className={`w-3 h-3 text-[#858585] transition-transform ${expandedCategories.has(category.name) ? 'rotate-90' : ''
-                                        }`}
-                                    fill="currentColor"
-                                    viewBox="0 0 20 20"
+                                    className={`w-2.5 h-2.5 text-[var(--ide-text-muted)] group-hover:text-indigo-400 transition-all ${expandedCategories.has(category.name) ? 'rotate-90' : ''}`}
+                                    fill="none" stroke="currentColor" viewBox="0 0 24 24"
                                 >
-                                    <path d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M9 5l7 7-7 7" />
                                 </svg>
-                                <span className="text-xs text-[#cccccc] font-medium">
+                                <span className="text-[10px] text-[var(--ide-text-secondary)] font-bold uppercase tracking-widest leading-none group-hover:text-[var(--ide-text)] transition-colors">
                                     {category.name}
-                                </span>
-                                <span className="ml-auto text-[10px] text-[#858585]">
-                                    {category.items.length}
                                 </span>
                             </button>
 
-                            {/* Category Items */}
+                            {/* Category Items: Grid View */}
                             {expandedCategories.has(category.name) && (
-                                <div className="pb-2">
+                                <div className="grid grid-cols-2 gap-2">
                                     {category.items.map((item) => (
                                         <div
                                             key={item.type}
                                             draggable
                                             onDragStart={(e) => handleDragStart(e, item.type)}
-                                            className="mx-2 mb-1 px-3 py-2 bg-[#2d2d2d] hover:bg-[#37373d] rounded cursor-grab active:cursor-grabbing transition-colors group"
+                                            className="group relative h-20 bg-[var(--ide-bg-panel)] hover:bg-[var(--ide-bg-elevated)] border border-[var(--ide-border)] hover:border-indigo-500/30 rounded-xl cursor-grab transition-all duration-300 flex flex-col items-center justify-center gap-2 overflow-hidden shadow-sm"
                                             title={item.description}
                                         >
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-lg">{item.icon}</span>
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="text-xs text-[#cccccc] font-medium truncate">
-                                                        {item.name}
-                                                    </div>
-                                                    <div className="text-[10px] text-[#858585] truncate">
-                                                        {item.description}
-                                                    </div>
-                                                </div>
+                                            {/* Hover Glow */}
+                                            <div className="absolute inset-0 bg-indigo-500/10 opacity-0 group-hover:opacity-100 blur-xl transition-opacity pointer-events-none" />
+
+                                            <div className="relative transform group-hover:scale-110 transition-transform duration-300">
+                                                <span className="text-xl filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">{item.icon}</span>
+                                            </div>
+                                            <div className="relative text-[10px] text-[var(--ide-text-secondary)] font-bold tracking-tight group-hover:text-[var(--ide-text)] transition-colors">
+                                                {item.name}
                                             </div>
                                         </div>
                                     ))}
@@ -162,11 +172,14 @@ const ComponentPalette: React.FC = () => {
                 )}
             </div>
 
-            {/* Footer Hint */}
-            <div className="p-3 border-t border-[#1e1e1e] bg-[#2d2d2d]">
-                <p className="text-[10px] text-[#858585] text-center">
-                    Drag components to canvas
-                </p>
+            {/* Premium Hint */}
+            <div className="p-4 bg-[var(--ide-bg-elevated)] border-t border-[var(--ide-border)]">
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-500/5 border border-indigo-500/20">
+                    <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
+                    <p className="text-[9px] text-indigo-500/70 font-medium uppercase tracking-tighter">
+                        Drag to create blocks
+                    </p>
+                </div>
             </div>
         </div>
     );
