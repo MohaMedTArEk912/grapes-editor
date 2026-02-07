@@ -30,6 +30,7 @@ target/
 Thumbs.db
 ehthumbs.db
 desktop.ini
+nul
 
 # Logs
 logs/
