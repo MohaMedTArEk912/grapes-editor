@@ -16,6 +16,12 @@ interface ProjectState {
     activeTab: "canvas" | "logic" | "api" | "erd";
     viewport: "desktop" | "tablet" | "mobile";
     editMode: "visual" | "code";
+    selectedFilePath: string | null;
+
+    // Workspace state
+    workspacePath: string | null;
+    projects: ProjectSchema[];
+    isDashboardActive: boolean;
 }
 
 // Initial state
@@ -28,6 +34,10 @@ const initialState: ProjectState = {
     activeTab: "canvas",
     viewport: "desktop",
     editMode: "visual",
+    workspacePath: null,
+    projects: [],
+    isDashboardActive: true,
+    selectedFilePath: null,
 };
 
 // Internal state
@@ -62,16 +72,62 @@ function updateState(updater: (prev: ProjectState) => Partial<ProjectState>) {
 }
 
 /**
- * Create a new project
+ * Initialize workspace state
  */
-export async function createProject(name: string): Promise<void> {
-    updateState(() => ({ loading: true, error: null }));
-
+export async function initWorkspace(): Promise<void> {
     try {
-        const project = await api.createProject(name);
+        const { workspace_path, projects } = await api.getWorkspaceStatus();
+        updateState(() => ({
+            workspacePath: workspace_path,
+            projects,
+            isDashboardActive: !!workspace_path && !state.project
+        }));
+    } catch (err) {
+        console.error("Failed to init workspace:", err);
+    }
+}
+
+/**
+ * Set the global workspace path
+ */
+export async function setWorkspace(path: string): Promise<void> {
+    updateState(() => ({ loading: true }));
+    try {
+        await api.setWorkspacePath(path);
+        await initWorkspace();
+    } finally {
+        updateState(() => ({ loading: false }));
+    }
+}
+
+/**
+ * Rename the current project
+ */
+export async function renameProject(name: string): Promise<void> {
+    updateState(() => ({ loading: true, error: null }));
+    try {
+        const project = await api.renameProject(name);
+        updateState(() => ({ project }));
+        await initWorkspace(); // Refresh project list in dashboard
+    } catch (err) {
+        updateState(() => ({ error: String(err) }));
+        throw err;
+    } finally {
+        updateState(() => ({ loading: false }));
+    }
+}
+
+/**
+ * Reset the current project to initial state
+ */
+export async function resetProject(): Promise<void> {
+    updateState(() => ({ loading: true, error: null }));
+    try {
+        const project = await api.resetProject();
         updateState(() => ({
             project,
-            selectedPageId: project.pages.length > 0 ? project.pages[0].id : null
+            selectedPageId: project.pages.length > 0 ? project.pages[0].id : null,
+            selectedBlockId: null
         }));
     } catch (err) {
         updateState(() => ({ error: String(err) }));
@@ -82,17 +138,121 @@ export async function createProject(name: string): Promise<void> {
 }
 
 /**
- * Load the current project from the backend
+ * Create a new project in the workspace
+ */
+export async function createProject(name: string): Promise<void> {
+    updateState(() => ({ loading: true, error: null }));
+
+    try {
+        let project = await api.createProject(name);
+
+        // If workspace is set, we automatically configure the sync root 
+        // as a subfolder within the workspace
+        if (state.workspacePath) {
+            const projectPath = `${state.workspacePath}/${name}`.replace(/\\/g, '/');
+            await api.setProjectRoot(projectPath);
+            // Reload project to get updated root_path
+            project = await api.getProject() as ProjectSchema;
+        }
+
+        updateState(() => ({
+            project,
+            selectedPageId: project.pages.length > 0 ? project.pages[0].id : null,
+            isDashboardActive: false
+        }));
+        await initWorkspace(); // Refresh projects list
+    } catch (err) {
+        updateState(() => ({ error: String(err) }));
+        throw err;
+    } finally {
+        updateState(() => ({ loading: false }));
+    }
+}
+
+/**
+ * Open an existing project
+ */
+export async function openProject(id: string): Promise<void> {
+    updateState(() => ({ loading: true, error: null }));
+    try {
+        let project = await api.loadProjectById(id);
+
+        // If project has no root_path but workspace is set, auto-set it
+        if (!project.root_path && state.workspacePath) {
+            const projectPath = `${state.workspacePath}/${project.name}`.replace(/\\/g, '/');
+            await api.setProjectRoot(projectPath);
+            // Reload to get updated root_path
+            project = await api.getProject() as ProjectSchema;
+        }
+
+        updateState(() => ({
+            project,
+            selectedPageId: project.pages.length > 0 ? project.pages[0].id : null,
+            isDashboardActive: false
+        }));
+    } catch (err) {
+        updateState(() => ({ error: String(err) }));
+        throw err;
+    } finally {
+        updateState(() => ({ loading: false }));
+    }
+}
+
+/**
+ * Delete a project
+ */
+export async function deleteProject(id: string): Promise<void> {
+    try {
+        await api.deleteProjectById(id);
+        await initWorkspace();
+    } catch (err) {
+        console.error("Failed to delete project:", err);
+    }
+}
+
+/**
+ * Return to dashboard
+ */
+export function closeProject(): void {
+    updateState(() => ({
+        project: null,
+        isDashboardActive: true,
+        selectedBlockId: null,
+        selectedPageId: null
+    }));
+}
+
+/**
+ * Refresh the current project from backend (useful after setting root_path)
+ */
+export async function refreshCurrentProject(): Promise<void> {
+    try {
+        const project = await api.getProject();
+        if (project) {
+            updateState(() => ({ project }));
+        }
+    } catch (err) {
+        console.error("Failed to refresh project:", err);
+    }
+}
+
+/**
+ * Load the current project from the backend (Legacy fallback)
  */
 export async function loadProject(): Promise<void> {
     updateState(() => ({ loading: true, error: null }));
 
     try {
         const project = await api.getProject();
-        updateState(() => ({
-            project,
-            selectedPageId: project && project.pages.length > 0 ? project.pages[0].id : null
-        }));
+        if (project) {
+            updateState(() => ({
+                project,
+                selectedPageId: project.pages.length > 0 ? project.pages[0].id : null,
+                isDashboardActive: false
+            }));
+        } else {
+            await initWorkspace();
+        }
     } catch (err) {
         updateState(() => ({ error: String(err) }));
     } finally {
@@ -135,7 +295,7 @@ export async function addBlock(
     name: string,
     parentId?: string
 ): Promise<BlockSchema> {
-    const block = await api.addBlock(blockType, name, parentId);
+    const block = await api.addBlock(blockType, name, parentId, state.selectedPageId || undefined);
     await loadProject();
     isDirtyValue = true;
     listeners.forEach(l => l());
@@ -221,6 +381,21 @@ export async function addApi(
 }
 
 /**
+ * Add a field to a data model
+ */
+export async function addField(
+    modelId: string,
+    name: string,
+    fieldType: string,
+    required: boolean = true
+): Promise<void> {
+    await api.addFieldToModel(modelId, name, fieldType, required);
+    await loadProject();
+    isDirtyValue = true;
+    listeners.forEach(l => l());
+}
+
+/**
  * Generate frontend code
  */
 export async function generateFrontend(): Promise<{ path: string; content: string }[]> {
@@ -270,7 +445,19 @@ export function selectBlock(blockId: string | null): void {
  * Select a page
  */
 export function selectPage(pageId: string): void {
-    updateState(() => ({ selectedPageId: pageId, selectedBlockId: null }));
+    updateState(() => ({ selectedPageId: pageId, selectedBlockId: null, selectedFilePath: null }));
+}
+
+/**
+ * Select a generic file from the file explorer
+ */
+export function selectFile(path: string | null): void {
+    updateState(() => ({
+        selectedFilePath: path,
+        selectedPageId: null,
+        selectedBlockId: null,
+        editMode: path ? "code" : state.editMode
+    }));
 }
 
 /**
@@ -311,10 +498,71 @@ export async function setProjectRoot(path: string): Promise<void> {
 }
 
 /**
+ * Add a new logic flow
+ */
+export async function addLogicFlow(name: string, context: 'frontend' | 'backend'): Promise<void> {
+    await api.createLogicFlow(name, context);
+    await loadProject();
+    isDirtyValue = true;
+    listeners.forEach(l => l());
+}
+
+/**
+ * Delete a logic flow
+ */
+export async function deleteLogicFlow(id: string): Promise<void> {
+    await api.deleteLogicFlow(id);
+    await loadProject();
+    isDirtyValue = true;
+    listeners.forEach(l => l());
+}
+
+/**
+ * Get physical page content from disk
+ */
+export async function getPageContent(id: string): Promise<string> {
+    const res = await api.getPageContent(id);
+    return res.content;
+}
+
+/**
+ * Get physical file content from disk by absolute path
+ */
+export async function getFileContent(path: string): Promise<string> {
+    const res = await api.readFileContent(path);
+    return res.content;
+}
+
+/**
  * Force a manual sync to disk
  */
 export async function syncToDisk(): Promise<void> {
     await api.syncToDisk();
+}
+
+/**
+ * List directory contents
+ */
+export async function listDirectory(path?: string) {
+    return await api.listDirectory(path);
+}
+
+/**
+ * Recursively find all directories in the project root
+ */
+export async function getAllFolders(basePath: string = ""): Promise<{ label: string; value: string }[]> {
+    const listing = await api.listDirectory(basePath);
+    let folders = listing.entries
+        .filter(e => e.is_directory)
+        .map(e => ({ label: e.path, value: e.path }));
+
+    for (const entry of listing.entries) {
+        if (entry.is_directory) {
+            const subfolders = await getAllFolders(entry.path);
+            folders = [...folders, ...subfolders];
+        }
+    }
+    return folders;
 }
 
 /**

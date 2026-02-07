@@ -1,10 +1,10 @@
 //! Page routes
 
 use axum::{
-    extract::State,
+    extract::{State, Path},
     Json,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::backend::state::AppState;
 use crate::backend::error::ApiError;
@@ -15,6 +15,12 @@ use crate::schema::PageSchema;
 pub struct AddPageRequest {
     pub name: String,
     pub path: String,
+}
+
+/// Page content response
+#[derive(Debug, Serialize)]
+pub struct PageContentResponse {
+    pub content: String,
 }
 
 /// Add a new page
@@ -43,4 +49,36 @@ pub async fn add_page(
     state.set_project(project).await;
     
     Ok(Json(result))
+}
+
+/// Get physical page content from disk
+pub async fn get_page_content(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<PageContentResponse>, ApiError> {
+    let project = state.get_project().await
+        .ok_or_else(|| ApiError::NotFound("No project loaded".into()))?;
+    
+    let page = project.find_page(&id)
+        .ok_or_else(|| ApiError::NotFound("Page not found".into()))?;
+    
+    let root_path = project.root_path.as_ref()
+        .ok_or_else(|| ApiError::BadRequest("Project root path not set. Please set it in project settings.".into()))?;
+    
+    // Map page to feature folder (logic from sync_engine.rs)
+    let feature_name = page.name.to_lowercase().replace(" ", "-");
+    let feature_path = std::path::PathBuf::from(root_path)
+        .join("client/src/features")
+        .join(&feature_name);
+    
+    let tsx_path = feature_path.join(format!("{}.tsx", crate::generator::pascal_case(&page.name)));
+    
+    if !tsx_path.exists() {
+        return Err(ApiError::NotFound(format!("File not found at {:?}", tsx_path)));
+    }
+    
+    let content = std::fs::read_to_string(tsx_path)
+        .map_err(|e| ApiError::Internal(format!("Failed to read file: {}", e)))?;
+    
+    Ok(Json(PageContentResponse { content }))
 }

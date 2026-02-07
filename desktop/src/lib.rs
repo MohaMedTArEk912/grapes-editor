@@ -9,6 +9,7 @@
 
 use std::sync::Mutex;
 use tauri::State;
+use tokio::net::TcpListener;
 
 // Module declarations
 pub mod schema;
@@ -424,6 +425,36 @@ fn parse_http_method(s: &str) -> Result<schema::HttpMethod, String> {
 pub fn run() {
     // Initialize logging
     env_logger::init();
+    
+    // Start Embedded Backend API Server (Axum)
+    // This provides the REST API that the frontend uses on port 3001
+    log::info!("Starting embedded API server...");
+    
+    let backend_state = match crate::backend::BackendAppState::new() {
+        Ok(state) => state,
+        Err(e) => {
+            log::error!("Failed to initialize backend state: {}", e);
+            return;
+        }
+    };
+    
+    let router = crate::backend::create_router(backend_state);
+    
+    // Spawn server in a background task
+    tauri::async_runtime::spawn(async move {
+        let addr = "0.0.0.0:3001";
+        match TcpListener::bind(addr).await {
+            Ok(listener) => {
+                log::info!("Backend API server listening on http://{}", addr);
+                if let Err(e) = axum::serve(listener, router).await {
+                    log::error!("Axum server error: {}", e);
+                }
+            }
+            Err(e) => {
+                log::error!("Failed to bind to {}: {}", addr, e);
+            }
+        }
+    });
     
     tauri::Builder::default()
         .manage(AppState::default())

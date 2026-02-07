@@ -293,6 +293,11 @@ impl ProjectSchema {
         self.pages.iter().find(|p| p.id == id && !p.archived)
     }
     
+    /// Find a page by ID (mutable)
+    pub fn find_page_mut(&mut self, id: &str) -> Option<&mut PageSchema> {
+        self.pages.iter_mut().find(|p| p.id == id && !p.archived)
+    }
+
     /// Find an API by ID
     pub fn find_api(&self, id: &str) -> Option<&ApiSchema> {
         self.apis.iter().find(|a| a.id == id && !a.archived)

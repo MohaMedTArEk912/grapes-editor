@@ -2,44 +2,118 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Custom CSS Variables - High-end Deep Space Theme */
+/* ============================================
+   PREMIUM DESIGN SYSTEM - Grapes IDE
+   ============================================ */
+
 :root {
-    --ide-bg: #050508;
-    --ide-sidebar: #0a0a0f;
-    --ide-panel: #0d0d14;
-    --ide-panel-light: #12121e;
-    --ide-border: rgba(255, 255, 255, 0.08);
-    --ide-border-bright: rgba(255, 255, 255, 0.15);
-    --ide-accent: #6366f1;
-    --ide-accent-glow: rgba(99, 102, 241, 0.4);
-    --ide-text: #f8fafc;
-    --ide-text-muted: #94a3b8;
-    --ide-glass: rgba(15, 15, 26, 0.7);
+    /* Pure Minimalist Palette (Dark) */
+    --ide-bg: #000000;
+    --ide-bg-elevated: #080808;
+    --ide-bg-sidebar: #050505;
+    --ide-bg-panel: #0a0a0a;
+
+    --ide-border: rgba(255, 255, 255, 0.04);
+    --ide-border-strong: rgba(255, 255, 255, 0.1);
+
+    --ide-accent: #ffffff;
+    --ide-accent-muted: rgba(255, 255, 255, 0.6);
+    --ide-accent-subtle: rgba(255, 255, 255, 0.03);
+
+    --ide-text: #ffffff;
+    --ide-text-secondary: #a1a1a1;
+    --ide-text-muted: #525252;
+
+    --ide-glass: rgba(0, 0, 0, 0.7);
+    --ide-glass-border: rgba(255, 255, 255, 0.1);
+
+    --ide-shadow: 0 8px 32px -4px rgba(0, 0, 0, 0.8);
+    --ide-shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.5);
+
+    /* Semantic Colors */
+    --ide-success: #10b981;
+    --ide-warning: #f59e0b;
+    --ide-danger: #ef4444;
+    --ide-info: #3b82f6;
+
+    --ide-canvas-bg: #050505;
+    --ide-canvas-grid: rgba(255, 255, 255, 0.02);
+
+    --ide-scrollbar: rgba(255, 255, 255, 0.05);
+    --ide-scrollbar-hover: rgba(255, 255, 255, 0.15);
 }
 
-/* Base Styles */
+.light {
+    --ide-bg: #ffffff;
+    --ide-bg-elevated: #fafafa;
+    --ide-bg-sidebar: #f5f5f5;
+    --ide-bg-panel: #ffffff;
+
+    --ide-border: rgba(0, 0, 0, 0.04);
+    --ide-border-strong: rgba(0, 0, 0, 0.1);
+
+    --ide-accent: #000000;
+    --ide-accent-muted: rgba(0, 0, 0, 0.6);
+    --ide-accent-subtle: rgba(0, 0, 0, 0.03);
+
+    --ide-text: #000000;
+    --ide-text-secondary: #525252;
+    --ide-text-muted: #a1a1a1;
+
+    --ide-glass: rgba(255, 255, 255, 0.7);
+    --ide-glass-border: rgba(0, 0, 0, 0.1);
+
+    --ide-shadow: 0 8px 32px -4px rgba(0, 0, 0, 0.1);
+    --ide-shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.05);
+
+    --ide-canvas-bg: #f9f9f9;
+    --ide-canvas-grid: rgba(0, 0, 0, 0.02);
+
+    --ide-scrollbar: rgba(0, 0, 0, 0.05);
+    --ide-scrollbar-hover: rgba(0, 0, 0, 0.15);
+}
+
+/* ============================================
+   GLOBAL DEFAULTS
+   ============================================ */
+
 html,
 body,
 #root {
     height: 100%;
     margin: 0;
     padding: 0;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
     background-color: var(--ide-bg);
     color: var(--ide-text);
-    overflow: hidden;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    letter-spacing: -0.011em;
     -webkit-font-smoothing: antialiased;
+    overflow: hidden;
 }
 
-/* Glassmorphism utility */
-.glass {
+/* ============================================
+   UTILITIES & COMPONENTS
+   ============================================ */
+
+.glass-panel {
     background: var(--ide-glass);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid var(--ide-border);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid var(--ide-glass-border);
 }
 
-/* Scrollbar Styling - Minimalist and elegant */
+.ide-card {
+    background-color: var(--ide-bg-panel);
+    border: 1px solid var(--ide-border);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.ide-card:hover {
+    border-color: var(--ide-border-strong);
+    box-shadow: var(--ide-shadow-sm);
+}
+
+/* Scrollbar Refinement */
 ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
@@ -50,28 +124,66 @@ body,
 }
 
 ::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--ide-scrollbar);
     border-radius: 10px;
+    transition: background 0.2s ease;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: var(--ide-accent);
+    background: var(--ide-scrollbar-hover);
 }
 
-/* Layout Utilities */
-.ide-grid {
-    display: grid;
-    grid-template-rows: 48px 1fr 24px;
-    grid-template-columns: auto 1fr auto;
-    height: 100vh;
-    width: 100vw;
+/* Grid & Canvas */
+.canvas-bg {
+    background-color: var(--ide-canvas-bg);
+    background-image:
+        radial-gradient(circle at 1px 1px, var(--ide-canvas-grid) 1px, transparent 0);
+    background-size: 24px 24px;
+}
+
+/* Buttons */
+.btn-modern {
+    @apply h-9 px-4 rounded-lg flex items-center justify-center gap-2 font-medium transition-all duration-200 active:scale-[0.97] whitespace-nowrap;
+}
+
+.btn-modern-primary {
+    @apply btn-modern bg-[var(--ide-accent)] text-[var(--ide-bg)] hover:opacity-90 shadow-sm border border-[var(--ide-accent)];
+}
+
+.btn-modern-secondary {
+    @apply btn-modern bg-[var(--ide-accent-subtle)] text-[var(--ide-text)] border border-[var(--ide-border)] hover:bg-[var(--ide-border)] hover:border-[var(--ide-border-strong)];
+}
+
+.btn-modern-ghost {
+    @apply h-8 px-2 rounded-md flex items-center gap-2 text-[var(--ide-text-secondary)] hover:text-[var(--ide-text)] hover:bg-[var(--ide-accent-subtle)] transition-all;
+}
+
+/* Inputs */
+.input-modern {
+    @apply h-11 bg-white/[0.03] border border-white/5 rounded-xl px-4 text-sm text-white transition-all duration-300 placeholder:text-white/20;
+}
+
+.input-modern:focus {
+    @apply outline-none border-white/20 bg-white/[0.05] ring-4 ring-white/[0.02] shadow-lg;
+}
+
+.input-modern:disabled {
+    @apply opacity-30 cursor-not-allowed;
+}
+
+select.input-modern {
+    @apply appearance-none cursor-pointer pr-10;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='rgba(255,255,255,0.2)'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 1rem center;
+    background-size: 1.25rem;
 }
 
 /* Animations */
-@keyframes fadeUp {
+@keyframes slideUp {
     from {
         opacity: 0;
-        transform: translateY(10px);
+        transform: translateY(8px);
     }
 
     to {
@@ -80,46 +192,29 @@ body,
     }
 }
 
-.animate-fade-up {
-    animation: fadeUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+.animate-slide-up {
+    animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-/* Premium Button Overrides */
-.btn-primary {
-    @apply relative overflow-hidden bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg transition-all duration-300 shadow-lg shadow-indigo-500/20 active:scale-95 flex items-center gap-2;
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
 }
 
-.btn-secondary {
-    @apply bg-white/5 hover:bg-white/10 text-white px-4 py-2 rounded-lg border border-white/10 transition-all duration-300 backdrop-blur-md active:scale-95 flex items-center gap-2;
+.animate-fade-in {
+    animation: fadeIn 0.3s ease-in-out forwards;
 }
 
-.btn-ghost {
-    @apply hover:bg-white/10 text-slate-400 hover:text-white px-3 py-2 rounded-lg transition-all duration-200 flex items-center gap-2;
+/* Layout Classes */
+.ide-section-header {
+    @apply h-8 px-3 flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-[var(--ide-text-muted)] border-b border-[var(--ide-border)];
 }
 
-/* Input Styles */
-.input {
-    @apply bg-black/40 border border-white/5 text-white px-3 py-2 rounded-lg focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-all placeholder:text-slate-600;
-}
-
-/* Canvas Grid Background - Subtle and professional */
-.canvas-grid {
-    background-image:
-        radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.03) 1px, transparent 0);
-    background-size: 24px 24px;
-}
-
-/* Glow Elements */
-.accent-glow {
-    filter: drop-shadow(0 0 8px var(--ide-accent-glow));
-}
-
-/* Custom indicator for tabs */
-.tab-active {
-    @apply relative text-white;
-}
-
-.tab-active::after {
-    content: '';
-    @apply absolute -bottom-[1px] left-0 right-0 h-0.5 bg-indigo-500 rounded-full;
+.panel-transition {
+    @apply transition-all duration-300 ease-out;
 }

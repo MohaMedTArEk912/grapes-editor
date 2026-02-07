@@ -67,27 +67,30 @@ const Modal: React.FC<ModalProps> = ({
             {/* Modal Container */}
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
                 <div
-                    className={`w-full ${sizeClasses[size]} bg-ide-panel rounded-xl shadow-2xl border border-ide-border pointer-events-auto animate-scale-in`}
+                    className={`w-full ${sizeClasses[size]} bg-[#0a0a0b] rounded-[2.5rem] shadow-[0_32px_128px_-12px_rgba(0,0,0,0.8)] border border-white/10 pointer-events-auto animate-slide-up overflow-hidden`}
                     onClick={(e) => e.stopPropagation()}
                 >
                     {/* Header */}
-                    <div className="flex items-center justify-between px-5 py-4 border-b border-ide-border">
-                        <h2 className="text-lg font-semibold text-ide-text">{title}</h2>
+                    <div className="flex items-center justify-between px-10 pt-10 pb-6">
+                        <h2 className="text-2xl font-black text-white tracking-tight italic uppercase">
+                            {title}
+                            <span className="text-indigo-500 ml-1">.</span>
+                        </h2>
                         {showCloseButton && (
                             <button
-                                className="p-1.5 rounded-lg text-ide-text-muted hover:text-ide-text hover:bg-ide-bg transition-colors"
+                                className="w-10 h-10 rounded-2xl flex items-center justify-center text-white/20 hover:text-white hover:bg-white/5 transition-all"
                                 onClick={onClose}
                                 aria-label="Close modal"
                             >
                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
                                 </svg>
                             </button>
                         )}
                     </div>
 
                     {/* Content */}
-                    <div className="p-5">{children}</div>
+                    <div className="px-10 pb-10">{children}</div>
                 </div>
             </div>
         </>,

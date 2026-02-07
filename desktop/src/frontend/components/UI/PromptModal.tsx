@@ -7,7 +7,8 @@ export interface PromptField {
     placeholder?: string;
     value?: string;
     required?: boolean;
-    type?: "text" | "email" | "number" | "url" | "password";
+    type?: "text" | "email" | "number" | "url" | "password" | "select";
+    options?: { label: string; value: string }[];
     helperText?: string;
 }
 
@@ -37,7 +38,7 @@ const PromptModal: React.FC<PromptModalProps> = ({
         if (isOpen) {
             const initial: Record<string, string> = {};
             for (const field of fields) {
-                initial[field.name] = field.value ?? "";
+                initial[field.name] = field.value ?? (field.type === 'select' ? field.options?.[0]?.value ?? '' : "");
             }
             setValues(initial);
         }
@@ -64,39 +65,61 @@ const PromptModal: React.FC<PromptModalProps> = ({
 
     return (
         <Modal isOpen={isOpen} onClose={onClose} title={title} size="sm">
-            <div className="space-y-4">
+            <div className="space-y-6">
                 {fields.map((field) => (
-                    <div key={field.name}>
-                        <label className="block text-xs font-semibold text-ide-text-muted mb-1">
-                            {field.label}
-                            {field.required && (
-                                <span className="text-ide-error ml-1">*</span>
-                            )}
-                        </label>
-                        <input
-                            type={field.type || "text"}
-                            className="input w-full"
-                            placeholder={field.placeholder}
-                            value={values[field.name] || ""}
-                            onChange={(e) => updateValue(field.name, e.target.value)}
-                        />
+                    <div key={field.name} className="animate-fade-in" style={{ animationDelay: '50ms' }}>
+                        <div className="flex items-center justify-between mb-2 px-1">
+                            <label className="text-[10px] font-black text-white/40 uppercase tracking-[0.2em]">
+                                {field.label}
+                                {field.required && (
+                                    <span className="text-red-500/50 ml-1">*</span>
+                                )}
+                            </label>
+                        </div>
+                        {field.type === "select" ? (
+                            <div className="relative group">
+                                <select
+                                    className="input-modern w-full"
+                                    value={values[field.name] || ""}
+                                    onChange={(e) => updateValue(field.name, e.target.value)}
+                                >
+                                    {field.options?.map((opt) => (
+                                        <option key={opt.value} value={opt.value} className="bg-[#0a0a0a] text-white">
+                                            {opt.label}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        ) : (
+                            <input
+                                type={field.type || "text"}
+                                className="input-modern w-full"
+                                placeholder={field.placeholder}
+                                value={values[field.name] || ""}
+                                onChange={(e) => updateValue(field.name, e.target.value)}
+                            />
+                        )}
                         {field.helperText && (
-                            <p className="text-[11px] text-ide-text-muted mt-1">{field.helperText}</p>
+                            <p className="text-[10px] text-white/20 mt-2 ml-1 italic">{field.helperText}</p>
                         )}
                     </div>
                 ))}
             </div>
 
-            <div className="flex justify-end gap-2 mt-6">
-                <button className="btn-ghost" onClick={onClose} disabled={isSubmitting}>
+            <div className="flex gap-3 mt-10">
+                <button
+                    className="flex-1 h-12 rounded-2xl border border-white/5 text-white/40 font-black text-[10px] uppercase tracking-widest hover:bg-white/5 hover:text-white transition-all"
+                    onClick={onClose}
+                    disabled={isSubmitting}
+                >
                     {cancelText}
                 </button>
                 <button
-                    className="px-4 py-2 rounded-lg text-white font-medium bg-ide-accent hover:bg-ide-accent-hover transition-colors disabled:opacity-60"
+                    className="flex-1 h-12 rounded-2xl bg-white text-black font-black text-[10px] uppercase tracking-widest hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-20 shadow-xl shadow-white/5"
                     disabled={!canSubmit || isSubmitting}
                     onClick={handleSubmit}
                 >
-                    {confirmText}
+                    {isSubmitting ? "Processing..." : confirmText}
                 </button>
             </div>
         </Modal>

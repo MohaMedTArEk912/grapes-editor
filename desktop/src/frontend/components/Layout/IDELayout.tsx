@@ -1,272 +1,205 @@
 /**
- * IDE Layout Component - React version
+ * IDE Layout Component - VS Code Style
  * 
- * Main layout structure for the IDE with panels:
- * - Toolbar (top)
- * - FileTree (left sidebar)
- * - Canvas/Logic/ERD (center)
- * - Inspector (right panel)
- * - StatusBar (bottom)
+ * Simplified VS Code-like layout:
+ * - Top title bar
+ * - Left Activity Bar (icon strip)
+ * - Left Explorer Panel
+ * - Main Editor Area with file tabs
+ * - Bottom Status Bar
  */
 
 import React, { useState } from "react";
-import { setActiveTab } from "../../stores/projectStore";
 import { useProjectStore } from "../../hooks/useProjectStore";
-import { useToast } from "../../context/ToastContext";
 
 interface IDELayoutProps {
     toolbar: React.ReactNode;
     fileTree: React.ReactNode;
     canvas: React.ReactNode;
-    inspector: React.ReactNode;
+    inspector?: React.ReactNode;
     terminal?: React.ReactNode;
 }
 
+/**
+ * Main IDE Layout - Mimics VS Code structure
+ */
 const IDELayout: React.FC<IDELayoutProps> = ({
     toolbar,
     fileTree,
     canvas,
-    inspector,
     terminal
 }) => {
-    const { project, activeTab } = useProjectStore();
-    const [sidebarWidth] = useState(250);
-    const [inspectorWidth] = useState(300);
-    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-    const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
+    const { project } = useProjectStore();
+
+    // Sidebar state
+    const [sidebarOpen, setSidebarOpen] = useState(true);
+    const [activeActivity, setActiveActivity] = useState<"explorer" | "search" | "git" | "extensions">("explorer");
     const [terminalOpen, setTerminalOpen] = useState(false);
-    const toast = useToast();
+
+    // Toggle sidebar via activity bar
+    const handleActivityClick = (activity: typeof activeActivity) => {
+        if (activeActivity === activity && sidebarOpen) {
+            setSidebarOpen(false);
+        } else {
+            setActiveActivity(activity);
+            setSidebarOpen(true);
+        }
+    };
 
     return (
-        <div className="h-screen w-screen flex flex-col bg-ide-bg text-ide-text overflow-hidden selection:bg-indigo-500/30">
-            {/* Toolbar */}
-            <header className="h-12 bg-ide-sidebar border-b border-ide-border flex-shrink-0 z-50">
-                {toolbar}
+        <div className="h-screen w-screen flex flex-col bg-[#1e1e1e] text-[#cccccc] overflow-hidden">
+
+            {/* ===== TOP: Title Bar ===== */}
+            <header className="h-9 bg-[#323233] border-b border-[#252526] flex items-center px-4 select-none flex-shrink-0">
+                <span className="text-xs text-[#cccccc]/80 font-medium">
+                    {project?.name || "Untitled"} — Grapes IDE
+                </span>
             </header>
 
-            {/* Main Content Area */}
+            {/* ===== MAIN CONTENT AREA ===== */}
             <div className="flex-1 flex overflow-hidden">
-                {/* Left Sidebar - FileTree */}
-                <aside
-                    className={`bg-ide-sidebar border-r border-ide-border flex-shrink-0 overflow-hidden flex flex-col transition-all duration-300 ease-in-out z-40`}
-                    style={{
-                        width: sidebarCollapsed ? "0px" : `${sidebarWidth}px`,
-                        opacity: sidebarCollapsed ? 0 : 1
-                    }}
-                >
-                    {/* Sidebar Header */}
-                    <div className="h-10 px-4 flex items-center justify-between border-b border-ide-border bg-black/20">
-                        <span className="text-[10px] font-bold uppercase text-ide-text-muted tracking-[0.2em]">
-                            Explorer
-                        </span>
-                        <div className="flex items-center gap-1">
-                            <button
-                                className="p-1 hover:bg-white/5 rounded-md text-ide-text-muted hover:text-white transition-all"
-                                onClick={() => setSidebarCollapsed(true)}
-                                title="Collapse Sidebar"
-                            >
-                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" />
-                                </svg>
-                            </button>
-                        </div>
-                    </div>
 
-                    {/* FileTree Content */}
-                    <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar">
-                        {fileTree}
-                    </div>
-                </aside>
-
-                {/* Vertical Activity Bar (Always visible) */}
-                <div className="w-12 bg-ide-sidebar border-r border-ide-border flex flex-col items-center py-4 gap-4 z-40">
+                {/* ===== LEFT: Activity Bar (Icon Strip) ===== */}
+                <aside className="w-12 bg-[#333333] flex flex-col items-center py-2 flex-shrink-0">
                     <ActivityIcon
-                        active={!sidebarCollapsed}
-                        onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
                         icon="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
                         label="Explorer"
+                        active={activeActivity === "explorer" && sidebarOpen}
+                        onClick={() => handleActivityClick("explorer")}
                     />
-                    <div className="flex-1" />
                     <ActivityIcon
-                        active={false}
-                        onClick={() => toast.info("Settings coming soon")}
+                        icon="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                        label="Search"
+                        active={activeActivity === "search" && sidebarOpen}
+                        onClick={() => handleActivityClick("search")}
+                    />
+                    <ActivityIcon
+                        icon="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"
+                        label="Source Control"
+                        active={activeActivity === "git" && sidebarOpen}
+                        onClick={() => handleActivityClick("git")}
+                    />
+                    <ActivityIcon
+                        icon="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z"
+                        label="Extensions"
+                        active={activeActivity === "extensions" && sidebarOpen}
+                        onClick={() => handleActivityClick("extensions")}
+                    />
+
+                    {/* Spacer pushes settings to bottom */}
+                    <div className="flex-1" />
+
+                    <ActivityIcon
                         icon="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
                         label="Settings"
+                        active={false}
+                        onClick={() => { }}
                     />
-                </div>
+                </aside>
 
-                {/* Center - Canvas Area */}
-                <main className="flex-1 flex flex-col overflow-hidden bg-ide-bg relative">
-                    {/* Tab Bar */}
-                    <div className="h-10 bg-ide-sidebar border-b border-ide-border flex items-center px-4 gap-1 z-30">
-                        <TabButton
-                            active={activeTab === "canvas"}
-                            onClick={() => setActiveTab("canvas")}
-                            icon="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"
-                        >
-                            Canvas
-                        </TabButton>
-                        <TabButton
-                            active={activeTab === "logic"}
-                            onClick={() => setActiveTab("logic")}
-                            icon="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
-                        >
-                            Logic
-                        </TabButton>
-                        <TabButton
-                            active={activeTab === "api"}
-                            onClick={() => setActiveTab("api")}
-                            icon="M13 10V3L4 14h7v7l9-11h-7z"
-                        >
-                            API
-                        </TabButton>
-                        <TabButton
-                            active={activeTab === "erd"}
-                            onClick={() => setActiveTab("erd")}
-                            icon="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"
-                        >
-                            Database
-                        </TabButton>
+                {/* ===== LEFT: Explorer Panel ===== */}
+                {sidebarOpen && (
+                    <aside className="w-60 bg-[#252526] border-r border-[#1e1e1e] flex flex-col flex-shrink-0">
+                        {/* Panel Header */}
+                        <div className="h-9 px-4 flex items-center border-b border-[#1e1e1e]">
+                            <span className="text-[11px] font-semibold text-[#bbbbbb] uppercase tracking-wider">
+                                {activeActivity === "explorer" && "Explorer"}
+                                {activeActivity === "search" && "Search"}
+                                {activeActivity === "git" && "Source Control"}
+                                {activeActivity === "extensions" && "Extensions"}
+                            </span>
+                        </div>
+
+                        {/* Panel Content */}
+                        <div className="flex-1 overflow-y-auto overflow-x-hidden">
+                            {activeActivity === "explorer" && fileTree}
+                            {activeActivity === "search" && (
+                                <div className="p-4 text-xs text-[#808080]">Search functionality</div>
+                            )}
+                            {activeActivity === "git" && (
+                                <div className="p-4 text-xs text-[#808080]">No source control providers</div>
+                            )}
+                            {activeActivity === "extensions" && (
+                                <div className="p-4 text-xs text-[#808080]">Extensions list</div>
+                            )}
+                        </div>
+                    </aside>
+                )}
+
+                {/* ===== CENTER: Editor Area ===== */}
+                <main className="flex-1 flex flex-col overflow-hidden bg-[#1e1e1e]">
+                    {/* Toolbar / Tab Bar */}
+                    <div className="h-9 bg-[#252526] border-b border-[#1e1e1e] flex items-center flex-shrink-0">
+                        {toolbar}
                     </div>
 
-                    {/* Canvas Content */}
-                    <div className={`flex-1 overflow-auto canvas-grid selection:bg-indigo-500/20 ${terminalOpen ? 'h-[60%]' : ''}`}>
+                    {/* Editor Content */}
+                    <div className={`flex-1 overflow-auto ${terminalOpen ? 'h-[60%]' : ''}`}>
                         {canvas}
                     </div>
 
-                    {/* Terminal Panel */}
+                    {/* Terminal Panel (toggleable) */}
                     {terminalOpen && terminal && (
-                        <div className="h-[40%] border-t border-white/5">
-                            {terminal}
+                        <div className="h-[35%] border-t border-[#1e1e1e] bg-[#1e1e1e]">
+                            <div className="h-8 bg-[#252526] px-4 flex items-center gap-4 text-xs border-b border-[#1e1e1e]">
+                                <span className="text-[#cccccc] font-medium">Terminal</span>
+                            </div>
+                            <div className="h-[calc(100%-2rem)] overflow-auto">
+                                {terminal}
+                            </div>
                         </div>
                     )}
                 </main>
-
-                {/* Right Panel - Inspector */}
-                <aside
-                    className={`bg-ide-sidebar border-l border-ide-border flex-shrink-0 overflow-hidden flex flex-col transition-all duration-300 ease-in-out z-40`}
-                    style={{
-                        width: inspectorCollapsed ? "0px" : `${inspectorWidth}px`,
-                        opacity: inspectorCollapsed ? 0 : 1
-                    }}
-                >
-                    {/* Inspector Header */}
-                    <div className="h-10 px-4 flex items-center justify-between border-b border-ide-border bg-black/20">
-                        <span className="text-[10px] font-bold uppercase text-ide-text-muted tracking-[0.2em]">
-                            Inspector
-                        </span>
-                        <button
-                            className="p-1 hover:bg-white/5 rounded-md text-ide-text-muted hover:text-white transition-all"
-                            onClick={() => setInspectorCollapsed(true)}
-                        >
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5l7 7-7 7" />
-                            </svg>
-                        </button>
-                    </div>
-
-                    {/* Inspector Content */}
-                    <div className="flex-1 overflow-y-auto">
-                        {inspector}
-                    </div>
-                </aside>
-
-                <div className="w-12 bg-ide-sidebar border-l border-ide-border flex flex-col items-center py-4 gap-4 z-40">
-                    <ActivityIcon
-                        active={!inspectorCollapsed}
-                        onClick={() => setInspectorCollapsed(!inspectorCollapsed)}
-                        icon="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"
-                        label="Inspector"
-                    />
-                    <div className="flex-1" />
-                    <ActivityIcon
-                        active={terminalOpen}
-                        onClick={() => setTerminalOpen(!terminalOpen)}
-                        icon="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-                        label="Terminal"
-                    />
-                </div>
             </div>
 
-            {/* Status Bar */}
-            <footer className="h-6 bg-ide-accent/5 border-t border-ide-border flex items-center px-4 text-[10px] text-ide-text-muted select-none z-50">
-                {project ? (
-                    <div className="flex items-center gap-4">
-                        <span className="flex items-center gap-1.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
-                            <span className="font-medium text-ide-text/80">{project.name}</span>
-                        </span>
-                        <span className="opacity-30">|</span>
-                        <span className="hover:text-ide-text cursor-default transition-colors">
-                            {project.blocks.filter(b => !b.archived).length} blocks
-                        </span>
-                        <span className="hover:text-ide-text cursor-default transition-colors">
-                            {project.pages.filter(p => !p.archived).length} pages
-                        </span>
-                    </div>
-                ) : (
-                    <span className="font-medium opacity-50 italic">No Active Project</span>
-                )}
+            {/* ===== BOTTOM: Status Bar ===== */}
+            <footer className="h-6 bg-[#007acc] flex items-center px-3 text-[11px] text-white select-none flex-shrink-0">
+                {/* Left side */}
+                <div className="flex items-center gap-4">
+                    <span>{project?.name || "No Project"}</span>
+                </div>
+
+                {/* Right side */}
                 <div className="ml-auto flex items-center gap-4">
-                    <span className="hover:text-ide-text cursor-default transition-colors">UTF-8</span>
-                    <span className="font-bold text-indigo-400">Grapes v0.1.0</span>
+                    <span>Ln 1, Col 1</span>
+                    <span>UTF-8</span>
+                    <span>TypeScript React</span>
+                    <button
+                        onClick={() => setTerminalOpen(!terminalOpen)}
+                        className="hover:bg-white/20 px-2 py-0.5 rounded transition-colors"
+                    >
+                        Terminal
+                    </button>
                 </div>
             </footer>
         </div>
     );
 };
 
-// Activity Icon Component
+/* ===== Activity Icon Component ===== */
 interface ActivityIconProps {
-    active: boolean;
-    onClick: () => void;
     icon: string;
     label: string;
-}
-
-const ActivityIcon: React.FC<ActivityIconProps> = ({ active, onClick, icon, label }) => {
-    return (
-        <button
-            className={`w-12 h-12 flex items-center justify-center transition-all group relative ${active
-                ? "text-white"
-                : "text-ide-text-muted hover:text-white"
-                }`}
-            onClick={onClick}
-            title={label}
-        >
-            {active && (
-                <div className="absolute left-0 w-[2px] h-6 bg-indigo-500 rounded-r-full shadow-[0_0_8px_rgba(99,102,241,0.8)]" />
-            )}
-            <svg className={`w-6 h-6 transition-transform group-active:scale-90 ${active ? "accent-glow" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d={icon} />
-            </svg>
-        </button>
-    );
-};
-
-// Tab Button Component
-interface TabButtonProps {
     active: boolean;
     onClick: () => void;
-    icon: string;
-    children: React.ReactNode;
 }
 
-const TabButton: React.FC<TabButtonProps> = ({ active, onClick, icon, children }) => {
-    return (
-        <button
-            className={`px-3 py-1.5 text-sm rounded-md flex items-center gap-2 transition-colors ${active
-                ? "bg-ide-accent text-white"
-                : "text-ide-text-muted hover:bg-ide-panel hover:text-ide-text"
-                }`}
-            onClick={onClick}
-        >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={icon} />
-            </svg>
-            {children}
-        </button>
-    );
-};
+const ActivityIcon: React.FC<ActivityIconProps> = ({ icon, label, active, onClick }) => (
+    <button
+        className={`w-12 h-12 flex items-center justify-center relative group transition-colors ${active ? "text-white" : "text-[#858585] hover:text-white"
+            }`}
+        onClick={onClick}
+        title={label}
+        aria-label={label}
+    >
+        {/* Active indicator bar */}
+        {active && (
+            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 bg-white" />
+        )}
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d={icon} />
+        </svg>
+    </button>
+);
 
 export default IDELayout;

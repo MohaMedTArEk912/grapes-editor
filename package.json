@@ -7,11 +7,11 @@
         "dev": "cd desktop && npm run tauri dev",
         "build": "cd desktop && npm run tauri build",
         "tauri": "cd desktop && npm run tauri",
-        "install:all": "cd desktop && npm install"
+        "install:all": "cd desktop && npm install",
+        "dev:log": "set RUST_LOG=info && cd desktop && npm run tauri dev"
     },
     "devDependencies": {
         "@tauri-apps/cli": "^2"
     },
     "dependencies": {}
 }
-

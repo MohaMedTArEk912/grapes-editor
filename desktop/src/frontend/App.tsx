@@ -17,28 +17,53 @@ import ERDCanvas from "./components/Canvas/ERDCanvas";
 import ApiList from "./components/Canvas/ApiList";
 import Inspector from "./components/Inspector/Inspector";
 import Terminal from "./components/Terminal/Terminal";
+import DashboardView from "./components/Dashboard/DashboardView";
+import WorkspaceSetup from "./components/Dashboard/WorkspaceSetup";
 
 // Stores
-import { loadProject } from "./stores/projectStore";
+import { initWorkspace } from "./stores/projectStore";
 // Hooks
 import { useProjectStore } from "./hooks/useProjectStore";
 // Context
 import { ToastProvider } from "./context/ToastContext";
+import { ThemeProvider } from "./context/ThemeContext";
 
 const App: React.FC = () => {
-  const { activeTab } = useProjectStore();
+  const { activeTab, project, workspacePath, isDashboardActive } = useProjectStore();
 
-  // Try to load any existing project on mount
+  // Initialize workspace and try to load any existing project on mount
   useEffect(() => {
-    const loadInitialProject = async () => {
+    const initialize = async () => {
       try {
-        await loadProject();
+        await initWorkspace();
+        // Optionially load project if needed, but dashboard usually handles this now
       } catch (err) {
-        console.log("No project loaded on startup:", err);
+        console.error("Initialization failed:", err);
       }
     };
-    loadInitialProject();
+    initialize();
   }, []);
+
+  // Main navigation logic
+  if (!workspacePath) {
+    return (
+      <ThemeProvider>
+        <ToastProvider>
+          <WorkspaceSetup />
+        </ToastProvider>
+      </ThemeProvider>
+    );
+  }
+
+  if (isDashboardActive || !project) {
+    return (
+      <ThemeProvider>
+        <ToastProvider>
+          <DashboardView />
+        </ToastProvider>
+      </ThemeProvider>
+    );
+  }
 
   // Render the appropriate canvas based on active tab
   const renderCanvas = () => {
@@ -56,15 +81,17 @@ const App: React.FC = () => {
   };
 
   return (
-    <ToastProvider>
-      <IDELayout
-        toolbar={<Toolbar />}
-        fileTree={<FileTree />}
-        canvas={renderCanvas()}
-        inspector={<Inspector />}
-        terminal={<Terminal />}
-      />
-    </ToastProvider>
+    <ThemeProvider>
+      <ToastProvider>
+        <IDELayout
+          toolbar={<Toolbar />}
+          fileTree={<FileTree />}
+          canvas={renderCanvas()}
+          inspector={<Inspector />}
+          terminal={<Terminal />}
+        />
+      </ToastProvider>
+    </ThemeProvider>
   );
 };
 

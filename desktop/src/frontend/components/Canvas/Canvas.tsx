@@ -44,53 +44,83 @@ const Canvas: React.FC = () => {
 
     return (
         <div
-            className="h-full bg-ide-bg flex flex-col relative overflow-hidden"
+            className="h-full bg-[var(--ide-canvas-bg)] flex flex-col relative overflow-hidden canvas-bg"
             onDragOver={handleDragOver}
             onDrop={handleDrop}
         >
             {editMode === "code" ? (
-                <CodeEditor />
+                <div className="flex-1 animate-fade-in">
+                    <CodeEditor />
+                </div>
             ) : !selectedPage ? (
-                <div className="flex items-center justify-center h-full text-ide-text-muted">
-                    <p>Select a page from the left sidebar</p>
+                <div className="flex-1 flex flex-col items-center justify-center text-[var(--ide-text-muted)] animate-slide-up p-12">
+                    <div className="w-24 h-24 rounded-3xl bg-[var(--ide-bg-elevated)] border border-[var(--ide-border)] flex items-center justify-center mb-6 shadow-2xl overflow-hidden relative group">
+                        <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                        <svg className="w-10 h-10 text-[var(--ide-text-muted)] group-hover:text-indigo-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                        </svg>
+                    </div>
+                    <h2 className="text-2xl font-black text-white mb-2 tracking-tight">No Page Selected</h2>
+                    <p className="text-[var(--ide-text-muted)] text-center max-w-sm mb-8 leading-relaxed">
+                        Select a page from the explorer to start building your visual interface.
+                    </p>
+                    <button
+                        onClick={() => toast.info("Open the Sidebar and pick a page!")}
+                        className="btn-modern-secondary"
+                    >
+                        Browse Project
+                    </button>
                 </div>
             ) : (
-                /* Page Container (Visual) */
-                <div className="flex-1 overflow-auto p-2">
+                /* High-Fidelity Browser Preview Container */
+                <div className="flex-1 overflow-auto p-4 lg:p-10 custom-scrollbar flex justify-center">
                     <div
-                        className={`bg-white rounded-lg shadow-2xl mx-auto transition-all duration-300 ease-in-out border border-transparent flex flex-col ${viewport === 'desktop' ? 'w-full min-h-full' :
-                            viewport === 'tablet' ? 'w-[768px] min-h-[800px]' :
-                                'w-[375px] min-h-[667px]'
+                        className={`bg-white rounded-2xl shadow-[0_32px_64px_-12px_rgba(0,0,0,0.6)] mx-auto transition-all duration-500 ease-[cubic-bezier(0.2,0,0,1)] border border-white/5 flex flex-col overflow-hidden relative animate-slide-up ${viewport === 'desktop' ? 'w-full min-h-[800px]' :
+                                viewport === 'tablet' ? 'w-[768px] min-h-[1024px]' :
+                                    'w-[375px] min-h-[667px]'
                             }`}
                     >
-                        {/* Page Header */}
-                        <div className="bg-slate-100 rounded-t-lg px-4 py-2 flex items-center gap-2 border-b">
-                            <div className="flex gap-1.5">
-                                <div className="w-3 h-3 rounded-full bg-red-400" />
-                                <div className="w-3 h-3 rounded-full bg-yellow-400" />
-                                <div className="w-3 h-3 rounded-full bg-green-400" />
+                        {/* Browser Chrome (High Parity) */}
+                        <div className="bg-[#f1f3f4] h-10 px-4 flex items-center gap-4 shrink-0 select-none">
+                            <div className="flex gap-1.5 shrink-0">
+                                <div className="w-3 h-3 rounded-full bg-[#ff5f57] ring-1 ring-black/5" />
+                                <div className="w-3 h-3 rounded-full bg-[#ffbd2e] ring-1 ring-black/5" />
+                                <div className="w-3 h-3 rounded-full bg-[#28c840] ring-1 ring-black/5" />
                             </div>
-                            <div className="flex-1 text-center">
-                                <span className="text-xs text-slate-500 bg-white px-3 py-1 rounded-md">
-                                    {selectedPage.path || "/"}
-                                </span>
+                            <div className="flex-1 flex justify-center">
+                                <div className="bg-white/80 backdrop-blur-md h-7 max-w-lg w-full rounded-full border border-black/5 flex items-center px-4 gap-2 shadow-sm">
+                                    <svg className="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                    </svg>
+                                    <span className="text-[10px] text-slate-500 font-medium truncate">
+                                        localhost:3000{selectedPage.path || "/"}
+                                    </span>
+                                </div>
+                            </div>
+                            <div className="flex gap-2 shrink-0">
+                                <div className="w-4 h-4 rounded-md bg-slate-200" />
+                                <div className="w-4 h-4 rounded-md bg-slate-200" />
                             </div>
                         </div>
 
                         {/* Visual Canvas Content */}
-                        <div className="p-4 min-h-[500px]">
+                        <div className="flex-1 p-0 overflow-auto bg-white">
                             {rootBlocks.length > 0 ? (
-                                rootBlocks.map((block) => (
-                                    <BlockRenderer key={block.id} block={block} />
-                                ))
+                                <div className="animate-fade-in">
+                                    {rootBlocks.map((block) => (
+                                        <BlockRenderer key={block.id} block={block} />
+                                    ))}
+                                </div>
                             ) : (
-                                <div className="h-[400px] border-2 border-dashed border-slate-300 rounded-lg flex items-center justify-center text-slate-400">
-                                    <div className="text-center">
-                                        <svg className="w-12 h-12 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                                        </svg>
-                                        <p>Drop blocks here to start building</p>
-                                        <p className="text-sm mt-1">Use the toolbar to add new blocks</p>
+                                <div className="h-[500px] m-4 border-2 border-dashed border-slate-200 rounded-2xl flex items-center justify-center text-slate-400 group cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/10 transition-all duration-300">
+                                    <div className="text-center group-hover:scale-110 transition-transform">
+                                        <div className="w-16 h-16 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center mx-auto mb-4 shadow-sm">
+                                            <svg className="w-8 h-8 text-slate-300 group-hover:text-indigo-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                                            </svg>
+                                        </div>
+                                        <p className="font-bold text-slate-600">Start Designing</p>
+                                        <p className="text-xs text-slate-400 mt-1">Drag and drop blocks here</p>
                                     </div>
                                 </div>
                             )}

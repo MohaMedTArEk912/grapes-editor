@@ -6,7 +6,7 @@
  */
 
 import React, { useState } from "react";
-import { addDataModel } from "../../stores/projectStore";
+import { addDataModel, addField } from "../../stores/projectStore";
 import { useProjectStore } from "../../hooks/useProjectStore";
 import { DataModelSchema, FieldSchema } from "../../hooks/useTauri";
 import PromptModal, { PromptField } from "../UI/PromptModal";
@@ -172,7 +172,13 @@ const ModelCard: React.FC<ModelCardProps> = ({ model, selected, onSelect }) => {
                         <span className="px-1.5 py-0.5 rounded bg-red-500/20 text-red-400">soft delete</span>
                     )}
                 </span>
-                <button className="hover:text-ide-accent transition-colors">
+                <button
+                    className="hover:text-ide-accent transition-colors"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        addField(model.id, "newField", "string", true);
+                    }}
+                >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                     </svg>

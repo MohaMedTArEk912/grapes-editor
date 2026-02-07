@@ -24,21 +24,263 @@ impl SyncEngine {
         // Create root
         fs::create_dir_all(&self.root_path)?;
 
-        // Create client structure
-        let client_path = self.root_path.join("client/src/features");
-        fs::create_dir_all(&client_path)?;
+        // --- Client Structure ---
+        let client_path = self.root_path.join("client");
+        let client_src_path = client_path.join("src");
+        let features_path = client_src_path.join("features");
+        let public_path = client_path.join("public");
+        fs::create_dir_all(&features_path)?;
+        fs::create_dir_all(&public_path)?;
 
-        // Create server structure
-        let server_path = self.root_path.join("server/src");
-        fs::create_dir_all(&server_path)?;
+        // --- Server Structure ---
+        let server_path = self.root_path.join("server");
+        let server_src_path = server_path.join("src");
+        let services_path = server_src_path.join("services");
+        fs::create_dir_all(&services_path)?;
 
-        // Create grapes.config.json
+        // Write grapes.config.json
         let config_path = self.root_path.join("grapes.config.json");
         let config_json = serde_json::to_string_pretty(project).unwrap();
         fs::write(config_path, config_json)?;
 
+        // --- Client Boilerplate ---
+        
+        // package.json
+        let client_package_json = r#"{
+  "name": "grapes-client",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.21.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.43",
+    "@types/react-dom": "^18.2.17",
+    "@types/react-router-dom": "^5.3.3",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.16",
+    "postcss": "^8.4.32",
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5.2.2",
+    "vite": "^5.0.8"
+  }
+}"#;
+        fs::write(client_path.join("package.json"), client_package_json)?;
+
+        // tsconfig.json
+        let client_tsconfig = r#"{
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true
+  },
+  "include": ["src"],
+  "references": [{ "path": "./tsconfig.node.json" }]
+}"#;
+        fs::write(client_path.join("tsconfig.json"), client_tsconfig)?;
+
+        // tsconfig.node.json
+        let client_tsconfig_node = r#"{
+  "compilerOptions": {
+    "composite": true,
+    "skipLibCheck": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowSyntheticDefaultImports": true
+  },
+  "include": ["vite.config.ts"]
+}"#;
+        fs::write(client_path.join("tsconfig.node.json"), client_tsconfig_node)?;
+
+        // vite.config.ts
+        let vite_config = r#"import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()],
+});
+"#;
+        fs::write(client_path.join("vite.config.ts"), vite_config)?;
+
+        // tailwind.config.js
+        let tailwind_config = r#"/** @type {import('tailwindcss').Config} */
+export default {
+  content: [
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
+  ],
+  theme: {
+    extend: {},
+  },
+  plugins: [],
+};
+"#;
+        fs::write(client_path.join("tailwind.config.js"), tailwind_config)?;
+
+        // postcss.config.js
+        let postcss_config = r#"export default {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+};
+"#;
+        fs::write(client_path.join("postcss.config.js"), postcss_config)?;
+
+        // index.html
+        let index_html = format!(r#"<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{}</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+"#, project.name);
+        fs::write(client_path.join("index.html"), index_html)?;
+
+        // src/main.tsx
+        let main_tsx = r#"import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+import './index.css';
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+);
+"#;
+        fs::write(client_src_path.join("main.tsx"), main_tsx)?;
+
+        // src/App.tsx
+        let app_tsx = r#"import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import Home from './features/home/Home';
+
+/**
+ * App Component
+ * 
+ * Main entry point for the scaffolded React application.
+ */
+function App() {
+  return (
+    <BrowserRouter>
+      <div className="min-h-screen bg-slate-50">
+        <Routes>
+          <Route path="/" element={<Home />} />
+        </Routes>
+      </div>
+    </BrowserRouter>
+  );
+}
+
+export default App;
+"#;
+        fs::write(client_src_path.join("App.tsx"), app_tsx)?;
+
+        // src/index.css
+        let index_css = r#"@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+"#;
+        fs::write(client_src_path.join("index.css"), index_css)?;
+
+        // --- Server Boilerplate ---
+
+        // package.json
+        let server_package_json = r#"{
+  "name": "grapes-server",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0"
+  }
+}"#;
+        fs::write(server_path.join("package.json"), server_package_json)?;
+
+        // tsconfig.json
+        let server_tsconfig = r#"{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src/**/*"]
+}"#;
+        fs::write(server_path.join("tsconfig.json"), server_tsconfig)?;
+
+        // src/index.ts
+        let server_index_ts = r#"/**
+ * Grapes Server Entry Point
+ */
+
+import { createServer } from 'node:http';
+
+const port = process.env.PORT || 3001;
+
+const server = createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({
+    message: 'Grapes Server is running',
+    timestamp: new Date().toISOString()
+  }));
+});
+
+server.listen(port, () => {
+  console.log(`Server listening on http://localhost:${port}`);
+});
+"#;
+        fs::write(server_src_path.join("index.ts"), server_index_ts)?;
+
         Ok(())
     }
+
+
 
     /// Sync a page to disk
     pub fn sync_page_to_disk(&self, page_id: &str, project: &ProjectSchema) -> std::io::Result<()> {

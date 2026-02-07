@@ -123,6 +123,7 @@ export interface FieldSchema {
     field_type: string;
     required: boolean;
     unique: boolean;
+    primary_key: boolean;
     default?: string;
 }
 
@@ -144,6 +145,14 @@ export interface VariableSchema {
 export interface ProjectSettings {
     default_locale: string;
     locales: string[];
+}
+
+export interface FileEntry {
+    name: string;
+    path: string;
+    is_directory: boolean;
+    size?: number;
+    extension?: string;
 }
 
 // ===== API Configuration =====
@@ -187,11 +196,28 @@ async function apiCall<T>(
  */
 export function useApi() {
     return {
+        // Workspace operations
+        getWorkspaceStatus: () => apiCall<{ workspace_path: string | null; projects: ProjectSchema[] }>('GET', '/api/workspace'),
+
+        setWorkspacePath: (path: string) => apiCall<boolean>('POST', '/api/workspace', { path }),
+
+        pickFolder: () => apiCall<string | null>('GET', '/api/workspace/pick-folder'),
+
+        loadProjectById: (id: string) => apiCall<ProjectSchema>('GET', `/api/workspace/projects/${id}`),
+
+        deleteProjectById: (id: string) => apiCall<boolean>('DELETE', `/api/workspace/projects/${id}`),
+
         // Project operations
         getProject: () => apiCall<ProjectSchema | null>('GET', '/api/project'),
 
         createProject: (name: string) =>
             apiCall<ProjectSchema>('POST', '/api/project', { name }),
+
+        renameProject: (name: string) =>
+            apiCall<ProjectSchema>('PATCH', '/api/project', { name }),
+
+        resetProject: () =>
+            apiCall<ProjectSchema>('POST', '/api/project/reset'),
 
         importProjectJson: (json: string) =>
             apiCall<ProjectSchema>('POST', '/api/project/import', { json }),
@@ -209,11 +235,12 @@ export function useApi() {
             apiCall<boolean>('POST', '/api/project/sync/from_disk'),
 
         // Block operations
-        addBlock: (blockType: string, name: string, parentId?: string) =>
+        addBlock: (blockType: string, name: string, parentId?: string, pageId?: string) =>
             apiCall<BlockSchema>('POST', '/api/blocks', {
                 block_type: blockType,
                 name,
                 parent_id: parentId,
+                page_id: pageId,
             }),
 
         updateBlockProperty: (blockId: string, property: string, value: unknown) =>
@@ -232,9 +259,29 @@ export function useApi() {
         addPage: (name: string, path: string) =>
             apiCall<PageSchema>('POST', '/api/pages', { name, path }),
 
+        getPageContent: (id: string) =>
+            apiCall<{ content: string }>('GET', `/api/pages/${id}/content`),
+
+        // Logic flow operations
+        getLogicFlows: () =>
+            apiCall<LogicFlowSchema[]>('GET', '/api/logic'),
+
+        createLogicFlow: (name: string, context: 'frontend' | 'backend') =>
+            apiCall<LogicFlowSchema>('POST', '/api/logic', { name, context }),
+
+        deleteLogicFlow: (id: string) =>
+            apiCall<boolean>('DELETE', `/api/logic/${id}`),
+
         // Data model operations
         addDataModel: (name: string) =>
             apiCall<DataModelSchema>('POST', '/api/models', { name }),
+
+        addFieldToModel: (modelId: string, name: string, fieldType: string, required: boolean) =>
+            apiCall<DataModelSchema>('POST', `/api/models/${modelId}/fields`, {
+                name,
+                field_type: fieldType,
+                required,
+            }),
 
         // API endpoint operations
         addApi: (method: string, path: string, name: string) =>
@@ -256,7 +303,26 @@ export function useApi() {
             });
             if (!response.ok) throw new Error("Failed to generate ZIP");
             return response.blob();
-        }
+        },
+
+        // File system operations
+        listDirectory: (path?: string) =>
+            apiCall<{ path: string; entries: FileEntry[] }>('GET', `/api/files${path ? `?path=${encodeURIComponent(path)}` : ''}`),
+
+        createFile: (path: string, content?: string) =>
+            apiCall<FileEntry>('POST', '/api/files', { path, content }),
+
+        createFolder: (path: string) =>
+            apiCall<FileEntry>('POST', '/api/files/folder', { path }),
+
+        renameFile: (oldPath: string, newPath: string) =>
+            apiCall<FileEntry>('PUT', '/api/files/rename', { old_path: oldPath, new_path: newPath }),
+
+        deleteFile: (path: string) =>
+            apiCall<boolean>('DELETE', '/api/files/delete', { path }),
+
+        readFileContent: (path: string) =>
+            apiCall<{ content: string; path: string }>('GET', `/api/files/content?path=${encodeURIComponent(path)}`),
     };
 }
 

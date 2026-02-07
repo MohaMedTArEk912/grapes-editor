@@ -8,6 +8,7 @@
 
 import React, { useState } from "react";
 import { useProjectStore } from "../../hooks/useProjectStore";
+import { addLogicFlow } from "../../stores/projectStore";
 import { LogicNode } from "../../hooks/useTauri";
 
 const LogicCanvas: React.FC = () => {
@@ -215,7 +216,7 @@ interface NodePaletteItemProps {
     name: string;
 }
 
-const NodePaletteItem: React.FC<NodePaletteItemProps> = ({ icon, name }) => {
+const NodePaletteItem: React.FC<NodePaletteItemProps> = ({ name }) => {
     return (
         <div
             className="flex items-center gap-2 px-2 py-1.5 rounded-md cursor-grab text-sm text-ide-text hover:bg-ide-panel transition-colors"
@@ -247,7 +248,10 @@ const EmptyLogicState: React.FC = () => {
                 <p className="text-sm text-ide-text-muted mb-4">
                     Create visual logic flows for frontend events and backend API handlers
                 </p>
-                <button className="btn-primary">
+                <button
+                    className="btn-primary"
+                    onClick={() => addLogicFlow("New Logic Flow", "frontend")}
+                >
                     Create Logic Flow
                 </button>
             </div>

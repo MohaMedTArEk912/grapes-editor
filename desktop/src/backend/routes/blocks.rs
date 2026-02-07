@@ -16,6 +16,7 @@ pub struct AddBlockRequest {
     pub block_type: String,
     pub name: String,
     pub parent_id: Option<String>,
+    pub page_id: Option<String>,
 }
 
 /// Update block request
@@ -56,12 +57,53 @@ pub async fn add_block(
         &req.name,
     );
     
-    if let Some(parent_id) = req.parent_id {
-        block.parent_id = Some(parent_id);
+    if let Some(parent_id) = &req.parent_id {
+        block.parent_id = Some(parent_id.clone());
     }
     
+    let block_id = block.id.clone();
     let result = block.clone();
+    
+    // 1. Add to project flat list
     project.add_block(block);
+    
+    // 2. Link to parent if provided
+    if let Some(parent_id) = &req.parent_id {
+        if let Some(parent) = project.find_block_mut(parent_id) {
+            if !parent.children.contains(&block_id) {
+                parent.children.push(block_id.clone());
+            }
+        }
+    } 
+    // 3. Link to page root if no parent but page_id provided
+    else if let Some(page_id) = &req.page_id {
+        let mut attached_to_root = false;
+        let mut existing_root_id = None;
+        
+        if let Some(page) = project.find_page_mut(page_id) {
+            if let Some(root_id) = &page.root_block_id {
+                existing_root_id = Some(root_id.clone());
+            } else {
+                page.root_block_id = Some(block_id.clone());
+                attached_to_root = true;
+            }
+        }
+        
+        if !attached_to_root {
+            if let Some(root_id) = existing_root_id {
+                // Use a block to scope the borrow 
+                {
+                    if let Some(root_block) = project.find_block_mut(&root_id) {
+                        root_block.children.push(block_id.clone());
+                    }
+                }
+                
+                if let Some(new_block) = project.find_block_mut(&block_id) {
+                    new_block.parent_id = Some(root_id);
+                }
+            }
+        }
+    }
     
     // Auto-sync
     if let Some(root) = &project.root_path {
@@ -137,17 +179,50 @@ pub async fn delete_block(
     let mut project = state.get_project().await
         .ok_or_else(|| ApiError::NotFound("No project loaded".into()))?;
     
+    // 1. Remove from parent's children if linked
+    let mut parent_id_to_sync = None;
+    let mut page_id_to_sync = None;
+
+    if let Some(block) = project.find_block(&id) {
+        if let Some(parent_id) = &block.parent_id {
+            parent_id_to_sync = Some(parent_id.clone());
+        }
+    }
+
+    if let Some(parent_id) = &parent_id_to_sync {
+        if let Some(parent) = project.find_block_mut(parent_id) {
+            parent.children.retain(|cid| cid != &id);
+        }
+    } else {
+        // If it's not in a parent, it might be a page root
+        for page in project.pages.iter_mut() {
+            if page.root_block_id.as_ref() == Some(&id) {
+                page.root_block_id = None;
+                page_id_to_sync = Some(page.id.clone());
+                break;
+            }
+        }
+    }
+
+    // 2. Archive the block
     let success = project.archive_block(&id);
     
     // Auto-sync
     if let Some(root) = &project.root_path {
         let engine = crate::generator::sync_engine::SyncEngine::new(root);
-        // Note: For archive, we might need to sync the page that contained it
-        // but since it's already removed from the parent, we sync all pages to be safe
-        // or better, the sync_to_disk helper.
-        for page in &project.pages {
-            if !page.archived {
-                let _ = engine.sync_page_to_disk(&page.id, &project);
+        
+        if let Some(pid) = parent_id_to_sync {
+            // Sync the page containing the (now changed) parent
+            let _ = engine.sync_page_to_disk_by_block(&pid, &project);
+        } else if let Some(pgid) = page_id_to_sync {
+            // Sync the page that just lost its root
+            let _ = engine.sync_page_to_disk(&pgid, &project);
+        } else {
+            // Fallback: sync all pages to be safe
+            for page in &project.pages {
+                if !page.archived {
+                    let _ = engine.sync_page_to_disk(&page.id, &project);
+                }
             }
         }
     }

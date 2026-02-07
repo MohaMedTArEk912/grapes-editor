@@ -1,510 +1,102 @@
 /**
- * Toolbar Component - React version
+ * Toolbar Component - VS Code Style Tab Bar
  * 
- * Main toolbar with project actions, undo/redo, and export.
+ * Simplified tab bar mimicking VS Code file tabs.
+ * Clean, minimal, no over-design.
  */
 
 import React, { useState } from "react";
-import {
-    projectState,
-    createProject,
-    exportProject,
-    addBlock,
-    addPage,
-    addDataModel,
-    addApi,
-    generateFrontend,
-    generateBackend,
-    generateDatabase,
-    downloadProjectZip,
-    setViewport,
-    setEditMode,
-} from "../../stores/projectStore";
 import { useProjectStore } from "../../hooks/useProjectStore";
-import CodePreviewModal from "../Modals/CodePreviewModal";
-import { useToast } from "../../context/ToastContext";
-import PromptModal, { PromptField } from "../UI/PromptModal";
+import { setActiveTab, closeProject } from "../../stores/projectStore";
 
 const Toolbar: React.FC = () => {
-    const state = useProjectStore();
-    const { success, error: toastError, info } = useToast();
+    const { project, selectedPageId, activeTab } = useProjectStore();
+    const [hoveredTab, setHoveredTab] = useState<string | null>(null);
 
-    const [showNewMenu, setShowNewMenu] = useState(false);
-    const [showExportMenu, setShowExportMenu] = useState(false);
+    // Derive selectedPage from the project's pages array
+    const selectedPage = project?.pages.find((p) => p.id === selectedPageId);
 
-    type PromptConfig = {
-        title: string;
-        fields: PromptField[];
-        confirmText?: string;
-        onSubmit: (values: Record<string, string>) => Promise<void> | void;
-    };
+    // Mock open files for VS Code-like tabs
+    const openTabs = [
+        { id: "canvas", label: selectedPage?.name || "index.tsx", icon: "tsx" },
+        { id: "logic", label: "logic.ts", icon: "ts" },
+        { id: "api", label: "api.ts", icon: "ts" },
+        { id: "erd", label: "schema.prisma", icon: "prisma" },
+    ];
 
-    const [promptConfig, setPromptConfig] = useState<PromptConfig | null>(null);
-    const closePrompt = () => setPromptConfig(null);
-
-    // Generation State
-    const [previewData, setPreviewData] = useState<{ title: string; files: { path: string; content: string }[] } | null>(null);
-
-    const handleNewProject = async () => {
-        setPromptConfig({
-            title: "New Project",
-            confirmText: "Create",
-            fields: [
-                {
-                    name: "name",
-                    label: "Project name",
-                    placeholder: "My Grapes App",
-                    required: true,
-                },
-            ],
-            onSubmit: async (values) => {
-                try {
-                    await createProject(values.name.trim());
-                    success(`Project "${values.name.trim()}" created`);
-                } catch (err) {
-                    toastError(`Failed to create project: ${err}`);
-                }
-            },
-        });
-    };
-
-    const handleGenerate = async (type: 'frontend' | 'backend' | 'database') => {
-        try {
-            let files;
-            let title;
-            info(`Generating ${type} code...`);
-            if (type === 'frontend') {
-                files = await generateFrontend();
-                title = "Generated React Code";
-            } else if (type === 'backend') {
-                files = await generateBackend();
-                title = "Generated NestJS Code";
-            } else {
-                files = await generateDatabase();
-                title = "Generated Prisma Schema";
-            }
-            setPreviewData({ title, files });
-            setShowExportMenu(false);
-            success(`${title} ready for preview`);
-        } catch (err) {
-            console.error("Generation failed:", err);
-            toastError("Generation failed: " + err);
+    const getFileIcon = (type: string) => {
+        switch (type) {
+            case "tsx":
+                return <span className="text-[#519aba]">TS</span>;
+            case "ts":
+                return <span className="text-[#3178c6]">TS</span>;
+            case "prisma":
+                return <span className="text-[#5a67d8]">P</span>;
+            default:
+                return <span className="text-[#858585]">F</span>;
         }
-    };
-
-    const handleExportJson = async () => {
-        try {
-            const json = await exportProject();
-            const blob = new Blob([json], { type: "application/json" });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = `${state.project?.name || "project"}.json`;
-            a.click();
-            URL.revokeObjectURL(url);
-            success("Project JSON exported");
-        } catch (err) {
-            console.error("Export failed:", err);
-            toastError("Export failed: " + err);
-        }
-    };
-
-    const handleExportZip = async () => {
-        try {
-            info("Preparing project ZIP...");
-            await downloadProjectZip();
-            success("Project ZIP downloaded!");
-            setShowExportMenu(false);
-        } catch (err) {
-            toastError("Failed to download ZIP: " + err);
-        }
-    };
-
-    const handleDeployVercel = () => {
-        info("To deploy to Vercel:");
-        info("1. Download Source Code (ZIP)");
-        info("2. Unzip and run 'npm install'");
-        info("3. Run 'vercel deploy'");
-        window.open("https://vercel.com/docs/cli/deploying-from-cli", "_blank");
-    };
-
-    const handleAddBlock = async (blockType: string) => {
-        setShowNewMenu(false);
-        setPromptConfig({
-            title: `Add ${blockType} block`,
-            confirmText: "Add",
-            fields: [
-                {
-                    name: "name",
-                    label: "Block name",
-                    placeholder: `${blockType} block`,
-                    value: blockType,
-                    required: true,
-                },
-            ],
-            onSubmit: async (values) => {
-                try {
-                    const name = values.name.trim();
-                    await addBlock(blockType, name);
-                    success(`${blockType} "${name}" added`);
-                } catch (err) {
-                    toastError(`Failed to add block: ${err}`);
-                }
-            },
-        });
-    };
-
-    const handleAddPage = async () => {
-        setShowNewMenu(false);
-        setPromptConfig({
-            title: "New Page",
-            confirmText: "Create",
-            fields: [
-                {
-                    name: "name",
-                    label: "Page name",
-                    placeholder: "Home",
-                    required: true,
-                },
-                {
-                    name: "path",
-                    label: "Page path",
-                    placeholder: "/home",
-                    required: true,
-                },
-            ],
-            onSubmit: async (values) => {
-                try {
-                    const name = values.name.trim();
-                    const path = values.path.trim() || `/${name.toLowerCase()}`;
-                    await addPage(name, path);
-                    success(`Page "${name}" created`);
-                } catch (err) {
-                    toastError(`Failed to create page: ${err}`);
-                }
-            },
-        });
-    };
-
-    const handleAddModel = async () => {
-        setShowNewMenu(false);
-        setPromptConfig({
-            title: "New Data Model",
-            confirmText: "Create",
-            fields: [
-                {
-                    name: "name",
-                    label: "Model name",
-                    placeholder: "User",
-                    helperText: "Use PascalCase (e.g., User, BlogPost)",
-                    required: true,
-                },
-            ],
-            onSubmit: async (values) => {
-                try {
-                    const name = values.name.trim();
-                    await addDataModel(name);
-                    success(`Model "${name}" created`);
-                } catch (err) {
-                    toastError(`Failed to create model: ${err}`);
-                }
-            },
-        });
-    };
-
-    const handleAddApi = async () => {
-        setShowNewMenu(false);
-        setPromptConfig({
-            title: "New API Endpoint",
-            confirmText: "Create",
-            fields: [
-                {
-                    name: "method",
-                    label: "HTTP method",
-                    placeholder: "GET",
-                    value: "GET",
-                    required: true,
-                },
-                {
-                    name: "path",
-                    label: "Path",
-                    placeholder: "/",
-                    value: "/",
-                    required: true,
-                },
-                {
-                    name: "name",
-                    label: "Endpoint name",
-                    placeholder: "ListUsers",
-                    required: true,
-                },
-            ],
-            onSubmit: async (values) => {
-                try {
-                    const method = values.method.trim().toUpperCase();
-                    const path = values.path.trim();
-                    const name = values.name.trim();
-                    await addApi(method, path, name);
-                    success(`API "${name}" created`);
-                } catch (err) {
-                    toastError(`Failed to create API: ${err}`);
-                }
-            },
-        });
     };
 
     return (
-        <div className="h-full flex items-center px-4 gap-4 select-none">
-            {/* Logo & Version */}
-            <div className="flex items-center gap-3">
-                <div className="w-7 h-7 rounded-md bg-gradient-to-br from-indigo-500 via-indigo-600 to-purple-700 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-                    <span className="text-white font-black text-xs tracking-tighter">GR</span>
-                </div>
-                <div className="flex flex-col -gap-1">
-                    <span className="text-xs font-bold text-white leading-none">Grapes IDE</span>
-                    <span className="text-[8px] font-bold text-ide-text-muted uppercase tracking-widest opacity-50">Editor</span>
-                </div>
-            </div>
+        <div className="h-full flex items-center bg-[#252526] overflow-x-auto">
+            {/* Home / Back Button */}
+            <button
+                onClick={closeProject}
+                className="h-full px-3 flex items-center text-[#858585] hover:text-white hover:bg-[#2d2d2d] transition-colors border-r border-[#1e1e1e]"
+                title="Return to Dashboard"
+            >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                </svg>
+            </button>
 
-            {/* Divider */}
-            <div className="w-px h-6 bg-white/5 mx-2" />
-
-            {/* Quick Actions */}
-            <div className="flex items-center gap-1">
-                <button
-                    className="btn-ghost !px-2.5 h-8 !text-xs font-medium bg-white/5 hover:bg-white/10"
-                    onClick={handleNewProject}
-                >
-                    <svg className="w-3.5 h-3.5 mr-1.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                    </svg>
-                    New
-                </button>
-
-                <div className="relative">
+            {/* File Tabs */}
+            <div className="flex h-full">
+                {openTabs.map((tab) => (
                     <button
-                        className={`btn-ghost !px-2.5 h-8 !text-xs font-medium ${showNewMenu ? 'bg-white/10 text-white' : ''}`}
-                        onClick={() => setShowNewMenu(!showNewMenu)}
-                        disabled={!state.project}
+                        key={tab.id}
+                        className={`h-full px-4 flex items-center gap-2 text-xs border-r border-[#1e1e1e] transition-colors relative ${activeTab === tab.id
+                            ? "bg-[#1e1e1e] text-white"
+                            : "text-[#969696] hover:bg-[#2d2d2d]"
+                            }`}
+                        onClick={() => setActiveTab(tab.id as "canvas" | "logic" | "api" | "erd")}
+                        onMouseEnter={() => setHoveredTab(tab.id)}
+                        onMouseLeave={() => setHoveredTab(null)}
                     >
-                        <svg className="w-3.5 h-3.5 mr-1.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        Add
-                        <svg className={`w-2.5 h-2.5 ml-1.5 transition-transform ${showNewMenu ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M19 9l-7 7-7-7" />
-                        </svg>
+                        {/* File type icon placeholder */}
+                        <span className="text-[10px] font-bold">{getFileIcon(tab.icon)}</span>
+
+                        {/* File name */}
+                        <span>{tab.label}</span>
+
+                        {/* Close button on hover (optional VS Code feature) */}
+                        {(hoveredTab === tab.id || activeTab === tab.id) && (
+                            <span
+                                className="ml-1 w-4 h-4 flex items-center justify-center rounded hover:bg-[#3c3c3c] text-[#858585] hover:text-white"
+                                onClick={(e) => { e.stopPropagation(); }}
+                            >
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </span>
+                        )}
+
+                        {/* Active tab indicator (top border like VS Code) */}
+                        {activeTab === tab.id && (
+                            <div className="absolute top-0 left-0 right-0 h-0.5 bg-[#007acc]" />
+                        )}
                     </button>
-
-                    {showNewMenu && (
-                        <div
-                            className="absolute top-full left-0 mt-2 w-56 bg-ide-panel border border-ide-border rounded-xl shadow-2xl z-50 py-1.5 glass animate-fade-in"
-                            onMouseLeave={() => setShowNewMenu(false)}
-                        >
-                            <div className="px-3 py-1.5 text-[10px] font-bold text-ide-text-muted uppercase tracking-widest">UI Blocks</div>
-                            <MenuButton onClick={() => handleAddBlock("container")} icon="box">Container Block</MenuButton>
-                            <MenuButton onClick={() => handleAddBlock("text")} icon="type">Text Block</MenuButton>
-                            <MenuButton onClick={() => handleAddBlock("button")} icon="square">Button Block</MenuButton>
-                            <div className="border-t border-ide-border my-1.5" />
-                            <div className="px-3 py-1.5 text-[10px] font-bold text-ide-text-muted uppercase tracking-widest">Architecture</div>
-                            <MenuButton onClick={handleAddPage} icon="file-text">New Page</MenuButton>
-                            <MenuButton onClick={handleAddModel} icon="database">Database Model</MenuButton>
-                            <MenuButton onClick={handleAddApi} icon="zap">API Endpoint</MenuButton>
-                        </div>
-                    )}
-                </div>
-            </div>
-
-            {/* History Controls */}
-            <div className="flex items-center gap-0.5 bg-black/20 p-0.5 rounded-lg border border-white/5">
-                <button className="btn-ghost !p-1.5 hover:text-white" disabled={!state.project} title="Undo (Ctrl+Z)">
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-                    </svg>
-                </button>
-                <button className="btn-ghost !p-1.5 hover:text-white" disabled={!state.project} title="Redo (Ctrl+Y)">
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 10h-10a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" />
-                    </svg>
-                </button>
+                ))}
             </div>
 
             {/* Spacer */}
             <div className="flex-1" />
 
-            {/* Mode Switcher (NEW) */}
-            <div className="flex items-center bg-black/30 p-1 rounded-full border border-white/10 mx-4">
-                <button
-                    className={`px-4 py-1.5 rounded-full text-[11px] font-bold transition-all flex items-center gap-2 ${state.editMode === 'visual'
-                            ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/30'
-                            : 'text-ide-text-muted hover:text-white'
-                        }`}
-                    onClick={() => setEditMode('visual')}
-                >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1 1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
-                    </svg>
-                    Visual
-                </button>
-                <button
-                    className={`px-4 py-1.5 rounded-full text-[11px] font-bold transition-all flex items-center gap-2 ${state.editMode === 'code'
-                            ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/30'
-                            : 'text-ide-text-muted hover:text-white'
-                        }`}
-                    onClick={() => setEditMode('code')}
-                >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-                    </svg>
-                    Code
-                </button>
+            {/* Project name (right side, subtle) */}
+            <div className="px-4 text-xs text-[#858585]">
+                {project?.name || "Untitled"}
             </div>
-
-            {/* Viewport Controls */}
-            <div className="flex items-center gap-1 bg-black/20 p-0.5 rounded-lg border border-white/5 mx-4 hidden md:flex">
-                <button
-                    className={`btn-ghost !p-1.5 hover:text-white ${state.viewport === 'desktop' ? 'bg-white/10 text-white shadow-sm' : 'text-ide-text-muted'}`}
-                    onClick={() => setViewport('desktop')}
-                    title="Desktop View (100%)"
-                >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                    </svg>
-                </button>
-                <button
-                    className={`btn-ghost !p-1.5 hover:text-white ${state.viewport === 'tablet' ? 'bg-white/10 text-white shadow-sm' : 'text-ide-text-muted'}`}
-                    onClick={() => setViewport('tablet')}
-                    title="Tablet View (768px)"
-                >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                    </svg>
-                </button>
-                <button
-                    className={`btn-ghost !p-1.5 hover:text-white ${state.viewport === 'mobile' ? 'bg-white/10 text-white shadow-sm' : 'text-ide-text-muted'}`}
-                    onClick={() => setViewport('mobile')}
-                    title="Mobile View (375px)"
-                >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                    </svg>
-                </button>
-            </div>
-
-            {/* Secondary Actions */}
-            <div className="flex items-center gap-2">
-                <div className="relative">
-                    <button
-                        className={`btn-primary !h-8 !px-4 !text-xs font-bold ${showExportMenu ? 'ring-2 ring-indigo-500/50' : ''}`}
-                        onClick={() => setShowExportMenu(!showExportMenu)}
-                        disabled={!state.project}
-                    >
-                        <svg className="w-3.5 h-3.5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                        </svg>
-                        Ship App
-                        <svg className={`w-2.5 h-2.5 ml-2 transition-transform ${showExportMenu ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M19 9l-7 7-7-7" />
-                        </svg>
-                    </button>
-
-                    {showExportMenu && (
-                        <div
-                            className="absolute top-full right-0 mt-2 w-64 bg-ide-panel border border-ide-border rounded-xl shadow-2xl z-50 py-1.5 glass animate-fade-in"
-                            onMouseLeave={() => setShowExportMenu(false)}
-                        >
-                            <div className="px-3 py-1.5 text-[10px] font-bold text-ide-text-muted uppercase tracking-widest">Local Export</div>
-                            <MenuButton onClick={handleExportJson} icon="download">Download IDE JSON</MenuButton>
-                            <div className="border-t border-ide-border my-1.5" />
-                            <div className="px-3 py-1.5 text-[10px] font-bold text-ide-text-muted uppercase tracking-widest">Code Generation</div>
-                            <MenuButton onClick={() => handleGenerate('frontend')} icon="code">React + Tailwind UI</MenuButton>
-                            <MenuButton onClick={() => handleGenerate('backend')} icon="server">NestJS Runtime</MenuButton>
-                            <MenuButton onClick={() => handleGenerate('database')} icon="database">Prisma Schema</MenuButton>
-                            <div className="border-t border-ide-border my-1.5" />
-                            <MenuButton onClick={handleExportZip} icon="package">
-                                <span className="text-white font-bold">Download Source Code (ZIP)</span>
-                            </MenuButton>
-                            <MenuButton onClick={handleDeployVercel} icon="zap">
-                                <span className="text-indigo-400 font-bold">Deploy to Vercel</span>
-                            </MenuButton>
-                        </div>
-                    )}
-                </div>
-            </div>
-
-            {/* Code Preview Modal */}
-            {previewData && (
-                <CodePreviewModal
-                    title={previewData.title}
-                    files={previewData.files}
-                    onClose={() => setPreviewData(null)}
-                />
-            )}
-
-            {promptConfig && (
-                <PromptModal
-                    isOpen={!!promptConfig}
-                    title={promptConfig.title}
-                    fields={promptConfig.fields}
-                    confirmText={promptConfig.confirmText}
-                    onClose={closePrompt}
-                    onSubmit={promptConfig.onSubmit}
-                />
-            )}
         </div>
-    );
-};
-
-// Menu Button Component
-interface MenuButtonProps {
-    onClick: () => void;
-    icon: string;
-    children: React.ReactNode;
-}
-
-const MenuButton: React.FC<MenuButtonProps> = ({ onClick, icon, children }) => {
-    const getIconPath = (icon: string): string => {
-        switch (icon) {
-            case "box":
-                return "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4";
-            case "type":
-                return "M4 6h16M4 12h16m-7 6h7";
-            case "square":
-                return "M5 3a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2H5z";
-            case "file-text":
-                return "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z";
-            case "database":
-                return "M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4";
-            case "zap":
-                return "M13 10V3L4 14h7v7l9-11h-7z";
-            case "download":
-                return "M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4";
-            case "code":
-                return "M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4";
-            case "server":
-                return "M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01";
-            case "package":
-                return "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4";
-            default:
-                return "M12 6v6m0 0v6m0-6h6m-6 0H6";
-        }
-    };
-
-    return (
-        <button
-            className="w-full px-3 py-2 text-left text-xs text-ide-text hover:bg-indigo-500 hover:text-white transition-all flex items-center gap-2 rounded-lg"
-            onClick={onClick}
-        >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d={getIconPath(icon)}
-                />
-            </svg>
-            {children}
-        </button>
     );
 };
 

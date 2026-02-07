@@ -84,6 +84,14 @@ pub async fn set_sync_root(
     engine.init_project_structure(&project)
         .map_err(|e| ApiError::Internal(format!("Sync init error: {}", e)))?;
     
+    // Perform initial sync of all pages
+    for page in &project.pages {
+        if !page.archived {
+            engine.sync_page_to_disk(&page.id, &project)
+                .map_err(|e| ApiError::Internal(format!("Initial sync error: {}", e)))?;
+        }
+    }
+    
     state.set_project(project).await;
     Ok(Json(true))
 }
@@ -128,4 +136,57 @@ pub async fn sync_disk_to_memory(
     
     state.set_project(project).await;
     Ok(Json(true))
+}
+
+/// Rename project request
+#[derive(Debug, Deserialize)]
+pub struct RenameProjectRequest {
+    pub name: String,
+}
+
+/// Rename current project
+pub async fn rename_project(
+    State(state): State<AppState>,
+    Json(req): Json<RenameProjectRequest>,
+) -> Result<Json<ProjectSchema>, ApiError> {
+    let mut project = state.get_project().await
+        .ok_or_else(|| ApiError::NotFound("No project loaded".into()))?;
+    
+    project.name = req.name;
+    project.touch();
+    
+    state.set_project(project.clone()).await;
+    Ok(Json(project))
+}
+
+/// Reset current project
+pub async fn reset_project(
+    State(state): State<AppState>,
+) -> Result<Json<ProjectSchema>, ApiError> {
+    let current = state.get_project().await
+        .ok_or_else(|| ApiError::NotFound("No project loaded".into()))?;
+    
+    // Create a fresh project with same ID and name
+    let mut new_project = ProjectSchema::new(current.id, current.name);
+    
+    // Preserve root path if it exists
+    new_project.root_path = current.root_path.clone();
+    
+    // Auto-sync the empty state to disk if root path exists
+    if let Some(root) = &new_project.root_path {
+        let engine = crate::generator::sync_engine::SyncEngine::new(root);
+        
+        // Re-init structure (clears config)
+        engine.init_project_structure(&new_project)
+            .map_err(|e| ApiError::Internal(format!("Sync reset error: {}", e)))?;
+            
+        // Sync the default Home page (clears existing code)
+        for page in &new_project.pages {
+            engine.sync_page_to_disk(&page.id, &new_project)
+                .map_err(|e| ApiError::Internal(format!("Sync page reset error: {}", e)))?;
+        }
+    }
+    
+    state.set_project(new_project.clone()).await;
+    Ok(Json(new_project))
 }

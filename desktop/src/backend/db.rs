@@ -40,10 +40,14 @@ impl Database {
                 version TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
-                settings_json TEXT NOT NULL
+                settings_json TEXT NOT NULL,
+                root_path TEXT
             )",
             [],
         )?;
+
+        // Ensure root_path column exists for migrations (ignore error if it already exists)
+        let _ = conn.execute("ALTER TABLE projects ADD COLUMN root_path TEXT", []);
         
         // Pages table
         conn.execute(
@@ -109,22 +113,51 @@ impl Database {
             )",
             [],
         )?;
+
+        // App Settings table
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS app_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )",
+            [],
+        )?;
         
         Ok(())
     }
     
-    // ===== Projects =====
-    
-    pub fn get_project(&self) -> Result<Option<ProjectSchema>> {
+    // ===== Workspace Settings =====
+
+    pub fn get_workspace_path(&self) -> Result<Option<String>> {
         let conn = self.conn.lock().unwrap();
-        
-        // Get the most recent project (single project mode for now)
+        let mut stmt = conn.prepare("SELECT value FROM app_settings WHERE key = 'workspace_path'")?;
+        let mut rows = stmt.query([])?;
+        if let Some(row) = rows.next()? {
+            Ok(Some(row.get(0)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn set_workspace_path(&self, path: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT OR REPLACE INTO app_settings (key, value) VALUES ('workspace_path', ?1)",
+            params![path],
+        )?;
+        Ok(())
+    }
+    
+    // ===== Projects =====
+
+    pub fn get_all_projects(&self) -> Result<Vec<ProjectSchema>> {
+        let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, name, description, version, created_at, updated_at, settings_json 
-             FROM projects ORDER BY updated_at DESC LIMIT 1"
+            "SELECT id, name, description, version, created_at, updated_at, settings_json, root_path 
+             FROM projects ORDER BY updated_at DESC"
         )?;
         
-        let mut project_iter = stmt.query_map([], |row| {
+        let project_iter = stmt.query_map([], |row| {
             let id: String = row.get(0)?;
             let settings_json: String = row.get(6)?;
             let settings: ProjectSettings = serde_json::from_str(&settings_json).unwrap_or_default();
@@ -133,7 +166,7 @@ impl Database {
             let updated_at: chrono::DateTime<chrono::Utc> = row.get(5)?;
 
             Ok(ProjectSchema {
-                id: id.clone(),
+                id,
                 name: row.get(1)?,
                 description: row.get(2)?,
                 version: row.get(3)?,
@@ -146,7 +179,47 @@ impl Database {
                 logic_flows: Vec::new(),
                 data_models: Vec::new(),
                 variables: Vec::new(),
-                root_path: None,
+                root_path: row.get(7)?,
+            })
+        })?;
+
+        let mut projects = Vec::new();
+        for p in project_iter {
+            projects.push(p?);
+        }
+        Ok(projects)
+    }
+    
+    pub fn get_project_by_id(&self, id: &str) -> Result<Option<ProjectSchema>> {
+        let conn = self.conn.lock().unwrap();
+        
+        let mut stmt = conn.prepare(
+            "SELECT id, name, description, version, created_at, updated_at, settings_json, root_path 
+             FROM projects WHERE id = ?"
+        )?;
+        
+        let mut project_iter = stmt.query_map([id], |row| {
+            let settings_json: String = row.get(6)?;
+            let settings: ProjectSettings = serde_json::from_str(&settings_json).unwrap_or_default();
+            
+            let created_at: chrono::DateTime<chrono::Utc> = row.get(4)?;
+            let updated_at: chrono::DateTime<chrono::Utc> = row.get(5)?;
+
+            Ok(ProjectSchema {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                description: row.get(2)?,
+                version: row.get(3)?,
+                created_at,
+                updated_at,
+                settings,
+                blocks: Vec::new(),
+                pages: Vec::new(),
+                apis: Vec::new(),
+                logic_flows: Vec::new(),
+                data_models: Vec::new(),
+                variables: Vec::new(),
+                root_path: row.get(7)?,
             })
         })?;
         
@@ -250,8 +323,8 @@ impl Database {
         
         // Upsert Project
         conn.execute(
-            "INSERT OR REPLACE INTO projects (id, name, description, version, created_at, updated_at, settings_json)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT OR REPLACE INTO projects (id, name, description, version, created_at, updated_at, settings_json, root_path)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
                 project.id,
                 project.name,
@@ -259,7 +332,8 @@ impl Database {
                 project.version,
                 project.created_at,
                 project.updated_at,
-                serde_json::to_string(&project.settings).unwrap()
+                serde_json::to_string(&project.settings).unwrap(),
+                project.root_path
             ],
         )?;
         
@@ -321,6 +395,22 @@ impl Database {
                  ]
             )?;
         }
+        
+        
+        Ok(())
+    }
+
+    pub fn delete_project(&self, id: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        
+        // Delete related data first
+        conn.execute("DELETE FROM blocks WHERE project_id = ?", [id])?;
+        conn.execute("DELETE FROM pages WHERE project_id = ?", [id])?;
+        conn.execute("DELETE FROM apis WHERE project_id = ?", [id])?;
+        conn.execute("DELETE FROM models WHERE project_id = ?", [id])?;
+        
+        // Delete project
+        conn.execute("DELETE FROM projects WHERE id = ?", [id])?;
         
         Ok(())
     }

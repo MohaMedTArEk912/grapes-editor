@@ -52,4 +52,5 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # Utilities
 zip = "0.6"
 regex = "1"
+rfd = "0.15"
 
