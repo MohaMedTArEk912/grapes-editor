@@ -351,7 +351,7 @@ impl<'a> BackendGenerator<'a> {
         let camel = to_camel_case_single(&model.name);
 
         // Build select object (exclude password-like fields from default select)
-        let fields: Vec<&crate::schema::data_model::FieldSchema> =
+        let _fields: Vec<&crate::schema::data_model::FieldSchema> =
             model.fields.iter().filter(|f| f.name != "id").collect();
 
         let soft_delete_filter = if model.soft_delete {

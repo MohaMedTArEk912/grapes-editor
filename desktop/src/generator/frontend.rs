@@ -10,7 +10,7 @@
 //!   - Layout component
 //!   - package.json, vite config, tailwind config, tsconfig
 
-use crate::schema::{ProjectSchema, BlockSchema, BlockType, DataModelSchema, ApiSchema, HttpMethod};
+use crate::schema::{ProjectSchema, BlockSchema, BlockType, DataModelSchema};
 
 pub struct FrontendGenerator<'a> {
     project: &'a ProjectSchema,
