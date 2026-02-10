@@ -60,7 +60,7 @@ const WorkspaceSetup: React.FC = () => {
                     <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-indigo-500 via-indigo-600 to-purple-700 flex items-center justify-center shadow-2xl shadow-indigo-500/20 mb-6">
                         <span className="text-white font-black text-3xl tracking-tighter">GR</span>
                     </div>
-                    <h1 className="text-4xl font-black text-[var(--ide-text)] mb-3">Welcome to Grapes</h1>
+                    <h1 className="text-4xl font-black text-[var(--ide-text)] mb-3">Welcome to Akasha</h1>
                     <p className="text-[var(--ide-text-secondary)] text-lg text-center max-w-sm">
                         Let's set up your workspace to start building premium applications.
                     </p>
@@ -89,7 +89,7 @@ const WorkspaceSetup: React.FC = () => {
                                     type="text"
                                     value={path}
                                     onChange={(e) => setPath(e.target.value)}
-                                    placeholder="e.g., D:/Projects/GrapesWorkspace"
+                                    placeholder="e.g., D:/Projects/AkashaWorkspace"
                                     className="w-full bg-[var(--ide-bg-elevated)] border border-[var(--ide-border)] rounded-2xl pl-12 pr-28 py-4 text-[var(--ide-text)] focus:outline-none focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-lg placeholder:text-[var(--ide-text-muted)]"
                                     required
                                     autoFocus

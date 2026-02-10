@@ -40,6 +40,10 @@ pub struct BlockSchema {
     /// Event bindings (event name -> logic flow ID)
     pub events: HashMap<String, String>,
     
+    /// Data bindings (property name -> data source binding)
+    #[serde(default)]
+    pub bindings: HashMap<String, DataBinding>,
+    
     /// Whether this block is archived (soft deleted)
     pub archived: bool,
     
@@ -99,6 +103,17 @@ pub enum BlockType {
     
     // Custom/Symbol
     Custom(String), // Reference to a shared component or custom type
+}
+
+/// Data binding - connects a block property to a data source
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DataBinding {
+    /// Binding source type (e.g., "variable", "api", "state", "prop")
+    #[serde(rename = "type")]
+    pub binding_type: String,
+    
+    /// Value or reference path (e.g., variable ID, "response.data.name")
+    pub value: Value,
 }
 
 /// Style value - supports different CSS value types
@@ -176,6 +191,7 @@ impl BlockSchema {
             responsive_styles: HashMap::new(),
             classes: Vec::new(),
             events: HashMap::new(),
+            bindings: HashMap::new(),
             archived: false,
             order: 0,
             physical_path: None,

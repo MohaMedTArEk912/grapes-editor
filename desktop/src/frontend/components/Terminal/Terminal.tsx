@@ -15,7 +15,7 @@ interface TerminalLine {
 const Terminal: React.FC = () => {
     const { project } = useProjectStore();
     const [lines, setLines] = useState<TerminalLine[]>([
-        { type: "system", content: "Grapes IDE Terminal v1.0.0" },
+        { type: "system", content: "Akasha Terminal v1.0.0" },
         { type: "system", content: 'Type "help" for available commands.' },
     ]);
     const [inputValue, setInputValue] = useState("");

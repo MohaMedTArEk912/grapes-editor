@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Grapes IDE",
+  "productName": "Akasha",
   "version": "0.1.0",
-  "identifier": "com.grapesIde.desktop",
+  "identifier": "com.akasha.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Grapes IDE - Visual Full-Stack Builder",
+        "title": "Akasha — Visual Full-Stack SaaS Builder",
         "width": 1400,
         "height": 900,
         "minWidth": 1024,

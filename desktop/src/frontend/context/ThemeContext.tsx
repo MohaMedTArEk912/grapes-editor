@@ -10,7 +10,7 @@ interface ThemeContextValue {
 
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 
-const THEME_STORAGE_KEY = "grapes-ide-theme";
+const THEME_STORAGE_KEY = "akasha-theme";
 
 interface ThemeProviderProps {
     children: ReactNode;

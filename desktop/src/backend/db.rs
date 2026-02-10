@@ -78,6 +78,8 @@ impl Database {
                 events_json TEXT NOT NULL,
                 archived BOOLEAN NOT NULL DEFAULT 0,
                 block_order INTEGER NOT NULL,
+                classes_json TEXT NOT NULL DEFAULT '[]',
+                bindings_json TEXT NOT NULL DEFAULT '{}',
                 FOREIGN KEY(project_id) REFERENCES projects(id)
             )",
             [],
@@ -139,6 +141,9 @@ impl Database {
 
         // Migration: add classes_json column to blocks (ignore error if exists)
         let _ = conn.execute("ALTER TABLE blocks ADD COLUMN classes_json TEXT DEFAULT '[]'", []);
+
+        // Migration: add bindings_json column to blocks (ignore error if exists)
+        let _ = conn.execute("ALTER TABLE blocks ADD COLUMN bindings_json TEXT DEFAULT '{}'", []);
 
         Ok(())
     }
@@ -260,7 +265,7 @@ impl Database {
             for p in pages { project.pages.push(p?); }
             
             // Load blocks
-            let mut stmt = conn.prepare("SELECT id, project_id, page_id, parent_id, block_type, name, properties_json, styles_json, events_json, archived, block_order, classes_json FROM blocks WHERE project_id = ? AND archived = 0 ORDER BY block_order")?;
+            let mut stmt = conn.prepare("SELECT id, project_id, page_id, parent_id, block_type, name, properties_json, styles_json, events_json, archived, block_order, classes_json, bindings_json FROM blocks WHERE project_id = ? AND archived = 0 ORDER BY block_order")?;
             let blocks = stmt.query_map([&project.id], |row| {
                 let block_type_str: String = row.get(4)?;
                 let block_type = match block_type_str.as_str() {
@@ -302,6 +307,7 @@ impl Database {
                 };
 
                 let classes_json: String = row.get::<_, String>(11).unwrap_or_else(|_| "[]".to_string());
+                let bindings_json: String = row.get::<_, String>(12).unwrap_or_else(|_| "{}".to_string());
 
                 Ok(BlockSchema {
                     id: row.get(0)?,
@@ -311,6 +317,7 @@ impl Database {
                     properties: serde_json::from_str(&row.get::<_, String>(6)?).unwrap_or_default(),
                     styles: serde_json::from_str(&row.get::<_, String>(7)?).unwrap_or_default(),
                     events: serde_json::from_str(&row.get::<_, String>(8)?).unwrap_or_default(),
+                    bindings: serde_json::from_str(&bindings_json).unwrap_or_default(),
                     archived: row.get(9)?,
                     order: row.get(10)?,
                     children: Vec::new(),
@@ -436,6 +443,62 @@ impl Database {
             ],
         )?;
         
+        // === Cleanup stale rows that are no longer in the in-memory project ===
+        // Delete pages not in current project
+        if !project.pages.is_empty() {
+            let page_ids: Vec<String> = project.pages.iter().map(|p| format!("'{}'", p.id.replace('\'', "''"))).collect();
+            conn.execute(
+                &format!("DELETE FROM pages WHERE project_id = ?1 AND id NOT IN ({})", page_ids.join(",")),
+                params![project.id],
+            )?;
+        } else {
+            conn.execute("DELETE FROM pages WHERE project_id = ?1", params![project.id])?;
+        }
+        
+        // Delete blocks not in current project
+        if !project.blocks.is_empty() {
+            let block_ids: Vec<String> = project.blocks.iter().map(|b| format!("'{}'", b.id.replace('\'', "''"))).collect();
+            conn.execute(
+                &format!("DELETE FROM blocks WHERE project_id = ?1 AND id NOT IN ({})", block_ids.join(",")),
+                params![project.id],
+            )?;
+        } else {
+            conn.execute("DELETE FROM blocks WHERE project_id = ?1", params![project.id])?;
+        }
+        
+        // Delete APIs not in current project
+        if !project.apis.is_empty() {
+            let api_ids: Vec<String> = project.apis.iter().map(|a| format!("'{}'", a.id.replace('\'', "''"))).collect();
+            conn.execute(
+                &format!("DELETE FROM apis WHERE project_id = ?1 AND id NOT IN ({})", api_ids.join(",")),
+                params![project.id],
+            )?;
+        } else {
+            conn.execute("DELETE FROM apis WHERE project_id = ?1", params![project.id])?;
+        }
+        
+        // Delete models not in current project
+        if !project.data_models.is_empty() {
+            let model_ids: Vec<String> = project.data_models.iter().map(|m| format!("'{}'", m.id.replace('\'', "''"))).collect();
+            conn.execute(
+                &format!("DELETE FROM models WHERE project_id = ?1 AND id NOT IN ({})", model_ids.join(",")),
+                params![project.id],
+            )?;
+        } else {
+            conn.execute("DELETE FROM models WHERE project_id = ?1", params![project.id])?;
+        }
+        
+        // Delete logic flows not in current project
+        if !project.logic_flows.is_empty() {
+            let flow_ids: Vec<String> = project.logic_flows.iter().map(|f| format!("'{}'", f.id.replace('\'', "''"))).collect();
+            conn.execute(
+                &format!("DELETE FROM logic_flows WHERE project_id = ?1 AND id NOT IN ({})", flow_ids.join(",")),
+                params![project.id],
+            )?;
+        } else {
+            conn.execute("DELETE FROM logic_flows WHERE project_id = ?1", params![project.id])?;
+        }
+        
         // Upsert Pages
         for page in &project.pages {
             conn.execute(
@@ -505,8 +568,8 @@ impl Database {
             };
             let page_id = block_page_map.get(&block.id).cloned();
             conn.execute(
-                "INSERT OR REPLACE INTO blocks (id, project_id, page_id, parent_id, block_type, name, properties_json, styles_json, events_json, archived, block_order, classes_json)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                "INSERT OR REPLACE INTO blocks (id, project_id, page_id, parent_id, block_type, name, properties_json, styles_json, events_json, archived, block_order, classes_json, bindings_json)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
                  params![
                      block.id,
                      project.id,
@@ -519,7 +582,8 @@ impl Database {
                      serde_json::to_string(&block.events).unwrap(),
                      block.archived,
                      idx as i32,
-                     serde_json::to_string(&block.classes).unwrap()
+                     serde_json::to_string(&block.classes).unwrap(),
+                     serde_json::to_string(&block.bindings).unwrap()
                  ]
             )?;
         }

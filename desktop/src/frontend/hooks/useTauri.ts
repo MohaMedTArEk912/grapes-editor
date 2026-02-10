@@ -1,5 +1,5 @@
 /**
- * API Client - HTTP API for the Grapes backend
+ * API Client - HTTP API for the Akasha backend
  * 
  * This replaces the Tauri IPC layer for web deployment.
  * When running as a desktop app (Tauri), this can be swapped for the IPC bridge.
@@ -76,6 +76,7 @@ export interface PageSchema {
     id: string;
     name: string;
     path: string;
+    root_block_id?: string;
     meta?: PageMeta;
     is_dynamic: boolean;
     dynamic_param?: string;
@@ -95,9 +96,34 @@ export interface ApiSchema {
     path: string;
     name: string;
     description?: string;
+    request_body?: DataShape;
+    response_body?: DataShape;
+    query_params?: ParamSchema[];
+    path_params?: ParamSchema[];
     logic_flow_id?: string;
     permissions: string[];
     archived: boolean;
+}
+
+export interface DataShape {
+    shape_type: 'object' | 'array' | 'string' | 'number' | 'boolean' | 'model';
+    fields?: ShapeField[];
+    item_shape?: DataShape;
+    model_ref?: string;
+}
+
+export interface ShapeField {
+    name: string;
+    field_type: 'object' | 'array' | 'string' | 'number' | 'boolean' | 'model';
+    required: boolean;
+    nested?: DataShape;
+}
+
+export interface ParamSchema {
+    name: string;
+    param_type: string;
+    required: boolean;
+    default?: string;
 }
 
 export interface LogicFlowSchema {
@@ -139,17 +165,20 @@ export interface DataModelSchema {
 }
 
 export interface FieldSchema {
+    id: string;
     name: string;
     field_type: string;
     required: boolean;
     unique: boolean;
     primary_key: boolean;
     default?: string;
+    description?: string;
 }
 
 export interface RelationSchema {
+    id: string;
     name: string;
-    target_model: string;
+    target_model_id: string;
     relation_type: string;
 }
 
@@ -165,6 +194,24 @@ export interface VariableSchema {
 export interface ProjectSettings {
     default_locale: string;
     locales: string[];
+    theme?: {
+        primary_color?: string;
+        secondary_color?: string;
+        font_family?: string;
+        border_radius?: number;
+    };
+    build?: {
+        frontend_framework?: string;
+        backend_framework?: string;
+        database_provider?: string;
+        typescript?: boolean;
+    };
+    seo?: {
+        title_suffix?: string;
+        default_description?: string;
+        default_og_image?: string;
+        favicon?: string;
+    };
 }
 
 export interface FileEntry {
@@ -240,6 +287,9 @@ export function useApi() {
 
         renameProject: (name: string) =>
             apiCall<ProjectSchema>('PATCH', '/api/project', { name }),
+
+        updateSettings: (settings: Partial<ProjectSettings>) =>
+            apiCall<ProjectSchema>('PUT', '/api/project/settings', { settings }),
 
         resetProject: (clearDiskFiles?: boolean) =>
             apiCall<ProjectSchema>('POST', '/api/project/reset', clearDiskFiles ? { clear_disk_files: true } : undefined),
@@ -318,8 +368,14 @@ export function useApi() {
             apiCall<LogicFlowSchema>('PUT', `/api/logic/${id}`, updates),
 
         // Data model operations
+        getModels: () =>
+            apiCall<DataModelSchema[]>('GET', '/api/models'),
+
         addDataModel: (name: string) =>
             apiCall<DataModelSchema>('POST', '/api/models', { name }),
+
+        updateModel: (id: string, updates: { name?: string; description?: string }) =>
+            apiCall<DataModelSchema>('PUT', `/api/models/${id}`, updates),
 
         addFieldToModel: (modelId: string, name: string, fieldType: string, required: boolean) =>
             apiCall<DataModelSchema>('POST', `/api/models/${modelId}/fields`, {
@@ -328,9 +384,50 @@ export function useApi() {
                 required,
             }),
 
+        updateField: (modelId: string, fieldId: string, updates: { name?: string; field_type?: string; required?: boolean; unique?: boolean; description?: string }) =>
+            apiCall<DataModelSchema>('PUT', `/api/models/${modelId}/fields/${fieldId}`, updates),
+
+        archiveDataModel: (id: string) =>
+            apiCall<boolean>('DELETE', `/api/models/${id}`),
+
+        deleteField: (modelId: string, fieldId: string) =>
+            apiCall<DataModelSchema>('DELETE', `/api/models/${modelId}/fields/${fieldId}`),
+
+        addRelation: (modelId: string, name: string, targetModelId: string, relationType: string) =>
+            apiCall<DataModelSchema>('POST', `/api/models/${modelId}/relations`, {
+                name,
+                target_model_id: targetModelId,
+                relation_type: relationType,
+            }),
+
+        deleteRelation: (modelId: string, relationId: string) =>
+            apiCall<DataModelSchema>('DELETE', `/api/models/${modelId}/relations/${relationId}`),
+
         // API endpoint operations
+        getEndpoints: () =>
+            apiCall<ApiSchema[]>('GET', '/api/endpoints'),
+
         addApi: (method: string, path: string, name: string) =>
             apiCall<ApiSchema>('POST', '/api/endpoints', { method, path, name }),
+
+        updateEndpoint: (id: string, updates: { method?: string; path?: string; name?: string; description?: string; auth_required?: boolean }) =>
+            apiCall<ApiSchema>('PUT', `/api/endpoints/${id}`, updates),
+
+        archiveApi: (id: string) =>
+            apiCall<boolean>('DELETE', `/api/endpoints/${id}`),
+
+        // Variable operations
+        getVariables: () =>
+            apiCall<VariableSchema[]>('GET', '/api/variables'),
+
+        createVariable: (data: { name: string; var_type: string; default_value?: unknown; scope?: string; page_id?: string; description?: string; persist?: boolean }) =>
+            apiCall<VariableSchema>('POST', '/api/variables', data),
+
+        updateVariable: (id: string, updates: { name?: string; var_type?: string; default_value?: unknown; scope?: string; page_id?: string; description?: string; persist?: boolean }) =>
+            apiCall<VariableSchema>('PUT', `/api/variables/${id}`, updates),
+
+        deleteVariable: (id: string) =>
+            apiCall<boolean>('DELETE', `/api/variables/${id}`),
 
         // Code generation
         generateFrontend: () =>

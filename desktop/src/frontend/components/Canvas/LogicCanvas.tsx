@@ -351,6 +351,8 @@ const LogicCanvas: React.FC = () => {
     // ── Delete node ──
     const handleDeleteNode = async (nodeId: string) => {
         if (!selectedFlow) return;
+        const node = selectedFlow.nodes.find(n => n.id === nodeId);
+        if (!confirm(`Delete node "${node?.label || nodeId}"?`)) return;
         const newNodes = selectedFlow.nodes
             .filter((n) => n.id !== nodeId)
             .map((n) => ({
@@ -368,6 +370,7 @@ const LogicCanvas: React.FC = () => {
     // ── Delete wire ──
     const handleDeleteWire = async (fromId: string, toId: string, port: "next" | "else") => {
         if (!selectedFlow) return;
+        if (!confirm("Remove this connection?")) return;
         const newNodes = selectedFlow.nodes.map((n) => {
             if (n.id !== fromId) return n;
             if (port === "next") return { ...n, next_nodes: n.next_nodes.filter((id) => id !== toId) };
@@ -700,10 +703,102 @@ const LogicCanvas: React.FC = () => {
                             <div className="text-[10px] text-[var(--ide-text-muted)]">
                                 <span className="opacity-60">Connections:</span> {node.next_nodes.length} out{meta.hasElse ? `, ${node.else_nodes.length} else` : ""}
                             </div>
+                            {/* Node Data Editor */}
+                            <NodeDataEditor node={node} onSave={async (data) => {
+                                const newNodes = selectedFlow.nodes.map(n =>
+                                    n.id === node.id ? { ...n, data } : n);
+                                await saveNodes(newNodes);
+                            }} />
                         </div>
                     );
                 })()}
             </div>
+        </div>
+    );
+};
+
+// ─── Node Data Editor ────────────────────────────────
+
+/** Field definitions for each node type's configurable data */
+const NODE_DATA_FIELDS: Record<string, Array<{ key: string; label: string; type: "text" | "textarea" | "select" | "number" | "bool"; options?: string[] }>> = {
+    condition:    [{ key: "expression", label: "Expression", type: "text" }],
+    for_each:     [{ key: "collection", label: "Collection", type: "text" }, { key: "item_var", label: "Item Var", type: "text" }],
+    while:        [{ key: "expression", label: "Condition", type: "text" }],
+    delay:        [{ key: "ms", label: "Delay (ms)", type: "number" }],
+    set_variable: [{ key: "variable", label: "Variable", type: "text" }, { key: "value", label: "Value", type: "text" }],
+    get_variable: [{ key: "variable", label: "Variable", type: "text" }],
+    transform:    [{ key: "expression", label: "Expression", type: "textarea" }],
+    navigate:     [{ key: "path", label: "Path", type: "text" }],
+    alert:        [{ key: "message", label: "Message", type: "text" }, { key: "type", label: "Type", type: "select", options: ["info", "success", "warning", "error"] }],
+    open_modal:   [{ key: "modal_id", label: "Modal ID", type: "text" }],
+    close_modal:  [{ key: "modal_id", label: "Modal ID", type: "text" }],
+    set_property: [{ key: "target", label: "Target", type: "text" }, { key: "property", label: "Property", type: "text" }, { key: "value", label: "Value", type: "text" }],
+    fetch_api:    [{ key: "endpoint", label: "Endpoint", type: "text" }, { key: "method", label: "Method", type: "select", options: ["GET", "POST", "PUT", "DELETE"] }, { key: "result_var", label: "Result Var", type: "text" }],
+    http_request: [{ key: "url", label: "URL", type: "text" }, { key: "method", label: "Method", type: "select", options: ["GET", "POST", "PUT", "PATCH", "DELETE"] }, { key: "headers", label: "Headers (JSON)", type: "textarea" }, { key: "body", label: "Body", type: "textarea" }],
+    db_create:    [{ key: "model", label: "Model", type: "text" }, { key: "data", label: "Data (JSON)", type: "textarea" }],
+    db_read:      [{ key: "model", label: "Model", type: "text" }, { key: "where", label: "Where (JSON)", type: "textarea" }],
+    db_update:    [{ key: "model", label: "Model", type: "text" }, { key: "where", label: "Where (JSON)", type: "textarea" }, { key: "data", label: "Data (JSON)", type: "textarea" }],
+    db_delete:    [{ key: "model", label: "Model", type: "text" }, { key: "where", label: "Where (JSON)", type: "textarea" }],
+    return:       [{ key: "status", label: "Status Code", type: "number" }, { key: "body", label: "Body (JSON)", type: "textarea" }],
+    throw_error:  [{ key: "message", label: "Error Message", type: "text" }, { key: "status", label: "Status Code", type: "number" }],
+    custom_code:  [{ key: "code", label: "Code", type: "textarea" }],
+    send_email:   [{ key: "to", label: "To", type: "text" }, { key: "subject", label: "Subject", type: "text" }, { key: "body", label: "Body", type: "textarea" }],
+};
+
+const NodeDataEditor: React.FC<{ node: LogicNode; onSave: (data: unknown) => Promise<void> }> = ({ node, onSave }) => {
+    const fields = NODE_DATA_FIELDS[node.node_type];
+    if (!fields || fields.length === 0) return null;
+
+    const data = (node.data || {}) as Record<string, unknown>;
+
+    const handleChange = (key: string, value: unknown) => {
+        onSave({ ...data, [key]: value });
+    };
+
+    return (
+        <div className="mt-2 pt-2 border-t border-[var(--ide-border)] space-y-1.5">
+            <p className="text-[10px] font-semibold text-[var(--ide-text-secondary)] uppercase tracking-wider">Configuration</p>
+            {fields.map(f => (
+                <div key={f.key}>
+                    <label className="text-[10px] text-[var(--ide-text-muted)] block mb-0.5">{f.label}</label>
+                    {f.type === "textarea" ? (
+                        <textarea
+                            className="w-full bg-[var(--ide-bg-elevated)] border border-[var(--ide-border)] rounded px-2 py-1 text-xs text-[var(--ide-text)] outline-none focus:border-[var(--ide-primary)] resize-none font-mono"
+                            rows={3}
+                            value={String(data[f.key] ?? "")}
+                            onChange={(e) => handleChange(f.key, e.target.value)}
+                        />
+                    ) : f.type === "select" ? (
+                        <select
+                            className="w-full bg-[var(--ide-bg-elevated)] border border-[var(--ide-border)] rounded px-2 py-1 text-xs text-[var(--ide-text)] outline-none focus:border-[var(--ide-primary)]"
+                            value={String(data[f.key] ?? f.options?.[0] ?? "")}
+                            onChange={(e) => handleChange(f.key, e.target.value)}
+                        >
+                            {f.options?.map(o => <option key={o} value={o}>{o}</option>)}
+                        </select>
+                    ) : f.type === "number" ? (
+                        <input
+                            type="number"
+                            className="w-full bg-[var(--ide-bg-elevated)] border border-[var(--ide-border)] rounded px-2 py-1 text-xs text-[var(--ide-text)] outline-none focus:border-[var(--ide-primary)]"
+                            value={Number(data[f.key] ?? 0)}
+                            onChange={(e) => handleChange(f.key, Number(e.target.value))}
+                        />
+                    ) : f.type === "bool" ? (
+                        <label className="flex items-center gap-1.5 text-xs text-[var(--ide-text-secondary)]">
+                            <input type="checkbox" checked={Boolean(data[f.key])}
+                                onChange={(e) => handleChange(f.key, e.target.checked)} />
+                            {f.label}
+                        </label>
+                    ) : (
+                        <input
+                            type="text"
+                            className="w-full bg-[var(--ide-bg-elevated)] border border-[var(--ide-border)] rounded px-2 py-1 text-xs text-[var(--ide-text)] outline-none focus:border-[var(--ide-primary)]"
+                            value={String(data[f.key] ?? "")}
+                            onChange={(e) => handleChange(f.key, e.target.value)}
+                        />
+                    )}
+                </div>
+            ))}
         </div>
     );
 };

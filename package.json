@@ -1,8 +1,8 @@
 {
-    "name": "grapes-editor",
+    "name": "akasha",
     "version": "1.0.0",
     "private": true,
-    "description": "Grapes IDE - Desktop Visual Full-Stack Builder",
+    "description": "Akasha — Visually build & export production-ready full-stack SaaS applications",
     "scripts": {
         "dev": "cd desktop && npm run tauri dev",
         "build": "cd desktop && npm run tauri build",

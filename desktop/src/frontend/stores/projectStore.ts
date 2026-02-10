@@ -16,7 +16,7 @@ interface ProjectState {
     error: string | null;
     selectedBlockId: string | null;
     selectedPageId: string | null;
-    activeTab: "canvas" | "logic" | "api" | "erd";
+    activeTab: "canvas" | "logic" | "api" | "erd" | "variables";
     viewport: "desktop" | "tablet" | "mobile";
     editMode: "visual" | "code";
     inspectorOpen: boolean;
@@ -209,6 +209,22 @@ export async function renameProject(name: string): Promise<void> {
         const project = await api.renameProject(name);
         updateState(() => ({ project }));
         await initWorkspace(); // Refresh project list in dashboard
+    } catch (err) {
+        updateState(() => ({ error: String(err) }));
+        throw err;
+    } finally {
+        updateState(() => ({ loading: false }));
+    }
+}
+
+/**
+ * Update project settings (theme, build, seo)
+ */
+export async function updateProjectSettings(settings: Record<string, unknown>): Promise<void> {
+    updateState(() => ({ loading: true, error: null }));
+    try {
+        const project = await api.updateSettings(settings);
+        updateState(() => ({ project }));
     } catch (err) {
         updateState(() => ({ error: String(err) }));
         throw err;
@@ -484,6 +500,32 @@ export async function updateBlockStyle(
 }
 
 /**
+ * Update a block binding (data source connection for a property)
+ */
+export async function updateBlockBinding(
+    blockId: string,
+    propertyName: string,
+    binding: { type: string; value: unknown } | null
+): Promise<void> {
+    await api.updateBlockProperty(blockId, `bindings.${propertyName}`, binding);
+    await loadProject();
+    isDirtyValue = true;
+}
+
+/**
+ * Update a block event handler (event -> logic flow mapping)
+ */
+export async function updateBlockEvent(
+    blockId: string,
+    eventName: string,
+    logicFlowId: string | null
+): Promise<void> {
+    await api.updateBlockProperty(blockId, `events.${eventName}`, logicFlowId);
+    await loadProject();
+    isDirtyValue = true;
+}
+
+/**
  * Archive (soft delete) a block
  */
 export async function archiveBlock(blockId: string): Promise<void> {
@@ -607,7 +649,7 @@ export async function archivePage(id: string): Promise<void> {
 }
 
 /**
- * Create a page with automatic naming/path under client/page sync flow.
+ * Create a page with automatic naming/path under client/src/pages sync flow.
  */
 export async function createPage(name: string): Promise<PageSchema> {
     if (!state.project) {
@@ -673,6 +715,131 @@ export async function addField(
 }
 
 /**
+ * Update a field in a data model
+ */
+export async function updateField(
+    modelId: string,
+    fieldId: string,
+    updates: { name?: string; field_type?: string; required?: boolean; unique?: boolean; description?: string }
+): Promise<void> {
+    await api.updateField(modelId, fieldId, updates);
+    await loadProject();
+    isDirtyValue = true;
+}
+
+/**
+ * Archive (soft-delete) an API endpoint
+ */
+export async function archiveApi(id: string): Promise<void> {
+    await api.archiveApi(id);
+    await loadProject();
+    isDirtyValue = true;
+}
+
+/**
+ * Update an API endpoint
+ */
+export async function updateEndpoint(
+    id: string,
+    updates: { method?: string; path?: string; name?: string; description?: string; auth_required?: boolean }
+): Promise<void> {
+    await api.updateEndpoint(id, updates);
+    await loadProject();
+    isDirtyValue = true;
+}
+
+/**
+ * Update a data model
+ */
+export async function updateModel(
+    id: string,
+    updates: { name?: string; description?: string }
+): Promise<void> {
+    await api.updateModel(id, updates);
+    await loadProject();
+    isDirtyValue = true;
+}
+
+/**
+ * Archive (soft-delete) a data model
+ */
+export async function archiveDataModel(id: string): Promise<void> {
+    await api.archiveDataModel(id);
+    await loadProject();
+    isDirtyValue = true;
+}
+
+/**
+ * Delete a field from a data model
+ */
+export async function deleteField(modelId: string, fieldId: string): Promise<void> {
+    await api.deleteField(modelId, fieldId);
+    await loadProject();
+    isDirtyValue = true;
+}
+
+/**
+ * Add a relation to a data model
+ */
+export async function addRelation(
+    modelId: string,
+    name: string,
+    targetModelId: string,
+    relationType: string
+): Promise<void> {
+    await api.addRelation(modelId, name, targetModelId, relationType);
+    await loadProject();
+    isDirtyValue = true;
+}
+
+/**
+ * Delete a relation from a data model
+ */
+export async function deleteRelation(modelId: string, relationId: string): Promise<void> {
+    await api.deleteRelation(modelId, relationId);
+    await loadProject();
+    isDirtyValue = true;
+}
+
+/**
+ * Create a new variable
+ */
+export async function createVariable(data: {
+    name: string;
+    var_type: string;
+    default_value?: unknown;
+    scope?: string;
+    page_id?: string;
+    description?: string;
+    persist?: boolean;
+}): Promise<void> {
+    await api.createVariable(data);
+    await loadProject();
+    isDirtyValue = true;
+}
+
+/**
+ * Update a variable
+ */
+export async function updateVariable(
+    id: string,
+    updates: { name?: string; var_type?: string; default_value?: unknown; scope?: string; description?: string; persist?: boolean }
+): Promise<void> {
+    await api.updateVariable(id, updates);
+    await loadProject();
+    isDirtyValue = true;
+}
+
+/**
+ * Delete a variable
+ */
+export async function deleteVariable(id: string): Promise<void> {
+    await api.deleteVariable(id);
+    await loadProject();
+    isDirtyValue = true;
+}
+
+/**
  * Generate frontend code
  */
 export async function generateFrontend(): Promise<{ path: string; content: string }[]> {
@@ -704,7 +871,7 @@ export async function downloadProjectZip(): Promise<void> {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${state.project?.name || "grapes-project"}.zip`;
+    a.download = `${state.project?.name || "akasha-project"}.zip`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -740,7 +907,7 @@ export function selectFile(path: string | null): void {
 /**
  * Switch the active tab
  */
-export function setActiveTab(tab: "canvas" | "logic" | "api" | "erd"): void {
+export function setActiveTab(tab: "canvas" | "logic" | "api" | "erd" | "variables"): void {
     updateState(() => ({ activeTab: tab }));
 }
 
@@ -791,6 +958,13 @@ export async function setEditMode(mode: "visual" | "code"): Promise<void> {
  */
 export function toggleInspector(): void {
     updateState((prev) => ({ inspectorOpen: !prev.inspectorOpen }));
+}
+
+/**
+ * Set visual inspector visibility explicitly.
+ */
+export function setInspectorOpen(open: boolean): void {
+    updateState(() => ({ inspectorOpen: open }));
 }
 
 /**
@@ -914,7 +1088,27 @@ export function getBlock(blockId: string): BlockSchema | undefined {
  */
 export function getRootBlocks(): BlockSchema[] {
     if (!state.project) return [];
-    return state.project.blocks.filter(b => !b.parent_id && !b.archived);
+
+    const roots = state.project.blocks.filter((b) => !b.parent_id && !b.archived);
+    const activePageId = state.selectedPageId;
+    if (!activePageId) return roots;
+
+    const activePage = state.project.pages.find((page) => page.id === activePageId && !page.archived);
+    const selectedRootId = activePage?.root_block_id;
+
+    const pageRootIds = new Set(
+        state.project.pages
+            .filter((page) => !page.archived && !!page.root_block_id)
+            .map((page) => page.root_block_id as string)
+    );
+
+    if (!selectedRootId) {
+        // No bound page root: keep only non-page global roots.
+        return roots.filter((block) => !pageRootIds.has(block.id));
+    }
+
+    // Show selected page root + any global roots not tied to pages.
+    return roots.filter((block) => block.id === selectedRootId || !pageRootIds.has(block.id));
 }
 
 /**

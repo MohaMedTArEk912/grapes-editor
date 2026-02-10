@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useProjectStore } from "../../hooks/useProjectStore";
-import { renameProject, resetProject, deleteProject, closeProject } from "../../stores/projectStore";
+import { renameProject, resetProject, deleteProject, closeProject, updateProjectSettings } from "../../stores/projectStore";
 import { useToast } from "../../context/ToastContext";
 import ConfirmModal from "./ConfirmModal";
 
@@ -25,6 +25,24 @@ const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({ isOpen, onC
     const [isDestructiveAction, setIsDestructiveAction] = useState(false);
     const [deleteFromDisk, setDeleteFromDisk] = useState(false);
     const [clearDiskOnReset, setClearDiskOnReset] = useState(true);
+
+    // Build settings
+    const [frontendFramework, setFrontendFramework] = useState(project?.settings?.build?.frontend_framework || "react");
+    const [backendFramework, setBackendFramework] = useState(project?.settings?.build?.backend_framework || "nest_js");
+    const [databaseProvider, setDatabaseProvider] = useState(project?.settings?.build?.database_provider || "postgre_sql");
+    const [useTypescript, setUseTypescript] = useState(project?.settings?.build?.typescript !== false);
+
+    // Theme settings
+    const [primaryColor, setPrimaryColor] = useState(project?.settings?.theme?.primary_color || "#6366f1");
+    const [secondaryColor, setSecondaryColor] = useState(project?.settings?.theme?.secondary_color || "#8b5cf6");
+    const [fontFamily, setFontFamily] = useState(project?.settings?.theme?.font_family || "Inter");
+    const [borderRadius, setBorderRadius] = useState(project?.settings?.theme?.border_radius ?? 8);
+
+    // SEO settings
+    const [titleSuffix, setTitleSuffix] = useState(project?.settings?.seo?.title_suffix || "");
+    const [defaultDescription, setDefaultDescription] = useState(project?.settings?.seo?.default_description || "");
+    const [favicon, setFavicon] = useState(project?.settings?.seo?.favicon || "");
+
     const [confirmModal, setConfirmModal] = useState<{
         isOpen: boolean;
         type: "reset" | "delete" | null;
@@ -34,6 +52,17 @@ const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({ isOpen, onC
     useEffect(() => {
         if (project) {
             setProjectName(project.name);
+            setFrontendFramework(project.settings?.build?.frontend_framework || "react");
+            setBackendFramework(project.settings?.build?.backend_framework || "nest_js");
+            setDatabaseProvider(project.settings?.build?.database_provider || "postgre_sql");
+            setUseTypescript(project.settings?.build?.typescript !== false);
+            setPrimaryColor(project.settings?.theme?.primary_color || "#6366f1");
+            setSecondaryColor(project.settings?.theme?.secondary_color || "#8b5cf6");
+            setFontFamily(project.settings?.theme?.font_family || "Inter");
+            setBorderRadius(project.settings?.theme?.border_radius ?? 8);
+            setTitleSuffix(project.settings?.seo?.title_suffix || "");
+            setDefaultDescription(project.settings?.seo?.default_description || "");
+            setFavicon(project.settings?.seo?.favicon || "");
         }
     }, [project]);
 
@@ -50,6 +79,11 @@ const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({ isOpen, onC
             if (projectName !== project?.name) {
                 await renameProject(projectName.trim());
             }
+            await updateProjectSettings({
+                theme: { primary_color: primaryColor, secondary_color: secondaryColor, font_family: fontFamily, border_radius: borderRadius },
+                build: { frontend_framework: frontendFramework, backend_framework: backendFramework, database_provider: databaseProvider, typescript: useTypescript },
+                seo: { title_suffix: titleSuffix || null, default_description: defaultDescription || null, favicon: favicon || null },
+            });
             toast.success("Settings saved successfully");
             onClose();
         } catch (err) {
@@ -168,6 +202,136 @@ const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({ isOpen, onC
                                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                                         The absolute location where your React components are synchronized.
                                     </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Section: Build Configuration */}
+                        <div className="space-y-6">
+                            <div className="flex items-center gap-4 ml-1">
+                                <div className="w-7 h-7 rounded-xl bg-indigo-500/10 flex items-center justify-center border border-indigo-500/10">
+                                    <svg className="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                                    </svg>
+                                </div>
+                                <h4 className="text-[11px] font-black text-indigo-400/80 uppercase tracking-[0.3em]">Build Configuration</h4>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-[var(--ide-text-muted)] uppercase tracking-wider ml-1">Frontend</label>
+                                    <select value={frontendFramework} onChange={(e) => setFrontendFramework(e.target.value)}
+                                        className="w-full bg-[var(--ide-bg-sidebar)] border border-[var(--ide-border)] rounded-xl px-4 py-3 text-sm text-[var(--ide-text)] focus:outline-none focus:border-indigo-500">
+                                        <option value="react">React</option>
+                                        <option value="next_js">Next.js</option>
+                                        <option value="vue">Vue</option>
+                                        <option value="svelte">Svelte</option>
+                                    </select>
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-[var(--ide-text-muted)] uppercase tracking-wider ml-1">Backend</label>
+                                    <select value={backendFramework} onChange={(e) => setBackendFramework(e.target.value)}
+                                        className="w-full bg-[var(--ide-bg-sidebar)] border border-[var(--ide-border)] rounded-xl px-4 py-3 text-sm text-[var(--ide-text)] focus:outline-none focus:border-indigo-500">
+                                        <option value="nest_js">NestJS</option>
+                                        <option value="express">Express</option>
+                                        <option value="fastify">Fastify</option>
+                                    </select>
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-[var(--ide-text-muted)] uppercase tracking-wider ml-1">Database</label>
+                                    <select value={databaseProvider} onChange={(e) => setDatabaseProvider(e.target.value)}
+                                        className="w-full bg-[var(--ide-bg-sidebar)] border border-[var(--ide-border)] rounded-xl px-4 py-3 text-sm text-[var(--ide-text)] focus:outline-none focus:border-indigo-500">
+                                        <option value="postgre_sql">PostgreSQL</option>
+                                        <option value="my_sql">MySQL</option>
+                                        <option value="sqlite">SQLite</option>
+                                        <option value="mongo_db">MongoDB</option>
+                                    </select>
+                                </div>
+                                <div className="space-y-1.5 flex flex-col justify-end">
+                                    <label className="flex items-center gap-3 bg-[var(--ide-bg-sidebar)] border border-[var(--ide-border)] rounded-xl px-4 py-3 cursor-pointer hover:border-indigo-500/30 transition-colors">
+                                        <input type="checkbox" checked={useTypescript} onChange={(e) => setUseTypescript(e.target.checked)} className="rounded" />
+                                        <span className="text-sm text-[var(--ide-text)]">TypeScript</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Section: Theme */}
+                        <div className="space-y-6">
+                            <div className="flex items-center gap-4 ml-1">
+                                <div className="w-7 h-7 rounded-xl bg-purple-500/10 flex items-center justify-center border border-purple-500/10">
+                                    <svg className="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+                                    </svg>
+                                </div>
+                                <h4 className="text-[11px] font-black text-purple-400/80 uppercase tracking-[0.3em]">Theme</h4>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-[var(--ide-text-muted)] uppercase tracking-wider ml-1">Primary Color</label>
+                                    <div className="flex items-center gap-2 bg-[var(--ide-bg-sidebar)] border border-[var(--ide-border)] rounded-xl px-4 py-2">
+                                        <input type="color" value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className="w-8 h-8 rounded cursor-pointer border-0" />
+                                        <input type="text" value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)}
+                                            className="flex-1 bg-transparent text-sm text-[var(--ide-text)] font-mono focus:outline-none" />
+                                    </div>
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-[var(--ide-text-muted)] uppercase tracking-wider ml-1">Secondary Color</label>
+                                    <div className="flex items-center gap-2 bg-[var(--ide-bg-sidebar)] border border-[var(--ide-border)] rounded-xl px-4 py-2">
+                                        <input type="color" value={secondaryColor} onChange={(e) => setSecondaryColor(e.target.value)} className="w-8 h-8 rounded cursor-pointer border-0" />
+                                        <input type="text" value={secondaryColor} onChange={(e) => setSecondaryColor(e.target.value)}
+                                            className="flex-1 bg-transparent text-sm text-[var(--ide-text)] font-mono focus:outline-none" />
+                                    </div>
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-[var(--ide-text-muted)] uppercase tracking-wider ml-1">Font Family</label>
+                                    <select value={fontFamily} onChange={(e) => setFontFamily(e.target.value)}
+                                        className="w-full bg-[var(--ide-bg-sidebar)] border border-[var(--ide-border)] rounded-xl px-4 py-3 text-sm text-[var(--ide-text)] focus:outline-none focus:border-purple-500">
+                                        <option value="Inter">Inter</option>
+                                        <option value="Roboto">Roboto</option>
+                                        <option value="Open Sans">Open Sans</option>
+                                        <option value="Poppins">Poppins</option>
+                                        <option value="Lato">Lato</option>
+                                        <option value="Source Sans Pro">Source Sans Pro</option>
+                                    </select>
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-[var(--ide-text-muted)] uppercase tracking-wider ml-1">Border Radius ({borderRadius}px)</label>
+                                    <input type="range" min="0" max="24" value={borderRadius}
+                                        onChange={(e) => setBorderRadius(Number(e.target.value))}
+                                        className="w-full mt-3" />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Section: SEO */}
+                        <div className="space-y-6">
+                            <div className="flex items-center gap-4 ml-1">
+                                <div className="w-7 h-7 rounded-xl bg-green-500/10 flex items-center justify-center border border-green-500/10">
+                                    <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                    </svg>
+                                </div>
+                                <h4 className="text-[11px] font-black text-green-400/80 uppercase tracking-[0.3em]">SEO Defaults</h4>
+                            </div>
+                            <div className="space-y-3">
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-[var(--ide-text-muted)] uppercase tracking-wider ml-1">Title Suffix</label>
+                                    <input type="text" value={titleSuffix} onChange={(e) => setTitleSuffix(e.target.value)}
+                                        placeholder="e.g. | My SaaS App"
+                                        className="w-full bg-[var(--ide-bg-sidebar)] border border-[var(--ide-border)] rounded-xl px-4 py-3 text-sm text-[var(--ide-text)] placeholder:text-[var(--ide-text-muted)]/40 focus:outline-none focus:border-green-500" />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-[var(--ide-text-muted)] uppercase tracking-wider ml-1">Default Meta Description</label>
+                                    <textarea value={defaultDescription} onChange={(e) => setDefaultDescription(e.target.value)}
+                                        placeholder="Describe your application for search engines..."
+                                        rows={2}
+                                        className="w-full bg-[var(--ide-bg-sidebar)] border border-[var(--ide-border)] rounded-xl px-4 py-3 text-sm text-[var(--ide-text)] placeholder:text-[var(--ide-text-muted)]/40 focus:outline-none focus:border-green-500 resize-none" />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-[var(--ide-text-muted)] uppercase tracking-wider ml-1">Favicon URL</label>
+                                    <input type="text" value={favicon} onChange={(e) => setFavicon(e.target.value)}
+                                        placeholder="/favicon.ico"
+                                        className="w-full bg-[var(--ide-bg-sidebar)] border border-[var(--ide-border)] rounded-xl px-4 py-3 text-sm text-[var(--ide-text)] placeholder:text-[var(--ide-text-muted)]/40 focus:outline-none focus:border-green-500" />
                                 </div>
                             </div>
                         </div>

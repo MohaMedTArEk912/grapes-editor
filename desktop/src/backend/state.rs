@@ -9,16 +9,22 @@ use crate::backend::db::Database;
 pub struct AppState {
     /// Database connection
     pub db: Arc<Database>,
+    /// File system watcher
+    pub watcher: Arc<tokio::sync::Mutex<crate::backend::watcher::FsWatcher>>,
+    /// Tauri App Handle (for emitting events)
+    pub app_handle: Arc<tokio::sync::Mutex<Option<tauri::AppHandle>>>,
 }
 
 impl AppState {
     /// Create new app state
     pub fn new() -> Result<Self, anyhow::Error> {
-        // Use 'grapes.db' in the current directory
-        let db = Database::new("grapes.db")?;
+        // Use 'akasha.db' in the current directory
+        let db = Database::new("akasha.db")?;
         
         Ok(Self {
             db: Arc::new(db),
+            watcher: Arc::new(tokio::sync::Mutex::new(crate::backend::watcher::FsWatcher::new())),
+            app_handle: Arc::new(tokio::sync::Mutex::new(None)),
         })
     }
     

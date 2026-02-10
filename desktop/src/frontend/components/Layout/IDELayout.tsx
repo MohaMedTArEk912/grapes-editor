@@ -9,20 +9,18 @@
  * - Bottom Status Bar
  */
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useProjectStore } from "../../hooks/useProjectStore";
 import { useEditorSettings } from "../../hooks/useEditorSettings";
-import { setActiveTab, setEditMode, closeProject, installProjectDependencies, clearInstallStatus, toggleInspector } from "../../stores/projectStore";
+import { setActiveTab, setEditMode, closeProject, installProjectDependencies, clearInstallStatus, setInspectorOpen } from "../../stores/projectStore";
 import * as EditorSettingsStore from "../../stores/editorSettingsStore";
-import LogicCanvas from "../Canvas/LogicCanvas";
-import ApiList from "../Canvas/ApiList";
-import SchemaEditor from "../Editors/SchemaEditor";
 import CodeEditor from "../Canvas/CodeEditor";
 import ProjectSettingsModal from "../Modals/ProjectSettingsModal";
 import ComponentPalette from "../Visual/ComponentPalette";
 import Inspector from "../Visual/Inspector";
 import WindowControls from "../UI/WindowControls";
-import { SidebarSection, PagesList } from "./SidebarComponents";
+import EditorTabs from "./EditorTabs";
+import { SidebarSection, PagesList, AddPageButton } from "./SidebarComponents";
 
 interface IDELayoutProps {
     toolbar: React.ReactNode;
@@ -45,7 +43,7 @@ const IDELayout: React.FC<IDELayoutProps> = ({
 
     // Sidebar state
     type SidebarType = "explorer" | "components" | "logic" | "api" | "erd";
-    const [sidebarOpen, setSidebarOpen] = useState(true);
+    const [sidebarOpen, setSidebarOpen] = useState(!inspectorOpen);
     const [activeSidebar, setActiveSidebar] = useState<SidebarType>(editMode === "visual" ? "components" : "explorer");
     const [terminalOpen, setTerminalOpen] = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
@@ -53,12 +51,40 @@ const IDELayout: React.FC<IDELayoutProps> = ({
     // Toggle or switch sidebar
     const handleActivityClick = (sidebar: SidebarType) => {
         if (activeSidebar === sidebar) {
-            setSidebarOpen(!sidebarOpen);
+            const nextOpen = !sidebarOpen;
+            setSidebarOpen(nextOpen);
+            if (nextOpen) {
+                setInspectorOpen(false);
+            }
         } else {
             setActiveSidebar(sidebar);
             setSidebarOpen(true);
+            setInspectorOpen(false);
         }
     };
+
+    const handleInspectorToggle = () => {
+        if (inspectorOpen) {
+            setInspectorOpen(false);
+            return;
+        }
+        setSidebarOpen(false);
+        setInspectorOpen(true);
+    };
+
+    // Keep one side panel visible at a time.
+    useEffect(() => {
+        if (inspectorOpen && sidebarOpen) {
+            setSidebarOpen(false);
+        }
+    }, [inspectorOpen, sidebarOpen]);
+
+    // Global keyboard shortcut: toggle sidebar
+    useEffect(() => {
+        const toggle = () => setSidebarOpen(prev => !prev);
+        window.addEventListener("akasha:toggle-sidebar", toggle);
+        return () => window.removeEventListener("akasha:toggle-sidebar", toggle);
+    }, []);
 
     return (
         <div className="h-screen w-screen flex flex-col bg-[var(--ide-bg)] text-[var(--ide-text)] overflow-hidden">
@@ -70,14 +96,14 @@ const IDELayout: React.FC<IDELayoutProps> = ({
             >
 
                 <span className="text-xs text-[var(--ide-text-secondary)] font-medium">
-                    {project?.name || "Untitled"} — Grapes IDE
+                    {project?.name || "Untitled"} — Akasha
                 </span>
                 <div className="flex items-center gap-2">
                     <div className="flex bg-[var(--ide-chrome)] rounded-md overflow-hidden border border-[var(--ide-border)]">
                         <button
                             onClick={() => {
                                 if (activeTab !== "canvas") setActiveTab("canvas");
-                                void setEditMode("visual");
+                                void setEditMode("visual").catch(console.error);
                             }}
                             className={`px-3 py-1 text-xs flex items-center gap-1.5 transition-colors ${editMode === "visual"
                                 ? "bg-[var(--ide-primary)] text-white"
@@ -94,7 +120,7 @@ const IDELayout: React.FC<IDELayoutProps> = ({
                         <button
                             onClick={() => {
                                 if (activeTab !== "canvas") setActiveTab("canvas");
-                                void setEditMode("code");
+                                void setEditMode("code").catch(console.error);
                             }}
                             className={`px-3 py-1 text-xs flex items-center gap-1.5 transition-colors ${editMode === "code"
                                 ? "bg-[var(--ide-primary)] text-white"
@@ -112,7 +138,7 @@ const IDELayout: React.FC<IDELayoutProps> = ({
                     {/* Inspector Toggle (Always visible in Visual Mode) */}
                     {editMode === "visual" && (
                         <button
-                            onClick={() => toggleInspector()}
+                            onClick={handleInspectorToggle}
                             className={`h-6 px-2.5 flex items-center gap-1.5 rounded border transition-all text-[10px] font-bold uppercase tracking-wider ${inspectorOpen
                                 ? "bg-[var(--ide-accent-subtle)] border-[var(--ide-primary)] text-[var(--ide-primary)] shadow-[0_0_8px_rgba(99,102,241,0.2)]"
                                 : "bg-transparent border-[var(--ide-border-strong)] text-[var(--ide-text-secondary)] hover:text-[var(--ide-text)] hover:border-[var(--ide-text-secondary)]"
@@ -202,15 +228,21 @@ const IDELayout: React.FC<IDELayoutProps> = ({
                             </span>
                         </div>
 
-                        <div className="flex-1 overflow-y-auto overflow-x-hidden">
+                        <div className="flex-1 min-h-0 overflow-hidden">
                             {activeSidebar === "explorer" && (
-                                <div className="flex flex-col h-full divide-y divide-[var(--ide-border)]/30">
-                                    <SidebarSection title="Visual Pages" defaultExpanded={true}>
-                                        <PagesList />
-                                    </SidebarSection>
-                                    <SidebarSection title="Files" defaultExpanded={true}>
-                                        {fileTree}
-                                    </SidebarSection>
+                                <div className="flex flex-col h-full">
+                                    {/* Visual Pages - Only in Visual Mode */}
+                                    {editMode === "visual" && (
+                                        <SidebarSection title="Visual Pages" defaultExpanded={true} actionButton={<AddPageButton />}>
+                                            <PagesList />
+                                        </SidebarSection>
+                                    )}
+                                    {/* Files - Only in Code Mode */}
+                                    {editMode === "code" && (
+                                        <SidebarSection title="Files" defaultExpanded={true}>
+                                            {fileTree}
+                                        </SidebarSection>
+                                    )}
                                 </div>
                             )}
                             {activeSidebar === "components" && <ComponentPalette />}
@@ -241,7 +273,7 @@ const IDELayout: React.FC<IDELayoutProps> = ({
                                 </div>
                             )}
                             {activeSidebar === "erd" && (
-                                <div className="py-2">
+                                <div className="py-2 space-y-1">
                                     <button
                                         onClick={() => setActiveTab("erd")}
                                         className={`w-full flex items-center gap-2 px-4 py-2 text-xs transition-colors hover:bg-[var(--ide-bg-hover)] ${activeTab === "erd" ? "text-indigo-400 font-bold bg-indigo-500/5" : "text-[var(--ide-text-secondary)]"}`}
@@ -250,6 +282,15 @@ const IDELayout: React.FC<IDELayoutProps> = ({
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7" />
                                         </svg>
                                         Database Schema
+                                    </button>
+                                    <button
+                                        onClick={() => setActiveTab("variables")}
+                                        className={`w-full flex items-center gap-2 px-4 py-2 text-xs transition-colors hover:bg-[var(--ide-bg-hover)] ${activeTab === "variables" ? "text-indigo-400 font-bold bg-indigo-500/5" : "text-[var(--ide-text-secondary)]"}`}
+                                    >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                        </svg>
+                                        Variables
                                     </button>
                                 </div>
                             )}
@@ -265,6 +306,9 @@ const IDELayout: React.FC<IDELayoutProps> = ({
                             {toolbar}
                         </div>
 
+                        {/* VS Code-style Editor Tabs */}
+                        <EditorTabs />
+
                         {/* Editor Content - switches based on activeTab */}
                         <div className={`flex-1 relative ${terminalOpen ? 'h-[60%]' : ''}`}>
                             {loading && (
@@ -273,9 +317,7 @@ const IDELayout: React.FC<IDELayoutProps> = ({
                                 </div>
                             )}
                             {activeTab === "canvas" && (editMode === "visual" ? canvas : <CodeEditor />)}
-                            {activeTab === "logic" && <LogicCanvas />}
-                            {activeTab === "api" && <ApiList />}
-                            {activeTab === "erd" && <SchemaEditor />}
+                            {activeTab !== "canvas" && canvas}
                         </div>
 
                         {/* Terminal Panel (toggleable) */}

@@ -9,3 +9,4 @@ pub mod models;
 pub mod endpoints;
 pub mod generate;
 pub mod files;
+pub mod variables;

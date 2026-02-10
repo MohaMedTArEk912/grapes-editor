@@ -76,15 +76,7 @@ function pascalCase(input: string): string {
 }
 
 function getPageSourcePath(pageName: string): string {
-    return `client/page/${pascalCase(pageName)}.tsx`;
-}
-
-function formatSavedTime(date: Date): string {
-    return date.toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-    });
+    return `client/src/pages/${pascalCase(pageName)}.tsx`;
 }
 
 const EXT_TO_LANGUAGE: Record<string, string> = {
@@ -180,8 +172,10 @@ const CodeEditor: React.FC = () => {
     const [isDirty, setIsDirty] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [saveError, setSaveError] = useState<string | null>(null);
-    const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+    const [cursorPosition, setCursorPosition] = useState({ line: 1, column: 1 });
     const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null);
+    const decorationsRef = useRef<string[]>([]);
+    const readOnlyRangesRef = useRef<{ startLine: number; endLine: number }[]>([]);
 
     const selectedPage = project && selectedPageId ? getPage(selectedPageId) : null;
     const activePath = useMemo(
@@ -196,6 +190,57 @@ const CodeEditor: React.FC = () => {
     const effectiveFontSize = useMemo(() => {
         return Math.round(settings.fontSize * (settings.zoomLevel / 100));
     }, [settings.fontSize, settings.zoomLevel]);
+
+    /**
+     * Scan code for @akasha-block region markers and apply:
+     *  1. Read-only range tracking
+     *  2. Dimmed decorations on protected lines
+     */
+    const applyBlockRegions = useCallback((editor: MonacoEditor.IStandaloneCodeEditor) => {
+        const model = editor.getModel();
+        if (!model) return;
+
+        const lines = model.getLinesContent();
+        const regions: { startLine: number; endLine: number }[] = [];
+        const decorations: MonacoEditor.IModelDeltaDecoration[] = [];
+        let openLine: number | null = null;
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            if (line.includes("@akasha-block:start") || line.includes("@akasha-block id=")) {
+                openLine = i + 1; // 1-based
+            } else if ((line.includes("@akasha-block:end") || line.includes("@akasha-block-end")) && openLine !== null) {
+                const endLine = i + 1;
+                regions.push({ startLine: openLine, endLine });
+                decorations.push({
+                    range: {
+                        startLineNumber: openLine,
+                        startColumn: 1,
+                        endLineNumber: endLine,
+                        endColumn: model.getLineMaxColumn(endLine),
+                    },
+                    options: {
+                        isWholeLine: true,
+                        className: "akasha-readonly-region",
+                        glyphMarginClassName: "akasha-readonly-glyph",
+                        overviewRuler: {
+                            color: "rgba(99, 102, 241, 0.3)",
+                            position: 1, // Full
+                        },
+                        minimap: {
+                            color: "rgba(99, 102, 241, 0.15)",
+                            position: 1,
+                        },
+                        hoverMessage: { value: "🔒 **Akasha-managed region** — edit this block visually" },
+                    },
+                });
+                openLine = null;
+            }
+        }
+
+        readOnlyRangesRef.current = regions;
+        decorationsRef.current = editor.deltaDecorations(decorationsRef.current, decorations);
+    }, []);
 
     const handleBeforeMount = (monaco: Monaco) => {
         try {
@@ -267,7 +312,6 @@ const CodeEditor: React.FC = () => {
                 setSaveError(null);
                 await saveFileContent(activePath, code);
                 setIsDirty(false);
-                setLastSavedAt(new Date());
             } catch (err) {
                 const msg = err instanceof Error ? err.message : String(err);
                 setSaveError(msg);
@@ -290,6 +334,25 @@ const CodeEditor: React.FC = () => {
     const handleEditorMount = (editor: MonacoEditor.IStandaloneCodeEditor) => {
         editorRef.current = editor;
 
+        // Track cursor position for status bar
+        editor.onDidChangeCursorPosition((e) => {
+            setCursorPosition({ line: e.position.lineNumber, column: e.position.column });
+        });
+
+        // Apply @akasha-block regions on initial load and content changes
+        applyBlockRegions(editor);
+        editor.onDidChangeModelContent(() => {
+            applyBlockRegions(editor);
+        });
+
+        // Intercept edits and reject changes inside read-only regions
+        editor.onDidChangeModelContent(() => {
+            // We deliberately don't block edits at this stage —
+            // the decoration + hover message serves as a visual warning.
+            // Full enforcement via `onWillType` is possible but may disrupt DX.
+            // Users can use the unsafe mode toggle (planned Phase 4) to override.
+        });
+
         // Add keyboard shortcuts using numeric key codes
         // Ctrl/Cmd + = (zoom in)
         editor.addCommand(2048 | 81, () => {  // KeyMod.CtrlCmd | KeyCode.Equal
@@ -306,26 +369,16 @@ const CodeEditor: React.FC = () => {
     };
 
     const handleUndo = () => {
-        editorRef.current?.trigger("grapes-editor", "undo", null);
+        editorRef.current?.trigger("akasha-editor", "undo", null);
     };
 
     const handleRedo = () => {
-        editorRef.current?.trigger("grapes-editor", "redo", null);
+        editorRef.current?.trigger("akasha-editor", "redo", null);
     };
 
     const handleFormatDocument = useCallback(() => {
         editorRef.current?.getAction("editor.action.formatDocument")?.run();
     }, []);
-
-    const statusText = saveError
-        ? "AUTOSAVE FAILED"
-        : isSaving
-            ? "SAVING..."
-            : isDirty
-                ? "UNSAVED CHANGES"
-                : lastSavedAt
-                    ? `SAVED ${formatSavedTime(lastSavedAt)}`
-                    : "LIVE SYNC ACTIVE";
 
     if (!selectedPage && !selectedFilePath) {
         return (
@@ -364,56 +417,64 @@ const CodeEditor: React.FC = () => {
 
     return (
         <div className="h-full flex flex-col bg-[var(--ide-bg)]">
-            {/* Enhanced Editor Header */}
-            <div className="h-11 bg-[var(--ide-bg-sidebar)] border-b border-[var(--ide-border)] px-4 flex items-center justify-between shrink-0 select-none">
-                <div className="flex items-center gap-3">
-                    <div className="flex gap-1.5 shrink-0">
-                        <div className={`w-2.5 h-2.5 rounded-full ${isDirty ? "bg-yellow-500/70" : "bg-green-500/50"}`} />
-                    </div>
-                    <span className="text-[11px] font-bold text-[var(--ide-text)] tracking-wide">
-                        {activePath?.split("/").pop() ?? "Untitled"}
-                    </span>
-                    <span className="text-[10px] text-[var(--ide-text-muted)] uppercase tracking-wider">
-                        {editorLanguage}
-                    </span>
+            {/* Simplified Editor Toolbar - VS Code style */}
+            <div className="h-9 bg-[var(--ide-chrome)] border-b border-[var(--ide-border)] px-3 flex items-center justify-between shrink-0 select-none">
+                {/* Left: Breadcrumb path */}
+                <div className="flex items-center gap-1 text-[11px] text-[var(--ide-text-muted)] min-w-0">
+                    {activePath?.split(/[/\\]/).slice(-3).map((part, i, arr) => (
+                        <React.Fragment key={i}>
+                            <span className={i === arr.length - 1 ? "text-[var(--ide-text)] font-medium" : "hover:text-[var(--ide-text)] cursor-pointer"}>
+                                {part}
+                            </span>
+                            {i < arr.length - 1 && (
+                                <svg className="w-3 h-3 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                                </svg>
+                            )}
+                        </React.Fragment>
+                    ))}
                 </div>
-                <div className="flex items-center gap-3">
+
+                {/* Right: Controls */}
+                <div className="flex items-center gap-2">
                     {/* Zoom Controls */}
-                    <div className="flex items-center gap-1 bg-[var(--ide-bg-panel)] rounded border border-[var(--ide-border)] px-1">
+                    <div className="flex items-center bg-[var(--ide-bg-panel)] rounded border border-[var(--ide-border)] overflow-hidden">
                         <button
                             onClick={() => EditorSettingsStore.zoomOut()}
-                            className="h-6 w-6 flex items-center justify-center text-[var(--ide-text-muted)] hover:text-[var(--ide-text)] hover:bg-[var(--ide-text)]/10 rounded transition-colors"
-                            title="Zoom Out (Ctrl/Cmd+-)"
+                            className="h-6 w-6 flex items-center justify-center text-[var(--ide-text-muted)] hover:text-[var(--ide-text)] hover:bg-[var(--ide-text)]/10 transition-colors"
+                            title="Zoom Out"
+                            aria-label="Zoom out"
                         >
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 12H4" />
                             </svg>
                         </button>
                         <button
                             onClick={() => EditorSettingsStore.resetZoom()}
-                            className="h-6 px-2 text-[10px] font-medium text-[var(--ide-text-muted)] hover:text-[var(--ide-text)] hover:bg-[var(--ide-text)]/10 rounded transition-colors min-w-[45px]"
-                            title="Reset Zoom (Ctrl/Cmd+0)"
+                            className="h-6 px-1.5 text-[10px] font-medium text-[var(--ide-text-muted)] hover:text-[var(--ide-text)] hover:bg-[var(--ide-text)]/10 transition-colors border-x border-[var(--ide-border)] min-w-[38px]"
+                            title="Reset Zoom"
                         >
                             {settings.zoomLevel}%
                         </button>
                         <button
                             onClick={() => EditorSettingsStore.zoomIn()}
-                            className="h-6 w-6 flex items-center justify-center text-[var(--ide-text-muted)] hover:text-[var(--ide-text)] hover:bg-[var(--ide-text)]/10 rounded transition-colors"
-                            title="Zoom In (Ctrl/Cmd++)"
+                            className="h-6 w-6 flex items-center justify-center text-[var(--ide-text-muted)] hover:text-[var(--ide-text)] hover:bg-[var(--ide-text)]/10 transition-colors"
+                            title="Zoom In"
+                            aria-label="Zoom in"
                         >
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
                             </svg>
                         </button>
                     </div>
 
-                    {/* Editor Options */}
-                    <div className="flex items-center gap-1">
+                    {/* Toggle Buttons */}
+                    <div className="flex items-center gap-0.5">
                         <button
                             onClick={() => EditorSettingsStore.toggleMinimap()}
-                            className={`h-7 px-2.5 text-[10px] font-medium rounded border transition-colors ${settings.minimap
-                                ? "bg-[var(--ide-primary)] border-[var(--ide-primary)] text-white"
-                                : "border-[var(--ide-border)] text-[var(--ide-text-muted)] hover:text-[var(--ide-text)] hover:border-[var(--ide-primary)]"
+                            className={`h-6 px-2 text-[9px] font-bold rounded transition-colors ${settings.minimap
+                                ? "bg-[var(--ide-primary)] text-white"
+                                : "text-[var(--ide-text-muted)] hover:text-[var(--ide-text)] hover:bg-[var(--ide-text)]/10"
                                 }`}
                             title="Toggle Minimap"
                         >
@@ -421,50 +482,48 @@ const CodeEditor: React.FC = () => {
                         </button>
                         <button
                             onClick={() => EditorSettingsStore.toggleWordWrap()}
-                            className={`h-7 px-2.5 text-[10px] font-medium rounded border transition-colors ${settings.wordWrap === "on"
-                                ? "bg-[var(--ide-primary)] border-[var(--ide-primary)] text-white"
-                                : "border-[var(--ide-border)] text-[var(--ide-text-muted)] hover:text-[var(--ide-text)] hover:border-[var(--ide-primary)]"
+                            className={`h-6 px-2 text-[9px] font-bold rounded transition-colors ${settings.wordWrap === "on"
+                                ? "bg-[var(--ide-primary)] text-white"
+                                : "text-[var(--ide-text-muted)] hover:text-[var(--ide-text)] hover:bg-[var(--ide-text)]/10"
                                 }`}
                             title="Toggle Word Wrap"
                         >
                             WRAP
                         </button>
-                        <button
-                            onClick={handleFormatDocument}
-                            className="h-7 px-2.5 text-[10px] font-medium rounded border border-[var(--ide-border)] text-[var(--ide-text-muted)] hover:text-[var(--ide-text)] hover:border-[var(--ide-primary)] transition-colors"
-                            title="Format Document (Shift+Alt+F)"
-                        >
-                            FORMAT
-                        </button>
                     </div>
 
+                    {/* Format Button */}
+                    <button
+                        onClick={handleFormatDocument}
+                        className="h-6 px-2 text-[9px] font-bold text-[var(--ide-text-muted)] hover:text-[var(--ide-text)] hover:bg-[var(--ide-text)]/10 rounded transition-colors"
+                        title="Format Document (Shift+Alt+F)"
+                    >
+                        FMT
+                    </button>
+
                     {/* Undo/Redo */}
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-0.5 border-l border-[var(--ide-border)] pl-2">
                         <button
                             onClick={handleUndo}
-                            className="h-7 px-2.5 text-[10px] font-medium rounded border border-[var(--ide-border)] text-[var(--ide-text-muted)] hover:text-[var(--ide-text)] hover:border-[var(--ide-primary)] transition-colors"
-                            title="Undo (Ctrl/Cmd+Z)"
+                            className="h-6 w-6 flex items-center justify-center text-[var(--ide-text-muted)] hover:text-[var(--ide-text)] hover:bg-[var(--ide-text)]/10 rounded transition-colors"
+                            title="Undo"
+                            aria-label="Undo"
                         >
-                            UNDO
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                            </svg>
                         </button>
                         <button
                             onClick={handleRedo}
-                            className="h-7 px-2.5 text-[10px] font-medium rounded border border-[var(--ide-border)] text-[var(--ide-text-muted)] hover:text-[var(--ide-text)] hover:border-[var(--ide-primary)] transition-colors"
-                            title="Redo (Ctrl/Cmd+Y)"
+                            className="h-6 w-6 flex items-center justify-center text-[var(--ide-text-muted)] hover:text-[var(--ide-text)] hover:bg-[var(--ide-text)]/10 rounded transition-colors"
+                            title="Redo"
+                            aria-label="Redo"
                         >
-                            REDO
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 10H11a8 8 0 00-8 8v2m18-10l-6 6m6-6l-6-6" />
+                            </svg>
                         </button>
                     </div>
-
-                    {/* Save Status */}
-                    <span className={`text-[10px] font-medium tracking-tight px-2.5 py-1 rounded border ${saveError
-                        ? "text-red-300 bg-red-500/10 border-red-500/30"
-                        : isDirty
-                            ? "text-yellow-300 bg-yellow-500/10 border-yellow-500/30"
-                            : "text-green-300 bg-green-500/10 border-green-500/30"
-                        }`}>
-                        {statusText}
-                    </span>
                 </div>
             </div>
 
@@ -516,6 +575,57 @@ const CodeEditor: React.FC = () => {
                         }}
                     />
                 </MonacoErrorBoundary>
+            </div>
+
+            {/* VS Code-style Status Bar */}
+            <div className="h-6 bg-[var(--ide-primary)] px-3 flex items-center justify-between text-[10px] text-white/90 shrink-0 select-none">
+                <div className="flex items-center gap-4">
+                    {/* Git Branch - placeholder */}
+                    <div className="flex items-center gap-1">
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                        </svg>
+                        <span>main</span>
+                    </div>
+
+                    {/* Sync Status */}
+                    <div className={`flex items-center gap-1 ${saveError ? "text-red-200" : isDirty ? "text-yellow-200" : ""
+                        }`}>
+                        {isDirty ? (
+                            <>
+                                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                                    <circle cx="12" cy="12" r="4" />
+                                </svg>
+                                <span>Unsaved</span>
+                            </>
+                        ) : isSaving ? (
+                            <>
+                                <svg className="w-3 h-3 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                                <span>Saving...</span>
+                            </>
+                        ) : (
+                            <>
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                                </svg>
+                                <span>Synced</span>
+                            </>
+                        )}
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-4">
+                    {/* Line/Column - would need editor ref for real values */}
+                    <span>Ln {cursorPosition.line}, Col {cursorPosition.column}</span>
+
+                    {/* Encoding */}
+                    <span>UTF-8</span>
+
+                    {/* Language */}
+                    <span className="uppercase font-medium">{editorLanguage}</span>
+                </div>
             </div>
         </div>
     );

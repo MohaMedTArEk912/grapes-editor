@@ -6,7 +6,7 @@
  */
 
 import React, { useState } from "react";
-import { addDataModel, addField } from "../../stores/projectStore";
+import { addDataModel, addField, archiveDataModel, deleteField } from "../../stores/projectStore";
 import { useProjectStore } from "../../hooks/useProjectStore";
 import { DataModelSchema, FieldSchema } from "../../hooks/useTauri";
 import PromptModal, { PromptField } from "../UI/PromptModal";
@@ -135,6 +135,7 @@ interface ModelCardProps {
 }
 
 const ModelCard: React.FC<ModelCardProps> = ({ model, selected, onSelect }) => {
+    const toast = useToast();
     return (
         <div
             className={`w-64 rounded-lg border overflow-hidden bg-ide-panel transition-all cursor-move ${selected
@@ -148,13 +149,32 @@ const ModelCard: React.FC<ModelCardProps> = ({ model, selected, onSelect }) => {
                 <svg className="w-5 h-5 text-[var(--ide-text)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
                 </svg>
-                <span className="font-semibold text-[var(--ide-text)]">{model.name}</span>
+                <span className="font-semibold text-[var(--ide-text)] flex-1">{model.name}</span>
+                <button
+                    className="p-1 text-white/60 hover:text-red-300 transition-colors rounded"
+                    title="Delete model"
+                    onClick={async (e) => {
+                        e.stopPropagation();
+                        if (confirm(`Delete model "${model.name}"? This cannot be undone.`)) {
+                            try {
+                                await archiveDataModel(model.id);
+                                toast.success(`Model "${model.name}" deleted`);
+                            } catch (err) {
+                                toast.error(`Failed to delete model: ${err}`);
+                            }
+                        }
+                    }}
+                >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                </button>
             </div>
 
             {/* Fields */}
             <div className="divide-y divide-[var(--ide-border)]">
                 {model.fields.length > 0 ? (
-                    model.fields.map((field, idx) => <FieldRow key={idx} field={field} />)
+                    model.fields.map((field) => <FieldRow key={`${model.id}-${field.name}`} field={field} modelId={model.id} />)
                 ) : (
                     <div className="px-4 py-3 text-xs text-[var(--ide-text-muted)] italic">
                         No fields defined
@@ -174,9 +194,13 @@ const ModelCard: React.FC<ModelCardProps> = ({ model, selected, onSelect }) => {
                 </span>
                 <button
                     className="hover:text-[var(--ide-primary)] transition-colors"
-                    onClick={(e) => {
+                    onClick={async (e) => {
                         e.stopPropagation();
-                        addField(model.id, "newField", "string", true);
+                        try {
+                            await addField(model.id, "newField", "string", true);
+                        } catch (err) {
+                            toast.error(`Failed to add field: ${err}`);
+                        }
                     }}
                 >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -191,9 +215,11 @@ const ModelCard: React.FC<ModelCardProps> = ({ model, selected, onSelect }) => {
 // Field Row Component
 interface FieldRowProps {
     field: FieldSchema;
+    modelId: string;
 }
 
-const FieldRow: React.FC<FieldRowProps> = ({ field }) => {
+const FieldRow: React.FC<FieldRowProps> = ({ field, modelId }) => {
+    const toast = useToast();
     const getTypeColor = (): string => {
         switch (field.field_type) {
             case "string":
@@ -214,7 +240,7 @@ const FieldRow: React.FC<FieldRowProps> = ({ field }) => {
     };
 
     return (
-        <div className="px-4 py-2 flex items-center gap-2 hover:bg-[var(--ide-bg-elevated)] transition-colors">
+        <div className="px-4 py-2 flex items-center gap-2 hover:bg-[var(--ide-bg-elevated)] transition-colors group">
             {/* Key Icon */}
             {field.primary_key && (
                 <svg className="w-3 h-3 text-yellow-400" fill="currentColor" viewBox="0 0 24 24">
@@ -240,6 +266,28 @@ const FieldRow: React.FC<FieldRowProps> = ({ field }) => {
                 <span className="text-[10px] px-1 py-0.5 rounded bg-emerald-500/20 text-emerald-400">
                     unique
                 </span>
+            )}
+
+            {/* Delete field */}
+            {!field.primary_key && (
+                <button
+                    className="opacity-0 group-hover:opacity-100 text-[var(--ide-text-muted)] hover:text-red-400 transition-all"
+                    title="Delete field"
+                    onClick={async (e) => {
+                        e.stopPropagation();
+                        if (confirm(`Delete field "${field.name}"?`)) {
+                            try {
+                                await deleteField(modelId, field.name);
+                            } catch (err) {
+                                toast.error(`Failed to delete field: ${err}`);
+                            }
+                        }
+                    }}
+                >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
             )}
         </div>
     );

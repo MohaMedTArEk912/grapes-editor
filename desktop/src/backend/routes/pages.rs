@@ -122,10 +122,18 @@ pub async fn get_page_content(
     let root_path = project.root_path.as_ref()
         .ok_or_else(|| ApiError::BadRequest("Project root path not set. Please set it in project settings.".into()))?;
     
-    // Map page to client/page folder (logic from sync_engine.rs)
-    let tsx_path = std::path::PathBuf::from(root_path)
-        .join("client/page")
-        .join(format!("{}.tsx", crate::generator::pascal_case(&page.name)));
+    // Map page to client/src/pages folder (logic from sync_engine.rs)
+    let file_name = format!("{}.tsx", crate::generator::pascal_case(&page.name));
+    let mut tsx_path = std::path::PathBuf::from(root_path)
+        .join("client/src/pages")
+        .join(&file_name);
+
+    // Backward compatibility for older projects synced to client/page.
+    if !tsx_path.exists() {
+        tsx_path = std::path::PathBuf::from(root_path)
+            .join("client/page")
+            .join(file_name);
+    }
     
     if !tsx_path.exists() {
         return Err(ApiError::NotFound(format!("File not found at {:?}", tsx_path)));

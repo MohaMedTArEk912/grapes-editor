@@ -105,6 +105,10 @@ const PropertyEditor: React.FC<EditorProps> = ({ block }) => {
         await updateBlockProperty(block.id, "text", value);
     };
 
+    const handlePropertySave = async (property: string, value: string) => {
+        await updateBlockProperty(block.id, property, value);
+    };
+
     return (
         <div className="space-y-3">
             {/* Name/Label */}
@@ -123,6 +127,7 @@ const PropertyEditor: React.FC<EditorProps> = ({ block }) => {
                 <div>
                     <label className="block text-xs text-ide-text-muted mb-1">Text Content</label>
                     <textarea
+                        key={`text-${block.id}`}
                         defaultValue={(block.properties.text as string) || ""}
                         onBlur={(e) => handleTextChange(e.target.value)}
                         className="input w-full text-sm resize-none"
@@ -137,10 +142,169 @@ const PropertyEditor: React.FC<EditorProps> = ({ block }) => {
                     <label className="block text-xs text-ide-text-muted mb-1">Placeholder</label>
                     <input
                         type="text"
+                        key={`placeholder-${block.id}`}
                         defaultValue={(block.properties.placeholder as string) || ""}
+                        onBlur={(e) => handlePropertySave("placeholder", e.target.value)}
                         className="input w-full text-sm"
                     />
                 </div>
+            )}
+
+            {/* Textarea placeholder */}
+            {block.block_type === "textarea" && (
+                <div>
+                    <label className="block text-xs text-ide-text-muted mb-1">Placeholder</label>
+                    <input
+                        type="text"
+                        key={`placeholder-${block.id}`}
+                        defaultValue={(block.properties.placeholder as string) || ""}
+                        onBlur={(e) => handlePropertySave("placeholder", e.target.value)}
+                        className="input w-full text-sm"
+                    />
+                </div>
+            )}
+
+            {/* Select options */}
+            {block.block_type === "select" && (
+                <div>
+                    <label className="block text-xs text-ide-text-muted mb-1">Options (comma-separated)</label>
+                    <input
+                        type="text"
+                        key={`options-${block.id}`}
+                        defaultValue={(block.properties.options as string) || ""}
+                        onBlur={(e) => handlePropertySave("options", e.target.value)}
+                        placeholder="Option 1, Option 2, Option 3"
+                        className="input w-full text-sm"
+                    />
+                </div>
+            )}
+
+            {/* Checkbox label */}
+            {block.block_type === "checkbox" && (
+                <div>
+                    <label className="block text-xs text-ide-text-muted mb-1">Label</label>
+                    <input
+                        type="text"
+                        key={`text-${block.id}`}
+                        defaultValue={(block.properties.text as string) || ""}
+                        onBlur={(e) => handleTextChange(e.target.value)}
+                        className="input w-full text-sm"
+                    />
+                </div>
+            )}
+
+            {/* Image properties */}
+            {block.block_type === "image" && (
+                <>
+                    <div>
+                        <label className="block text-xs text-ide-text-muted mb-1">Image URL</label>
+                        <input
+                            type="text"
+                            key={`src-${block.id}`}
+                            defaultValue={(block.properties.src as string) || ""}
+                            onBlur={(e) => handlePropertySave("src", e.target.value)}
+                            placeholder="https://example.com/image.png"
+                            className="input w-full text-sm"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs text-ide-text-muted mb-1">Alt Text</label>
+                        <input
+                            type="text"
+                            key={`alt-${block.id}`}
+                            defaultValue={(block.properties.alt as string) || ""}
+                            onBlur={(e) => handlePropertySave("alt", e.target.value)}
+                            placeholder="Descriptive text"
+                            className="input w-full text-sm"
+                        />
+                    </div>
+                </>
+            )}
+
+            {/* Video properties */}
+            {block.block_type === "video" && (
+                <div>
+                    <label className="block text-xs text-ide-text-muted mb-1">Video URL</label>
+                    <input
+                        type="text"
+                        key={`src-${block.id}`}
+                        defaultValue={(block.properties.src as string) || ""}
+                        onBlur={(e) => handlePropertySave("src", e.target.value)}
+                        placeholder="https://example.com/video.mp4"
+                        className="input w-full text-sm"
+                    />
+                </div>
+            )}
+
+            {/* Link properties */}
+            {block.block_type === "link" && (
+                <>
+                    <div>
+                        <label className="block text-xs text-ide-text-muted mb-1">Link Text</label>
+                        <input
+                            type="text"
+                            key={`text-${block.id}`}
+                            defaultValue={(block.properties.text as string) || ""}
+                            onBlur={(e) => handleTextChange(e.target.value)}
+                            className="input w-full text-sm"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs text-ide-text-muted mb-1">URL</label>
+                        <input
+                            type="text"
+                            key={`href-${block.id}`}
+                            defaultValue={(block.properties.href as string) || ""}
+                            onBlur={(e) => handlePropertySave("href", e.target.value)}
+                            placeholder="https://..."
+                            className="input w-full text-sm"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs text-ide-text-muted mb-1">Target</label>
+                        <select
+                            key={`target-${block.id}`}
+                            defaultValue={(block.properties.target as string) || "_self"}
+                            onChange={(e) => handlePropertySave("target", e.target.value)}
+                            className="input w-full text-sm"
+                        >
+                            <option value="_self">Same Window</option>
+                            <option value="_blank">New Tab</option>
+                        </select>
+                    </div>
+                </>
+            )}
+
+            {/* Form properties */}
+            {block.block_type === "form" && (
+                <>
+                    <div>
+                        <label className="block text-xs text-ide-text-muted mb-1">Action URL</label>
+                        <input
+                            type="text"
+                            key={`action-${block.id}`}
+                            defaultValue={(block.properties.action as string) || ""}
+                            onBlur={(e) => handlePropertySave("action", e.target.value)}
+                            placeholder="/api/submit"
+                            className="input w-full text-sm"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs text-ide-text-muted mb-1">Method</label>
+                        <select
+                            key={`method-${block.id}`}
+                            defaultValue={(block.properties.method as string) || "POST"}
+                            onChange={(e) => handlePropertySave("method", e.target.value)}
+                            className="input w-full text-sm"
+                        >
+                            <option value="GET">GET</option>
+                            <option value="POST">POST</option>
+                            <option value="PUT">PUT</option>
+                            <option value="PATCH">PATCH</option>
+                            <option value="DELETE">DELETE</option>
+                        </select>
+                    </div>
+                </>
             )}
         </div>
     );
@@ -158,6 +322,7 @@ const LayoutEditor: React.FC<EditorProps> = ({ block }) => {
                 <label className="block text-xs text-ide-text-muted mb-1">Display</label>
                 <select
                     className="input w-full text-sm"
+                    key={`display-${block.id}`}
                     defaultValue={(block.styles.display as string) || "block"}
                     onChange={(e) => handleDisplayChange(e.target.value)}
                 >
@@ -176,6 +341,7 @@ const LayoutEditor: React.FC<EditorProps> = ({ block }) => {
                     <input
                         type="text"
                         placeholder="auto"
+                        key={`width-${block.id}`}
                         defaultValue={(block.styles.width as string) || ""}
                         onBlur={(e) => updateBlockStyle(block.id, "width", e.target.value)}
                         className="input w-full text-sm"
@@ -186,6 +352,7 @@ const LayoutEditor: React.FC<EditorProps> = ({ block }) => {
                     <input
                         type="text"
                         placeholder="auto"
+                        key={`height-${block.id}`}
                         defaultValue={(block.styles.height as string) || ""}
                         onBlur={(e) => updateBlockStyle(block.id, "height", e.target.value)}
                         className="input w-full text-sm"
@@ -205,6 +372,7 @@ const TypographyEditor: React.FC<EditorProps> = ({ block }) => {
                     <label className="block text-xs text-ide-text-muted mb-1">Font Size</label>
                     <select
                         className="input w-full text-sm"
+                        key={`font-size-${block.id}`}
                         defaultValue={(block.styles["font-size"] as string) || "16px"}
                         onChange={(e) => updateBlockStyle(block.id, "font-size", e.target.value)}
                     >
@@ -222,6 +390,7 @@ const TypographyEditor: React.FC<EditorProps> = ({ block }) => {
                     <label className="block text-xs text-ide-text-muted mb-1">Weight</label>
                     <select
                         className="input w-full text-sm"
+                        key={`font-weight-${block.id}`}
                         defaultValue={(block.styles["font-weight"] as string) || "400"}
                         onChange={(e) => updateBlockStyle(block.id, "font-weight", e.target.value)}
                     >
@@ -239,13 +408,15 @@ const TypographyEditor: React.FC<EditorProps> = ({ block }) => {
                 <div className="flex gap-2">
                     <input
                         type="color"
+                        key={`color-picker-${block.id}`}
                         defaultValue={(block.styles.color as string) || "#1e293b"}
                         onChange={(e) => updateBlockStyle(block.id, "color", e.target.value)}
                         className="w-10 h-8 rounded border border-ide-border cursor-pointer"
                     />
                     <input
                         type="text"
-                        defaultValue={(block.styles.color as string) || "#1e293b"}
+                        key={`color-text-${block.id}`}
+                        defaultValue={(block.styles.color as string) || "#1e293b"}}
                         onBlur={(e) => updateBlockStyle(block.id, "color", e.target.value)}
                         className="input flex-1 text-sm font-mono"
                     />
@@ -291,6 +462,7 @@ const SpacingEditor: React.FC<EditorProps> = ({ block }) => {
                     <input
                         type="text"
                         placeholder="0"
+                        key={`margin-top-${block.id}`}
                         defaultValue={(block.styles["margin-top"] as string) || ""}
                         onBlur={(e) => updateBlockStyle(block.id, "margin-top", e.target.value)}
                         className="input text-sm text-center"
@@ -299,6 +471,7 @@ const SpacingEditor: React.FC<EditorProps> = ({ block }) => {
                     <input
                         type="text"
                         placeholder="0"
+                        key={`margin-right-${block.id}`}
                         defaultValue={(block.styles["margin-right"] as string) || ""}
                         onBlur={(e) => updateBlockStyle(block.id, "margin-right", e.target.value)}
                         className="input text-sm text-center"
@@ -307,6 +480,7 @@ const SpacingEditor: React.FC<EditorProps> = ({ block }) => {
                     <input
                         type="text"
                         placeholder="0"
+                        key={`margin-bottom-${block.id}`}
                         defaultValue={(block.styles["margin-bottom"] as string) || ""}
                         onBlur={(e) => updateBlockStyle(block.id, "margin-bottom", e.target.value)}
                         className="input text-sm text-center"
@@ -315,6 +489,7 @@ const SpacingEditor: React.FC<EditorProps> = ({ block }) => {
                     <input
                         type="text"
                         placeholder="0"
+                        key={`margin-left-${block.id}`}
                         defaultValue={(block.styles["margin-left"] as string) || ""}
                         onBlur={(e) => updateBlockStyle(block.id, "margin-left", e.target.value)}
                         className="input text-sm text-center"
@@ -335,6 +510,7 @@ const SpacingEditor: React.FC<EditorProps> = ({ block }) => {
                     <input
                         type="text"
                         placeholder="0"
+                        key={`padding-top-${block.id}`}
                         defaultValue={(block.styles["padding-top"] as string) || ""}
                         onBlur={(e) => updateBlockStyle(block.id, "padding-top", e.target.value)}
                         className="input text-sm text-center"
@@ -343,6 +519,7 @@ const SpacingEditor: React.FC<EditorProps> = ({ block }) => {
                     <input
                         type="text"
                         placeholder="0"
+                        key={`padding-right-${block.id}`}
                         defaultValue={(block.styles["padding-right"] as string) || ""}
                         onBlur={(e) => updateBlockStyle(block.id, "padding-right", e.target.value)}
                         className="input text-sm text-center"
@@ -351,6 +528,7 @@ const SpacingEditor: React.FC<EditorProps> = ({ block }) => {
                     <input
                         type="text"
                         placeholder="0"
+                        key={`padding-bottom-${block.id}`}
                         defaultValue={(block.styles["padding-bottom"] as string) || ""}
                         onBlur={(e) => updateBlockStyle(block.id, "padding-bottom", e.target.value)}
                         className="input text-sm text-center"
@@ -359,7 +537,8 @@ const SpacingEditor: React.FC<EditorProps> = ({ block }) => {
                     <input
                         type="text"
                         placeholder="0"
-                        defaultValue={(block.styles["padding-left"] as string) || ""}
+                        key={`padding-left-${block.id}`}
+                        defaultValue={(block.styles["padding-left"] as string) || ""}}
                         onBlur={(e) => updateBlockStyle(block.id, "padding-left", e.target.value)}
                         className="input text-sm text-center"
                         title="Left"

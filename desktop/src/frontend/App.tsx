@@ -1,5 +1,5 @@
 /**
- * Grapes IDE - Main Application - React version
+ * Akasha — Main Application - React version
  * 
  * Desktop-First Visual Full-Stack IDE
  */
@@ -15,20 +15,24 @@ import Canvas from "./components/Canvas/Canvas";
 import LogicCanvas from "./components/Canvas/LogicCanvas";
 import ERDCanvas from "./components/Canvas/ERDCanvas";
 import ApiList from "./components/Canvas/ApiList";
+import VariablesPanel from "./components/Editors/VariablesPanel";
 import Terminal from "./components/Terminal/Terminal";
 import DashboardView from "./components/Dashboard/DashboardView";
 import WorkspaceSetup from "./components/Dashboard/WorkspaceSetup";
+import ErrorBoundary from "./components/UI/ErrorBoundary";
 
 // Stores
 import { initWorkspace } from "./stores/projectStore";
 // Hooks
 import { useProjectStore } from "./hooks/useProjectStore";
+import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 // Context
 import { ToastProvider } from "./context/ToastContext";
 import { ThemeProvider } from "./context/ThemeContext";
 
 const App: React.FC = () => {
   const { activeTab, project, workspacePath, isDashboardActive } = useProjectStore();
+  useKeyboardShortcuts();
 
   // Initialize workspace and try to load any existing project on mount
   useEffect(() => {
@@ -46,21 +50,25 @@ const App: React.FC = () => {
   // Main navigation logic
   if (!workspacePath) {
     return (
+      <ErrorBoundary>
       <ThemeProvider>
         <ToastProvider>
           <WorkspaceSetup />
         </ToastProvider>
       </ThemeProvider>
+      </ErrorBoundary>
     );
   }
 
   if (isDashboardActive || !project) {
     return (
+      <ErrorBoundary>
       <ThemeProvider>
         <ToastProvider>
           <DashboardView />
         </ToastProvider>
       </ThemeProvider>
+      </ErrorBoundary>
     );
   }
 
@@ -73,6 +81,8 @@ const App: React.FC = () => {
         return <ApiList />;
       case "erd":
         return <ERDCanvas />;
+      case "variables":
+        return <VariablesPanel />;
       case "canvas":
       default:
         return <Canvas />;
@@ -80,6 +90,7 @@ const App: React.FC = () => {
   };
 
   return (
+    <ErrorBoundary>
     <ThemeProvider>
       <ToastProvider>
         <IDELayout
@@ -90,6 +101,7 @@ const App: React.FC = () => {
         />
       </ToastProvider>
     </ThemeProvider>
+    </ErrorBoundary>
   );
 };
 

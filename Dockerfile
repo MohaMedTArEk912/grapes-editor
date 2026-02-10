@@ -1,4 +1,4 @@
-# Multi-stage build for Grapes IDE (Headless API mode)
+# Multi-stage build for Akasha (Headless API mode)
 #
 # NOTE: Docker can't run the full desktop UI without a display server.
 # This image runs the embedded Axum API server in headless mode.
@@ -46,12 +46,12 @@ RUN apt-get update && apt-get install -y \
     libwebkit2gtk-4.1-0 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=desktop-builder /app/desktop/target/release/grapes-ide /app/grapes-ide
+COPY --from=desktop-builder /app/desktop/target/release/akasha /app/akasha
 
-ENV GRAPES_HEADLESS=1
+ENV AKASHA_HEADLESS=1
 ENV RUST_LOG=info
 ENV PORT=3001
 
 EXPOSE 3001
 
-CMD ["/app/grapes-ide"]
+CMD ["/app/akasha"]

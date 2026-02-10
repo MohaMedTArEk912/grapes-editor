@@ -9,11 +9,11 @@ import React, { useState, useEffect } from "react";
 import { useProjectStore } from "../../hooks/useProjectStore";
 import {
     getBlock,
+    getRootBlocks,
     updateBlockProperty,
     updateBlockStyle,
-    selectPage,
-    createPage,
-    updatePage,
+    updateBlockBinding,
+    updateBlockEvent,
     archivePage,
     archiveBlock,
     listDirectory,
@@ -25,7 +25,7 @@ import { useToast } from "../../context/ToastContext";
 import ConfirmModal from "../Modals/ConfirmModal";
 
 type InspectorTab = "properties" | "styles" | "events";
-type GlobalTab = "layers" | "pages" | "assets";
+type GlobalTab = "layers" | "assets";
 
 const Inspector: React.FC = () => {
     const { selectedBlockId, project } = useProjectStore();
@@ -120,7 +120,7 @@ const Inspector: React.FC = () => {
 
             {/* ── Tabs ── */}
             <div className="flex border-b border-[var(--ide-border)] bg-[var(--ide-bg-elevated)]">
-                {(selectedBlock ? ["properties", "styles", "events"] : ["layers", "pages", "assets"]).map((tab) => {
+                {(selectedBlock ? ["properties", "styles", "events"] : ["layers", "assets"]).map((tab) => {
                     const isActive = selectedBlock ? activeTab === tab : globalTab === tab;
                     return (
                         <button
@@ -143,7 +143,7 @@ const Inspector: React.FC = () => {
                 {!selectedBlock ? (
                     <>
                         {globalTab === "layers" && <LayersPanel onDeleteRequest={setPendingDeleteBlockId} />}
-                        {globalTab === "pages" && <PagesPanel onDeleteRequest={setPendingDeletePageId} />}
+
                         {globalTab === "assets" && <AssetsPanel onDeleteRequest={setPendingDeleteAssetPath} />}
                     </>
                 ) : (
@@ -168,7 +168,7 @@ const Inspector: React.FC = () => {
                             <StylesPanel block={selectedBlock} onChange={handleStyleChange} />
                         )}
                         {activeTab === "events" && (
-                            <EventsPanel />
+                            <EventsPanel block={selectedBlock} />
                         )}
                     </div>
                 )}
@@ -214,8 +214,8 @@ const Inspector: React.FC = () => {
 
 // Layers Panel
 const LayersPanel: React.FC<{ onDeleteRequest: (id: string) => void }> = ({ onDeleteRequest }) => {
-    const { project, selectedBlockId } = useProjectStore();
-    const rootBlocks = project?.blocks.filter(b => !b.archived && !b.parent_id) || [];
+    const { selectedBlockId } = useProjectStore();
+    const rootBlocks = getRootBlocks();
 
     return (
         <div className="p-3">
@@ -261,121 +261,6 @@ const LayersPanel: React.FC<{ onDeleteRequest: (id: string) => void }> = ({ onDe
                     ))}
                 </div>
             )}
-        </div>
-    );
-};
-
-// Pages Panel
-const PagesPanel: React.FC<{ onDeleteRequest: (id: string) => void }> = ({ onDeleteRequest }) => {
-    const { project, selectedPageId } = useProjectStore();
-    const [isCreating, setIsCreating] = useState(false);
-    const [editingPageId, setEditingPageId] = useState<string | null>(null);
-    const [editName, setEditName] = useState("");
-    const toast = useToast();
-
-    const pages = project?.pages.filter(p => !p.archived) || [];
-
-    const handleCreatePage = async () => {
-        setIsCreating(true);
-        try {
-            await createPage("New Page");
-            toast.success("Page created successfully");
-        } catch (err) {
-            toast.error("Failed to create page");
-        } finally {
-            setIsCreating(false);
-        }
-    };
-
-    return (
-        <div className="p-3">
-            <div className="mb-4 flex items-center justify-between">
-                <div className="text-xs text-[var(--ide-text-secondary)] flex items-center gap-2">
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    <span>Pages</span>
-                </div>
-                <button
-                    onClick={handleCreatePage}
-                    disabled={isCreating}
-                    className="p-1.5 hover:bg-indigo-500/10 rounded-lg text-indigo-400 group transition-colors"
-                >
-                    <svg className={`w-4 h-4 transition-transform ${isCreating ? "animate-spin" : "group-hover:scale-110"}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" />
-                    </svg>
-                </button>
-            </div>
-
-            <div className="space-y-2">
-                {pages.map((page) => (
-                    <div
-                        key={page.id}
-                        className={`group relative rounded-xl border transition-all duration-300 overflow-hidden ${page.id === selectedPageId
-                            ? "bg-indigo-500/10 border-indigo-500/40 shadow-sm"
-                            : "bg-[var(--ide-bg-elevated)] border-[var(--ide-border)] hover:border-[var(--ide-border-strong)]"
-                            }`}
-                    >
-                        <div
-                            onClick={() => page.id !== selectedPageId && selectPage(page.id)}
-                            className={`px-3 py-3 cursor-pointer flex items-center gap-3 ${page.id === selectedPageId ? "" : "hover:bg-[var(--ide-bg-panel)]"}`}
-                        >
-                            <svg className={`w-4 h-4 shrink-0 transition-colors ${page.id === selectedPageId ? "text-indigo-400" : "text-[var(--ide-text-muted)]"}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
-
-                            <div className="flex-1 min-w-0">
-                                {editingPageId === page.id ? (
-                                    <input
-                                        autoFocus
-                                        value={editName}
-                                        onChange={(e) => setEditName(e.target.value)}
-                                        onBlur={() => {
-                                            if (editName.trim()) updatePage(page.id, editName.trim());
-                                            setEditingPageId(null);
-                                        }}
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter') {
-                                                if (editName.trim()) updatePage(page.id, editName.trim());
-                                                setEditingPageId(null);
-                                            }
-                                        }}
-                                        className="w-full bg-transparent text-xs font-bold text-[var(--ide-text)] border-none focus:ring-0 p-0"
-                                    />
-                                ) : (
-                                    <>
-                                        <div className={`text-xs font-bold truncate tracking-tight transition-colors ${page.id === selectedPageId ? "text-indigo-400" : "text-[var(--ide-text)]"}`}>
-                                            {page.name}
-                                        </div>
-                                        <div className="text-[9px] text-[var(--ide-text-muted)] truncate font-mono opacity-50 mt-0.5">
-                                            {page.path}
-                                        </div>
-                                    </>
-                                )}
-                            </div>
-
-                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity translate-x-1 group-hover:translate-x-0">
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); setEditingPageId(page.id); setEditName(page.name); }}
-                                    className="p-1.5 hover:bg-white/10 rounded-lg text-[var(--ide-text-secondary)] hover:text-indigo-400 transition-colors"
-                                >
-                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                                    </svg>
-                                </button>
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); onDeleteRequest(page.id); }}
-                                    className="p-1.5 hover:bg-red-500/10 rounded-lg text-red-500/40 hover:text-red-500 transition-colors"
-                                >
-                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                    </svg>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                ))}
-            </div>
         </div>
     );
 };
@@ -522,19 +407,176 @@ const StylesPanel: React.FC<{ block: any; onChange: (style: string, value: strin
     );
 };
 
-// Events Panel Placeholder
-const EventsPanel: React.FC = () => {
+// Events & Bindings Panel
+const BLOCK_EVENTS = ["onClick", "onDoubleClick", "onChange", "onSubmit", "onFocus", "onBlur", "onMouseEnter", "onMouseLeave", "onKeyDown"];
+const BINDING_TYPES = ["variable", "api", "state", "prop"];
+
+const EventsPanel: React.FC<{ block: any }> = ({ block }) => {
+    const { project } = useProjectStore();
+    const toast = useToast();
+    const [newEvent, setNewEvent] = useState("");
+    const [newBindingProp, setNewBindingProp] = useState("");
+
+    const logicFlows = project?.logic_flows.filter(lf => !lf.archived) || [];
+    const variables = project?.variables.filter(v => !v.archived) || [];
+    const events: Record<string, string> = block.events || {};
+    const bindings: Record<string, { type: string; value: unknown }> = block.bindings || {};
+
+    const usedEvents = Object.keys(events);
+    const availableEvents = BLOCK_EVENTS.filter(e => !usedEvents.includes(e));
+
+    const handleAddEvent = async (eventName: string) => {
+        if (!eventName) return;
+        try {
+            await updateBlockEvent(block.id, eventName, "");
+            setNewEvent("");
+        } catch (err) { toast.error(`Failed: ${err}`); }
+    };
+
+    const handleRemoveEvent = async (eventName: string) => {
+        try {
+            await updateBlockEvent(block.id, eventName, null);
+        } catch (err) { toast.error(`Failed: ${err}`); }
+    };
+
+    const handleEventFlowChange = async (eventName: string, flowId: string) => {
+        try {
+            await updateBlockEvent(block.id, eventName, flowId || "");
+        } catch (err) { toast.error(`Failed: ${err}`); }
+    };
+
+    const handleAddBinding = async (propName: string) => {
+        if (!propName) return;
+        try {
+            await updateBlockBinding(block.id, propName, { type: "variable", value: "" });
+            setNewBindingProp("");
+        } catch (err) { toast.error(`Failed: ${err}`); }
+    };
+
+    const handleRemoveBinding = async (propName: string) => {
+        try {
+            await updateBlockBinding(block.id, propName, null);
+        } catch (err) { toast.error(`Failed: ${err}`); }
+    };
+
+    const handleBindingChange = async (propName: string, type: string, value: unknown) => {
+        try {
+            await updateBlockBinding(block.id, propName, { type, value });
+        } catch (err) { toast.error(`Failed: ${err}`); }
+    };
+
+    const blockProps = Object.keys(block.properties || {});
+    const unboundProps = blockProps.filter(p => !bindings[p]);
+
     return (
-        <div className="p-8 text-center flex flex-col items-center justify-center h-full max-w-[200px] mx-auto mt-10">
-            <div className="w-12 h-12 rounded-2xl bg-indigo-500/5 border border-indigo-500/10 flex items-center justify-center mb-4">
-                <svg className="w-6 h-6 text-indigo-500/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
+        <div className="p-4 space-y-6">
+            {/* ── Event Handlers ── */}
+            <div>
+                <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-[10px] font-bold uppercase tracking-widest text-[var(--ide-text-secondary)]">Event Handlers</h3>
+                </div>
+                {usedEvents.length === 0 && (
+                    <p className="text-[10px] text-[var(--ide-text-muted)] italic mb-2">No event handlers configured</p>
+                )}
+                {usedEvents.map(eventName => (
+                    <div key={eventName} className="mb-2 p-2 bg-[var(--ide-bg-elevated)] rounded border border-[var(--ide-border)] group">
+                        <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs font-mono text-indigo-400">{eventName}</span>
+                            <button onClick={() => handleRemoveEvent(eventName)}
+                                className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 text-xs transition-opacity">
+                                &times;
+                            </button>
+                        </div>
+                        <select
+                            value={events[eventName] || ""}
+                            onChange={(e) => handleEventFlowChange(eventName, e.target.value)}
+                            className="w-full px-2 py-1 text-xs bg-[var(--ide-bg)] border border-[var(--ide-border)] rounded text-[var(--ide-text)] focus:outline-none focus:border-[var(--ide-primary)]"
+                        >
+                            <option value="">— Select logic flow —</option>
+                            {logicFlows.map(lf => (
+                                <option key={lf.id} value={lf.id}>{lf.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                ))}
+                {availableEvents.length > 0 && (
+                    <div className="flex gap-1 mt-2">
+                        <select value={newEvent} onChange={(e) => setNewEvent(e.target.value)}
+                            className="flex-1 px-2 py-1 text-xs bg-[var(--ide-bg)] border border-[var(--ide-border)] rounded text-[var(--ide-text-muted)] focus:outline-none">
+                            <option value="">+ Add event...</option>
+                            {availableEvents.map(e => <option key={e} value={e}>{e}</option>)}
+                        </select>
+                        {newEvent && (
+                            <button onClick={() => handleAddEvent(newEvent)}
+                                className="px-2 py-1 text-xs bg-[var(--ide-primary)] text-white rounded hover:bg-[var(--ide-primary-hover)]">
+                                Add
+                            </button>
+                        )}
+                    </div>
+                )}
             </div>
-            <h3 className="text-xs font-bold text-[var(--ide-text-secondary)] mb-2 uppercase tracking-tight">Logic Engine</h3>
-            <p className="text-[10px] text-[var(--ide-text-muted)] leading-relaxed font-medium">
-                Visual event handlers and logic flows are currently being polished.
-            </p>
+
+            {/* ── Data Bindings ── */}
+            <div>
+                <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-[10px] font-bold uppercase tracking-widest text-[var(--ide-text-secondary)]">Data Bindings</h3>
+                </div>
+                {Object.keys(bindings).length === 0 && (
+                    <p className="text-[10px] text-[var(--ide-text-muted)] italic mb-2">No data bindings configured</p>
+                )}
+                {Object.entries(bindings).map(([propName, binding]) => (
+                    <div key={propName} className="mb-2 p-2 bg-[var(--ide-bg-elevated)] rounded border border-[var(--ide-border)] group">
+                        <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs font-mono text-green-400">{propName}</span>
+                            <button onClick={() => handleRemoveBinding(propName)}
+                                className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 text-xs transition-opacity">
+                                &times;
+                            </button>
+                        </div>
+                        <div className="flex gap-1">
+                            <select
+                                value={binding.type}
+                                onChange={(e) => handleBindingChange(propName, e.target.value, binding.value)}
+                                className="w-20 px-1 py-1 text-[10px] bg-[var(--ide-bg)] border border-[var(--ide-border)] rounded text-[var(--ide-text-muted)] focus:outline-none"
+                            >
+                                {BINDING_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                            </select>
+                            {binding.type === "variable" ? (
+                                <select
+                                    value={String(binding.value || "")}
+                                    onChange={(e) => handleBindingChange(propName, binding.type, e.target.value)}
+                                    className="flex-1 px-2 py-1 text-xs bg-[var(--ide-bg)] border border-[var(--ide-border)] rounded text-[var(--ide-text)] focus:outline-none"
+                                >
+                                    <option value="">— Select variable —</option>
+                                    {variables.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                                </select>
+                            ) : (
+                                <input
+                                    value={String(binding.value || "")}
+                                    onChange={(e) => handleBindingChange(propName, binding.type, e.target.value)}
+                                    placeholder="value / path"
+                                    className="flex-1 px-2 py-1 text-xs bg-[var(--ide-bg)] border border-[var(--ide-border)] rounded text-[var(--ide-text)] focus:outline-none focus:border-[var(--ide-primary)]"
+                                />
+                            )}
+                        </div>
+                    </div>
+                ))}
+                {unboundProps.length > 0 && (
+                    <div className="flex gap-1 mt-2">
+                        <select value={newBindingProp} onChange={(e) => setNewBindingProp(e.target.value)}
+                            className="flex-1 px-2 py-1 text-xs bg-[var(--ide-bg)] border border-[var(--ide-border)] rounded text-[var(--ide-text-muted)] focus:outline-none">
+                            <option value="">+ Bind property...</option>
+                            {unboundProps.map(p => <option key={p} value={p}>{p}</option>)}
+                        </select>
+                        {newBindingProp && (
+                            <button onClick={() => handleAddBinding(newBindingProp)}
+                                className="px-2 py-1 text-xs bg-[var(--ide-primary)] text-white rounded hover:bg-[var(--ide-primary-hover)]">
+                                Bind
+                            </button>
+                        )}
+                    </div>
+                )}
+            </div>
         </div>
     );
 };

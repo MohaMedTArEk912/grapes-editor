@@ -69,8 +69,8 @@ const ComponentPalette: React.FC = () => {
     };
 
     const handleDragStart = (e: React.DragEvent, componentType: string) => {
-        e.dataTransfer.setData("application/grapes-block", componentType);
-        e.dataTransfer.setData("text/grapes-block", componentType);
+        e.dataTransfer.setData("application/akasha-block", componentType);
+        e.dataTransfer.setData("text/akasha-block", componentType);
         e.dataTransfer.setData("text/plain", componentType);
         e.dataTransfer.effectAllowed = "copy";
 

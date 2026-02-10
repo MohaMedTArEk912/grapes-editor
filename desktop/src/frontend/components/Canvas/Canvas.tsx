@@ -12,6 +12,7 @@ import {
     getRootBlocks,
     addBlockAtPosition,
     updateBlockPosition,
+    setViewport,
 } from "../../stores/projectStore";
 import { useProjectStore } from "../../hooks/useProjectStore";
 import { BlockSchema } from "../../hooks/useTauri";
@@ -19,12 +20,13 @@ import CodeEditor from "./CodeEditor";
 
 // ─── Constants ───────────────────────────────────────
 
-const MIME_BLOCK = "application/grapes-block";
-const MIME_BLOCK_FALLBACK = "text/grapes-block";
+const MIME_BLOCK = "application/akasha-block";
+const MIME_BLOCK_FALLBACK = "text/akasha-block";
 const MIME_PLAIN = "text/plain";
 const BLOCK_TYPE_RE = /^[a-z][a-z0-9_-]*$/i;
 
 const ARTBOARD_MARGIN = 12;
+const BLOCK_BOUNDARY_PADDING = 12;
 
 const ARTBOARD_SIZES: Record<string, { width: number; minHeight: number; label: string }> = {
     desktop: { width: 1280, minHeight: 900, label: "Desktop" },
@@ -84,6 +86,25 @@ function blockWidth(type: string): number {
     }
 }
 
+function blockMinHeight(type: string): number {
+    switch (type) {
+        case "container": case "section": case "form": case "card":
+        case "columns": case "column": case "flex": case "grid":
+            return 80;
+        case "image": case "video":
+            return 100;
+        case "textarea":
+            return 60;
+        default:
+            return 36;
+    }
+}
+
+function clamp(value: number, min: number, max: number): number {
+    if (max < min) return min;
+    return Math.min(Math.max(value, min), max);
+}
+
 function blockClasses(type: string): string {
     switch (type) {
         case "container":
@@ -122,6 +143,7 @@ function blockClasses(type: string): string {
 const Canvas: React.FC = () => {
     const { project, selectedPageId, viewport, editMode } = useProjectStore();
     const [isDragOver, setIsDragOver] = useState(false);
+    const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
     const dragRef = useRef<DragState | null>(null);
     const artboardRef = useRef<HTMLDivElement>(null);
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -129,17 +151,44 @@ const Canvas: React.FC = () => {
     const rootBlocks = getRootBlocks();
 
     const ab = ARTBOARD_SIZES[viewport] || ARTBOARD_SIZES.desktop;
-    const surfaceW = Math.max(ab.width + ARTBOARD_MARGIN * 4, 2400);
-    const surfaceH = Math.max(ab.minHeight + ARTBOARD_MARGIN * 4, 2000);
+    const artboardWidth = viewport === "desktop"
+        ? Math.max(ab.width, viewportSize.width - ARTBOARD_MARGIN * 2)
+        : ab.width;
+    const artboardMinHeight = viewport === "desktop"
+        ? Math.max(ab.minHeight, viewportSize.height - ARTBOARD_MARGIN * 2)
+        : ab.minHeight;
+    const surfaceW = Math.max(artboardWidth + ARTBOARD_MARGIN * 2, viewportSize.width);
+    const surfaceH = Math.max(artboardMinHeight + ARTBOARD_MARGIN * 2, viewportSize.height);
+
+    // Track available editor viewport so canvas can expand/shrink with side panels.
+    useEffect(() => {
+        const el = scrollRef.current;
+        if (!el) return;
+
+        const update = () => {
+            setViewportSize({
+                width: el.clientWidth,
+                height: el.clientHeight,
+            });
+        };
+
+        update();
+
+        const observer = new ResizeObserver(() => update());
+        observer.observe(el);
+        return () => observer.disconnect();
+    }, []);
 
     // Center artboard on mount / page change
     useEffect(() => {
         if (scrollRef.current && selectedPageId) {
             const el = scrollRef.current;
-            el.scrollLeft = Math.max(0, (surfaceW - el.clientWidth) / 2);
+            const artboardLeft = Math.max(ARTBOARD_MARGIN, (surfaceW - artboardWidth) / 2);
+            const fitOffset = Math.max(0, (el.clientWidth - artboardWidth) / 2);
+            el.scrollLeft = Math.max(0, artboardLeft - fitOffset);
             el.scrollTop = 0;
         }
-    }, [selectedPageId, surfaceW]);
+    }, [selectedPageId, surfaceW, artboardWidth]);
 
     // ── Free-position drag via global listeners ──
     useEffect(() => {
@@ -152,8 +201,12 @@ const Canvas: React.FC = () => {
             d.hasMoved = true;
 
             const r = artboardRef.current.getBoundingClientRect();
-            d.element.style.left = `${Math.max(0, e.clientX - r.left - d.offsetX)}px`;
-            d.element.style.top = `${Math.max(0, e.clientY - r.top - d.offsetY)}px`;
+            const maxLeft = Math.max(BLOCK_BOUNDARY_PADDING, r.width - d.element.offsetWidth - BLOCK_BOUNDARY_PADDING);
+            const maxTop = Math.max(BLOCK_BOUNDARY_PADDING, r.height - d.element.offsetHeight - BLOCK_BOUNDARY_PADDING);
+            const nextLeft = clamp(e.clientX - r.left - d.offsetX, BLOCK_BOUNDARY_PADDING, maxLeft);
+            const nextTop = clamp(e.clientY - r.top - d.offsetY, BLOCK_BOUNDARY_PADDING, maxTop);
+            d.element.style.left = `${nextLeft}px`;
+            d.element.style.top = `${nextTop}px`;
         };
 
         const onUp = async () => {
@@ -216,8 +269,12 @@ const Canvas: React.FC = () => {
         const type = readBlockType(e.dataTransfer);
         if (!type || !artboardRef.current) return;
         const r = artboardRef.current.getBoundingClientRect();
-        const x = Math.round(Math.max(0, e.clientX - r.left));
-        const y = Math.round(Math.max(0, e.clientY - r.top));
+        const boundedWidth = Math.min(blockWidth(type), Math.max(120, r.width - BLOCK_BOUNDARY_PADDING * 2));
+        const boundedHeight = blockMinHeight(type);
+        const maxX = Math.max(BLOCK_BOUNDARY_PADDING, r.width - boundedWidth - BLOCK_BOUNDARY_PADDING);
+        const maxY = Math.max(BLOCK_BOUNDARY_PADDING, r.height - boundedHeight - BLOCK_BOUNDARY_PADDING);
+        const x = Math.round(clamp(e.clientX - r.left, BLOCK_BOUNDARY_PADDING, maxX));
+        const y = Math.round(clamp(e.clientY - r.top, BLOCK_BOUNDARY_PADDING, maxY));
         const name = `New ${type.charAt(0).toUpperCase() + type.slice(1)}`;
         await addBlockAtPosition(type, name, x, y);
     };
@@ -237,7 +294,44 @@ const Canvas: React.FC = () => {
                     <CodeEditor />
                 </div>
             ) : (
-                <div ref={scrollRef} className="flex-1 overflow-auto relative">
+                <>
+                    {/* Viewport Switcher Bar */}
+                    <div className="h-8 bg-[var(--ide-chrome)] border-b border-[var(--ide-border)] px-4 flex items-center justify-center gap-1 shrink-0 select-none">
+                        {(Object.entries(ARTBOARD_SIZES) as [string, { width: number; minHeight: number; label: string }][]).map(([key, val]) => (
+                            <button
+                                key={key}
+                                onClick={() => setViewport(key as "desktop" | "tablet" | "mobile")}
+                                className={`h-6 px-3 text-[10px] font-semibold rounded transition-colors ${
+                                    viewport === key
+                                        ? "bg-[var(--ide-primary)] text-white"
+                                        : "text-[var(--ide-text-muted)] hover:text-[var(--ide-text)] hover:bg-[var(--ide-text)]/10"
+                                }`}
+                                title={`${val.label} (${val.width}px)`}
+                            >
+                                {key === "desktop" && (
+                                    <svg className="w-3.5 h-3.5 inline mr-1 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                    </svg>
+                                )}
+                                {key === "tablet" && (
+                                    <svg className="w-3.5 h-3.5 inline mr-1 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 18h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                    </svg>
+                                )}
+                                {key === "mobile" && (
+                                    <svg className="w-3.5 h-3.5 inline mr-1 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                    </svg>
+                                )}
+                                {val.label}
+                            </button>
+                        ))}
+                        <span className="ml-2 text-[9px] font-mono text-[var(--ide-text-muted)] tabular-nums">
+                            {artboardWidth} &times; {artboardMinHeight}
+                        </span>
+                    </div>
+
+                    <div ref={scrollRef} className="flex-1 overflow-auto relative">
                     {/* Surface */}
                     <div
                         className="relative canvas-bg select-none"
@@ -248,23 +342,25 @@ const Canvas: React.FC = () => {
                         <div
                             className="absolute bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08),0_0_0_1px_rgba(0,0,0,0.04)] flex flex-col transition-[width,min-height] duration-500 ease-[cubic-bezier(0.2,0,0,1)]"
                             style={{
-                                left: Math.max(ARTBOARD_MARGIN, (surfaceW - ab.width) / 2),
+                                left: Math.max(ARTBOARD_MARGIN, (surfaceW - artboardWidth) / 2),
                                 top: ARTBOARD_MARGIN,
-                                width: ab.width,
-                                minHeight: ab.minHeight,
+                                width: artboardWidth,
+                                minHeight: artboardMinHeight,
                             }}
                             onClick={(e) => e.stopPropagation()}
                         >
                             {/* ── Content Area (clean white page) ── */}
                             <div
                                 ref={artboardRef}
-                                className={`flex-1 relative bg-white overflow-visible transition-colors duration-200 ${isDragOver ? "bg-indigo-50/30" : ""}`}
-                                style={{ minHeight: ab.minHeight }}
+                                className={`flex-1 relative bg-white overflow-hidden transition-colors duration-200 ${isDragOver ? "bg-indigo-50/30" : ""}`}
+                                style={{ minHeight: artboardMinHeight }}
                                 onClick={() => selectBlock(null)}
                                 onDragOver={onDragOver}
                                 onDrop={onDrop}
                                 onDragLeave={onDragLeave}
                             >
+                                <div className="pointer-events-none absolute inset-3 rounded-lg border border-slate-200/90 shadow-[inset_0_0_0_1px_rgba(148,163,184,0.08)]" />
+
                                 {/* Drop feedback */}
                                 {isDragOver && (
                                     <div className="pointer-events-none absolute inset-0 z-30">
@@ -278,6 +374,8 @@ const Canvas: React.FC = () => {
                                         key={block.id}
                                         block={block}
                                         index={idx}
+                                        artboardWidth={artboardWidth}
+                                        artboardHeight={artboardMinHeight}
                                         onMouseDown={(e) => startDrag(e, block)}
                                     />
                                 ))}
@@ -285,6 +383,7 @@ const Canvas: React.FC = () => {
                         </div>
                     </div>
                 </div>
+                </>
             )}
         </div>
     );
@@ -295,16 +394,25 @@ const Canvas: React.FC = () => {
 interface CanvasBlockProps {
     block: BlockSchema;
     index: number;
+    artboardWidth: number;
+    artboardHeight: number;
     onMouseDown: (e: React.MouseEvent) => void;
 }
 
-const CanvasBlock: React.FC<CanvasBlockProps> = ({ block, index, onMouseDown }) => {
+const CanvasBlock: React.FC<CanvasBlockProps> = ({ block, index, artboardWidth, artboardHeight, onMouseDown }) => {
     const { selectedBlockId } = useProjectStore();
     const selected = selectedBlockId === block.id;
     const children = getBlockChildren(block.id);
     const isContainer = CONTAINER_TYPES.has(block.block_type);
-    const pos = blockPosition(block, index);
-    const w = blockWidth(block.block_type);
+    const rawPos = blockPosition(block, index);
+    const w = Math.min(blockWidth(block.block_type), Math.max(120, artboardWidth - BLOCK_BOUNDARY_PADDING * 2));
+    const minH = blockMinHeight(block.block_type);
+    const maxX = Math.max(BLOCK_BOUNDARY_PADDING, artboardWidth - w - BLOCK_BOUNDARY_PADDING);
+    const maxY = Math.max(BLOCK_BOUNDARY_PADDING, artboardHeight - minH - BLOCK_BOUNDARY_PADDING);
+    const pos = {
+        x: clamp(rawPos.x, BLOCK_BOUNDARY_PADDING, maxX),
+        y: clamp(rawPos.y, BLOCK_BOUNDARY_PADDING, maxY),
+    };
 
     return (
         <div
@@ -314,7 +422,7 @@ const CanvasBlock: React.FC<CanvasBlockProps> = ({ block, index, onMouseDown }) 
                     ? "ring-2 ring-indigo-500 ring-offset-1 ring-offset-white shadow-[0_8px_30px_rgba(99,102,241,0.25)] z-20"
                     : "hover:shadow-lg hover:ring-1 hover:ring-slate-300/50 z-10",
             ].join(" ")}
-            style={{ left: pos.x, top: pos.y, width: w, minHeight: 36 }}
+            style={{ left: pos.x, top: pos.y, width: w, minHeight: minH }}
             onMouseDown={onMouseDown}
             data-block-id={block.id}
         >

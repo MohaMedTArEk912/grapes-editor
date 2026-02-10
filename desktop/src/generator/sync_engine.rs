@@ -19,6 +19,14 @@ impl SyncEngine {
         }
     }
 
+    fn pages_dir(&self) -> PathBuf {
+        self.root_path.join("client/src/pages")
+    }
+
+    fn legacy_pages_dir(&self) -> PathBuf {
+        self.root_path.join("client/page")
+    }
+
     /// Initialize the physical directory structure for a new project
     pub fn init_project_structure(&self, project: &ProjectSchema) -> std::io::Result<()> {
         // Create root
@@ -27,10 +35,12 @@ impl SyncEngine {
         // --- Client Structure ---
         let client_path = self.root_path.join("client");
         let client_src_path = client_path.join("src");
-        let pages_path = client_path.join("page");
+        let pages_path = client_src_path.join("pages");
+        let components_path = client_src_path.join("components");
         let public_path = client_path.join("public");
         fs::create_dir_all(&client_src_path)?;
         fs::create_dir_all(&pages_path)?;
+        fs::create_dir_all(&components_path)?;
         fs::create_dir_all(&public_path)?;
 
         // --- Server Structure ---
@@ -39,8 +49,8 @@ impl SyncEngine {
         let services_path = server_src_path.join("services");
         fs::create_dir_all(&services_path)?;
 
-        // Write grapes.config.json
-        let config_path = self.root_path.join("grapes.config.json");
+        // Write akasha.config.json
+        let config_path = self.root_path.join("akasha.config.json");
         let config_json = serde_json::to_string_pretty(project).unwrap();
         fs::write(config_path, config_json)?;
 
@@ -48,7 +58,7 @@ impl SyncEngine {
         
         // package.json
         let client_package_json = r#"{
-  "name": "grapes-client",
+  "name": "akasha-client",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -177,7 +187,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 
         // src/App.tsx
         let app_tsx = r#"import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import Home from '../page/Home';
+import Home from './pages/Home';
 
 /**
  * App Component
@@ -220,7 +230,7 @@ body {
 
         // package.json
         let server_package_json = r#"{
-  "name": "grapes-server",
+  "name": "akasha-server",
   "version": "0.1.0",
   "private": true,
   "main": "dist/index.js",
@@ -257,7 +267,7 @@ body {
 
         // src/index.ts
         let server_index_ts = r#"/**
- * Grapes Server Entry Point
+ * Akasha Server Entry Point
  */
 
 import { createServer } from 'node:http';
@@ -267,7 +277,7 @@ const port = process.env.PORT || 3001;
 const server = createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({
-    message: 'Grapes Server is running',
+    message: 'Akasha Server is running',
     timestamp: new Date().toISOString()
   }));
 });
@@ -287,8 +297,8 @@ server.listen(port, () => {
     pub fn sync_page_to_disk(&self, page_id: &str, project: &ProjectSchema) -> std::io::Result<()> {
         let page = project.find_page(page_id).ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "Page not found"))?;
         
-        // Map page to dedicated page folder
-        let page_dir = self.root_path.join("client/page");
+        // Map page to dedicated source pages folder
+        let page_dir = self.pages_dir();
         fs::create_dir_all(&page_dir)?;
 
         let mut page_content = String::new();
@@ -306,8 +316,16 @@ server.listen(port, () => {
 
         page_content.push_str("    </div>\n  );\n}");
         
-        let tsx_path = page_dir.join(format!("{}.tsx", pascal_case(&page.name)));
+        let file_name = format!("{}.tsx", pascal_case(&page.name));
+        let tsx_path = page_dir.join(&file_name);
         fs::write(tsx_path, page_content)?;
+
+        // Migration cleanup: remove any legacy copy if present
+        let legacy_path = self.legacy_pages_dir().join(file_name);
+        if legacy_path.exists() {
+            let _ = fs::remove_file(legacy_path);
+        }
+
         self.sync_app_routes_to_disk(project)?;
 
         Ok(())
@@ -315,11 +333,15 @@ server.listen(port, () => {
 
     /// Delete a page's physical file from disk
     pub fn delete_page_from_disk(&self, page_name: &str, project: &ProjectSchema) -> std::io::Result<()> {
-        let page_dir = self.root_path.join("client/page");
-        let tsx_path = page_dir.join(format!("{}.tsx", pascal_case(page_name)));
+        let file_name = format!("{}.tsx", pascal_case(page_name));
+        let tsx_path = self.pages_dir().join(&file_name);
+        let legacy_path = self.legacy_pages_dir().join(&file_name);
         
         if tsx_path.exists() {
             fs::remove_file(tsx_path)?;
+        }
+        if legacy_path.exists() {
+            fs::remove_file(legacy_path)?;
         }
         
         // Always refresh routes
@@ -339,7 +361,7 @@ server.listen(port, () => {
             }
 
             imports.push_str(&format!(
-                "import {} from '../page/{}';\n",
+                "import {} from './pages/{}';\n",
                 component_name, component_name
             ));
 
@@ -351,7 +373,7 @@ server.listen(port, () => {
         }
 
         if routes.is_empty() {
-            routes.push_str("          <Route path=\"/\" element={<div className=\"p-8 text-center text-gray-500\">Welcome to Grapes App</div>} />\n");
+            routes.push_str("          <Route path=\"/\" element={<div className=\"p-8 text-center text-gray-500\">Welcome to Akasha App</div>} />\n");
         }
 
         let app_content = format!(
@@ -390,7 +412,7 @@ export default App;
         let classes = block.classes.join(" ");
         let inner_text = block.properties.get("text").and_then(|v| v.as_str()).unwrap_or("");
 
-        content.push_str(&format!("{indent_str}/* @grapes-block id=\"{}\" */\n", block.id));
+        content.push_str(&format!("{indent_str}/* @akasha-block id=\"{}\" */\n", block.id));
         content.push_str(&format!("{indent_str}<{tag} className=\"{classes}\">{inner_text}", tag = tag, classes = classes, inner_text = inner_text));
         
         if !block.children.is_empty() {
@@ -405,7 +427,7 @@ export default App;
             content.push_str(&format!("</{tag}>\n", tag = tag));
         }
         
-        content.push_str(&format!("{indent_str}/* @grapes-block-end */\n"));
+        content.push_str(&format!("{indent_str}/* @akasha-block-end */\n"));
     }
 
     /// Sync the page containing a specific block to disk
@@ -444,7 +466,12 @@ export default App;
         for page in &project.pages {
             if page.archived { continue; }
 
-            let tsx_path = self.root_path.join("client/page").join(format!("{}.tsx", pascal_case(&page.name)));
+            let file_name = format!("{}.tsx", pascal_case(&page.name));
+            let mut tsx_path = self.pages_dir().join(&file_name);
+            if !tsx_path.exists() {
+                // Backward compatibility for older projects
+                tsx_path = self.legacy_pages_dir().join(file_name);
+            }
 
             if tsx_path.exists() {
                 let content = fs::read_to_string(tsx_path)?;
@@ -471,7 +498,7 @@ export default App;
         let mut blocks = Vec::new();
         
         // Regex for block markers
-        let block_re = regex::Regex::new(r#"(?s)/\* @grapes-block id="([^"]+)" \*/(.*?)/\* @grapes-block-end \*/"#).unwrap();
+        let block_re = regex::Regex::new(r#"(?s)/\* @akasha-block id="([^"]+)" \*/(.*?)/\* @akasha-block-end \*/"#).unwrap();
         // Regex for basic prop extraction from the first tag in the block
         // Matches <tag className="...">Content</tag>
         let prop_re = regex::Regex::new(r#"<([a-z0-9]+)\s+className="([^"]*)"\s*>(.*?)</\1>"#).unwrap();

@@ -151,6 +151,37 @@ pub async fn update_block(
         };
 
         block.styles.insert(style_name.to_string(), style_value);
+    } else if req.property.starts_with("bindings.") {
+        // Update a single binding: bindings.propertyName -> DataBinding
+        let binding_key = &req.property[9..];
+        if req.value.is_null() {
+            block.bindings.remove(binding_key);
+        } else {
+            match serde_json::from_value::<crate::schema::block::DataBinding>(req.value) {
+                Ok(binding) => { block.bindings.insert(binding_key.to_string(), binding); }
+                Err(e) => return Err(ApiError::BadRequest(format!("Invalid binding value: {}", e))),
+            }
+        }
+    } else if req.property == "bindings" {
+        // Replace all bindings at once
+        match serde_json::from_value::<std::collections::HashMap<String, crate::schema::block::DataBinding>>(req.value) {
+            Ok(bindings) => { block.bindings = bindings; }
+            Err(e) => return Err(ApiError::BadRequest(format!("Invalid bindings: {}", e))),
+        }
+    } else if req.property.starts_with("events.") {
+        // Update a single event: events.eventName -> logic_flow_id
+        let event_name = &req.property[7..];
+        if req.value.is_null() {
+            block.events.remove(event_name);
+        } else if let Some(flow_id) = req.value.as_str() {
+            block.events.insert(event_name.to_string(), flow_id.to_string());
+        }
+    } else if req.property == "events" {
+        // Replace all events at once
+        match serde_json::from_value::<std::collections::HashMap<String, String>>(req.value) {
+            Ok(events) => { block.events = events; }
+            Err(e) => return Err(ApiError::BadRequest(format!("Invalid events: {}", e))),
+        }
     } else {
         // Update property based on name
         match req.property.as_str() {

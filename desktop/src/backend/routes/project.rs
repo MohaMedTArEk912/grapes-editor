@@ -83,7 +83,7 @@ pub async fn set_sync_root(
     project.root_path = Some(req.path.clone());
     
     // Initialize structure
-    let engine = crate::generator::sync_engine::SyncEngine::new(req.path);
+    let engine = crate::generator::sync_engine::SyncEngine::new(req.path.clone());
     engine.init_project_structure(&project)
         .map_err(|e| ApiError::Internal(format!("Sync init error: {}", e)))?;
     
@@ -96,6 +96,22 @@ pub async fn set_sync_root(
     }
     
     state.set_project(project).await;
+    
+    // Start file watcher
+    let app_handle_opt = {
+        let app_handle_lock = state.app_handle.lock().await;
+        app_handle_lock.clone()
+    };
+    
+    if let Some(app_handle) = app_handle_opt {
+        let mut watcher = state.watcher.lock().await;
+        if let Err(e) = watcher.watch(&req.path, app_handle) {
+            log::error!("Failed to start file watcher: {}", e);
+        }
+    } else {
+        log::warn!("App handle not available, skipping watcher start");
+    }
+
     Ok(Json(true))
 }
 
@@ -154,9 +170,52 @@ pub async fn rename_project(
 ) -> Result<Json<ProjectSchema>, ApiError> {
     let mut project = state.get_project().await
         .ok_or_else(|| ApiError::NotFound("No project loaded".into()))?;
+        
+    let _old_name = project.name.clone();
+    let old_root = project.root_path.clone();
     
-    project.name = req.name;
+    project.name = req.name.clone();
     project.touch();
+    
+    // If root_path is set, try to rename the folder on disk too
+    if let Some(old_path_str) = old_root {
+        let old_path = std::path::PathBuf::from(&old_path_str);
+        if old_path.exists() {
+            // Calculate new path (parent of old path + new name)
+            if let Some(parent) = old_path.parent() {
+                let new_path = parent.join(&req.name);
+                let new_path_str = new_path.to_string_lossy().to_string();
+                
+                log::info!("Renaming project folder from {:?} to {:?}", old_path, new_path);
+                
+                // Stop watcher before renaming
+                {
+                    let mut watcher = state.watcher.lock().await;
+                    watcher.unwatch();
+                }
+                
+                if let Err(e) = std::fs::rename(&old_path, &new_path) {
+                    log::error!("Failed to rename project folder on disk: {}", e);
+                    // We continue anyway so the project name is at least updated in DB
+                } else {
+                    project.root_path = Some(new_path_str.replace('\\', "/"));
+                    
+                    // Restart watcher on new path
+                    let app_handle_opt = {
+                        let app_handle_lock = state.app_handle.lock().await;
+                        app_handle_lock.clone()
+                    };
+                    
+                    if let Some(app_handle) = app_handle_opt {
+                        let mut watcher = state.watcher.lock().await;
+                        if let Err(e) = watcher.watch(project.root_path.as_ref().unwrap(), app_handle) {
+                            log::error!("Failed to restart watcher after rename: {}", e);
+                        }
+                    }
+                }
+            }
+        }
+    }
     
     state.set_project(project.clone()).await;
     Ok(Json(project))
@@ -183,6 +242,12 @@ pub async fn reset_project(
         if let Some(root_path) = &current.root_path {
             let path = std::path::PathBuf::from(root_path);
             if path.exists() {
+                // Stop watcher before wiping disk
+                {
+                    let mut watcher = state.watcher.lock().await;
+                    watcher.unwatch();
+                }
+
                 // Remove all contents but keep the root folder
                 for entry in std::fs::read_dir(&path).map_err(|e| {
                     ApiError::Internal(format!("Failed to read project folder: {}", e))
@@ -217,8 +282,21 @@ pub async fn reset_project(
         
         // Re-init structure (creates fresh boilerplate)
         engine.init_project_structure(&new_project)
-            .map_err(|e| ApiError::Internal(format!("Sync reset error: {}", e)))?;
+            .map_err(|e| ApiError::Internal(format!("Reset sync error: {}", e)))?;
             
+        // Restart watcher on reset path
+        let app_handle_opt = {
+            let app_handle_lock = state.app_handle.lock().await;
+            app_handle_lock.clone()
+        };
+        
+        if let Some(app_handle) = app_handle_opt {
+            let mut watcher = state.watcher.lock().await;
+            if let Err(e) = watcher.watch(root, app_handle) {
+                log::error!("Failed to restart watcher after reset: {}", e);
+            }
+        }
+        
         // Sync the default Home page
         for page in &new_project.pages {
             engine.sync_page_to_disk(&page.id, &new_project)
@@ -331,4 +409,40 @@ pub async fn install_project_dependencies(
 
     let success = steps.iter().all(|step| step.success);
     Ok(Json(InstallResult { success, steps }))
+}
+
+// ===================== Update Project Settings =====================
+
+/// Update project settings (theme, build, seo)
+#[derive(Debug, Deserialize)]
+pub struct UpdateSettingsRequest {
+    pub settings: serde_json::Value,
+}
+
+pub async fn update_settings(
+    State(state): State<AppState>,
+    Json(req): Json<UpdateSettingsRequest>,
+) -> Result<Json<ProjectSchema>, ApiError> {
+    let mut project = state.get_project().await
+        .ok_or_else(|| ApiError::NotFound("No project loaded".into()))?;
+
+    // Merge incoming settings into existing settings
+    let mut current = serde_json::to_value(&project.settings).unwrap_or_default();
+    if let (Some(cur_obj), Some(new_obj)) = (current.as_object_mut(), req.settings.as_object()) {
+        for (k, v) in new_obj {
+            // Support nested merge for theme, build, seo
+            if let (Some(existing), Some(incoming)) = (cur_obj.get_mut(k).and_then(|x| x.as_object_mut()), v.as_object()) {
+                for (ik, iv) in incoming {
+                    existing.insert(ik.clone(), iv.clone());
+                }
+            } else {
+                cur_obj.insert(k.clone(), v.clone());
+            }
+        }
+    }
+    project.settings = serde_json::from_value(current).unwrap_or_default();
+    project.touch();
+    state.set_project(project.clone()).await;
+
+    Ok(Json(project))
 }

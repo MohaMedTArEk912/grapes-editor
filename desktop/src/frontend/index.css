@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 /* ============================================
-   PREMIUM DESIGN SYSTEM - Grapes IDE
+   PREMIUM DESIGN SYSTEM - Akasha
    ============================================ */
 
 :root {
@@ -173,6 +173,18 @@ body,
     background-image:
         radial-gradient(circle at 1px 1px, var(--ide-canvas-grid) 1px, transparent 0);
     background-size: 24px 24px;
+}
+
+/* Monaco: Akasha-managed read-only regions */
+.akasha-readonly-region {
+    background-color: rgba(99, 102, 241, 0.06) !important;
+    border-left: 2px solid rgba(99, 102, 241, 0.25);
+}
+.akasha-readonly-glyph {
+    background-color: rgba(99, 102, 241, 0.2);
+    width: 4px !important;
+    margin-left: 2px;
+    border-radius: 1px;
 }
 
 /* Buttons */

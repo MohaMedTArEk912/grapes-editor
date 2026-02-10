@@ -9,12 +9,16 @@ pub mod frontend;
 pub mod backend;
 pub mod database;
 pub mod sync_engine;
+pub mod logic_compiler;
+pub mod openapi;
 
 // Re-exports
 pub use frontend::FrontendGenerator;
 pub use backend::BackendGenerator;
 pub use database::DatabaseGenerator;
 pub use sync_engine::SyncEngine;
+pub use logic_compiler::LogicCompiler;
+pub use openapi::OpenApiGenerator;
 
 /// Convert string to PascalCase (Shared utility)
 pub fn pascal_case(s: &str) -> String {

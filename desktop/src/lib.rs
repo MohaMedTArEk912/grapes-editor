@@ -1,6 +1,6 @@
-//! Grapes IDE - Desktop Visual Full-Stack Builder
+//! Akasha — Visual Full-Stack SaaS Builder
 //! 
-//! This is the Rust core engine for Grapes IDE. It handles:
+//! This is the Rust core engine for Akasha. It handles:
 //! - Schema management (the source of truth)
 //! - Command execution (all mutations)
 //! - Virtual File System
@@ -266,6 +266,7 @@ fn add_api(
 #[tauri::command]
 fn set_project_root(
     state: State<AppState>,
+    backend_state: State<crate::backend::BackendAppState>,
     path: String,
 ) -> Result<(), String> {
     let mut state_lock = state.project.lock().map_err(|_| "Lock failed")?;
@@ -274,8 +275,23 @@ fn set_project_root(
     project.root_path = Some(path.clone());
     
     // Initialize structure
-    let engine = crate::generator::sync_engine::SyncEngine::new(path);
+    let engine = crate::generator::sync_engine::SyncEngine::new(path.clone());
     engine.init_project_structure(project).map_err(|e| e.to_string())?;
+    
+    // Start file watcher if we have an app handle
+    tauri::async_runtime::block_on(async {
+        let app_handle_opt = {
+            let app_handle_lock = backend_state.app_handle.lock().await;
+            app_handle_lock.clone()
+        };
+        
+        if let Some(app_handle) = app_handle_opt {
+            let mut watcher = backend_state.watcher.lock().await;
+            if let Err(e) = watcher.watch(&path, app_handle) {
+                log::error!("Failed to start file watcher: {}", e);
+            }
+        }
+    });
     
     Ok(())
 }
@@ -487,7 +503,7 @@ fn parse_http_method(s: &str) -> Result<schema::HttpMethod, String> {
 // ============================================================================
 
 fn backend_bind_addr() -> String {
-    if let Ok(bind) = std::env::var("GRAPES_BIND") {
+    if let Ok(bind) = std::env::var("AKASHA_BIND") {
         let trimmed = bind.trim();
         if !trimmed.is_empty() {
             return trimmed.to_string();
@@ -542,7 +558,8 @@ pub fn run() {
         }
     };
     
-    let router = crate::backend::create_router(backend_state);
+    let backend_state_clone = backend_state.clone();
+    let router = crate::backend::create_router(backend_state.clone());
     let addr = backend_bind_addr();
     
     // Spawn server in a background task
@@ -562,8 +579,15 @@ pub fn run() {
     
     tauri::Builder::default()
         .manage(AppState::default())
+        .manage(backend_state.clone())
         .plugin(tauri_plugin_opener::init())
-        .setup(|_app| {
+        .setup(move |app| {
+            // Set the app handle in the backend state
+            let handle = app.handle().clone();
+            tauri::async_runtime::block_on(async {
+                let mut app_handle_lock = backend_state_clone.app_handle.lock().await;
+                *app_handle_lock = Some(handle);
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

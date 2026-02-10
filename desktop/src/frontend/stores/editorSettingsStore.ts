@@ -53,7 +53,7 @@ const DEFAULT_SETTINGS: EditorSettings = {
     theme: "vs-dark",
 };
 
-const STORAGE_KEY = "grapes-editor-settings";
+const STORAGE_KEY = "akasha-editor-settings";
 
 // Load settings from localStorage
 function loadSettings(): EditorSettings {

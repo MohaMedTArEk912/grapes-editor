@@ -79,11 +79,17 @@ pub async fn delete_project(
         if req.delete_from_disk.unwrap_or(false) {
             if let Some(proj) = &project {
                 if let Some(root_path) = &proj.root_path {
+                    // Stop watcher for this path if it's currently active
+                    let mut watcher = state.watcher.lock().await;
+                    watcher.unwatch();
+                    
                     let path = std::path::PathBuf::from(root_path);
                     if path.exists() {
-                        std::fs::remove_dir_all(&path).map_err(|e| {
-                            ApiError::Internal(format!("Failed to delete project folder: {}", e))
-                        })?;
+                        if let Err(e) = std::fs::remove_dir_all(&path) {
+                            log::error!("Failed to delete project folder {}: {}", root_path, e);
+                            return Err(ApiError::Internal(format!("Failed to delete project folder: {}", e)));
+                        }
+                        log::info!("Deleted project folder from disk: {}", root_path);
                     }
                 }
             }

@@ -1,21 +1,21 @@
 version: '3.8'
 
 services:
-  # Unified Grapes IDE Desktop Application
-  grapes-ide:
+  # Akasha Desktop Application
+  akasha:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: grapes-ide
+    container_name: akasha
     # For desktop apps, ports would typically not be exposed in Docker
     # But if running the backend as a service, expose the API port
     ports:
       - "3001:3001"
     volumes:
       - ./data:/app/data
-      - ./grapes.db:/app/grapes.db
+      - ./akasha.db:/app/akasha.db
     environment:
-      - GRAPES_HEADLESS=1
+      - AKASHA_HEADLESS=1
       - RUST_LOG=info
       - PORT=3001
     restart: unless-stopped

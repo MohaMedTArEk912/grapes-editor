@@ -1,4 +1,4 @@
-//! Grapes IDE Backend - Embedded API Server
+//! Akasha Backend — Embedded API Server
 //! 
 //! This module provides the REST API server functionality that can be embedded
 //! in the Tauri desktop app. It provides:
@@ -13,6 +13,8 @@ pub mod error;
 pub mod db;
 
 // Schema is now at the root level
+
+pub mod watcher;
 
 pub use state::AppState as BackendAppState;
 pub use error::ApiError;
@@ -47,6 +49,7 @@ pub fn create_router(state: BackendAppState) -> Router {
         .route("/api/project/sync/root", post(routes::project::set_sync_root))
         .route("/api/project/sync/now", post(routes::project::trigger_sync))
         .route("/api/project/sync/from_disk", post(routes::project::sync_disk_to_memory))
+        .route("/api/project/settings", put(routes::project::update_settings))
         
         // Block routes
         .route("/api/blocks", post(routes::blocks::add_block))
@@ -67,17 +70,34 @@ pub fn create_router(state: BackendAppState) -> Router {
         .route("/api/logic/:id", delete(routes::logic::delete_logic_flow))
         
         // Data model routes
+        .route("/api/models", get(routes::models::get_models))
         .route("/api/models", post(routes::models::add_model))
+        .route("/api/models/:id", put(routes::models::update_model))
+        .route("/api/models/:id", delete(routes::models::delete_model))
         .route("/api/models/:id/fields", post(routes::models::add_field))
+        .route("/api/models/:id/fields/:field_id", put(routes::models::update_field))
+        .route("/api/models/:id/fields/:field_id", delete(routes::models::delete_field))
+        .route("/api/models/:id/relations", post(routes::models::add_relation))
+        .route("/api/models/:id/relations/:relation_id", delete(routes::models::delete_relation))
         
         // API endpoint routes
+        .route("/api/endpoints", get(routes::endpoints::get_endpoints))
         .route("/api/endpoints", post(routes::endpoints::add_endpoint))
+        .route("/api/endpoints/:id", put(routes::endpoints::update_endpoint))
+        .route("/api/endpoints/:id", delete(routes::endpoints::delete_endpoint))
+        
+        // Variable routes
+        .route("/api/variables", get(routes::variables::get_variables))
+        .route("/api/variables", post(routes::variables::create_variable))
+        .route("/api/variables/:id", put(routes::variables::update_variable))
+        .route("/api/variables/:id", delete(routes::variables::delete_variable))
         
         // Code generation
         .route("/api/generate/frontend", post(routes::generate::generate_frontend))
         .route("/api/generate/backend", post(routes::generate::generate_backend))
         .route("/api/generate/database", post(routes::generate::generate_database))
         .route("/api/generate/zip", get(routes::generate::generate_zip))
+        .route("/api/generate/openapi", get(routes::generate::generate_openapi))
         
         // File system routes
         .route("/api/files", get(routes::files::list_directory))
