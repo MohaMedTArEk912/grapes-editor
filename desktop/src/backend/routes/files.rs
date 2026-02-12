@@ -245,7 +245,8 @@ pub async fn list_directory(
         .map_err(|e| ApiError::Internal(format!("Failed to read directory: {}", e)))?;
 
     for entry in read_dir {
-        let entry = entry.map_err(|e| ApiError::Internal(format!("Failed to read entry: {}", e)))?;
+        let entry =
+            entry.map_err(|e| ApiError::Internal(format!("Failed to read entry: {}", e)))?;
         let metadata = entry
             .metadata()
             .map_err(|e| ApiError::Internal(format!("Failed to read metadata: {}", e)))?;
@@ -492,8 +493,8 @@ pub async fn read_file(
         ));
     }
 
-    let bytes =
-        fs::read(&file_path).map_err(|e| ApiError::Internal(format!("Failed to read file: {}", e)))?;
+    let bytes = fs::read(&file_path)
+        .map_err(|e| ApiError::Internal(format!("Failed to read file: {}", e)))?;
     let content = String::from_utf8(bytes)
         .map_err(|_| ApiError::BadRequest("File is not valid UTF-8 text".into()))?;
 

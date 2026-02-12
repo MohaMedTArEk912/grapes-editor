@@ -416,7 +416,7 @@ const TypographyEditor: React.FC<EditorProps> = ({ block }) => {
                     <input
                         type="text"
                         key={`color-text-${block.id}`}
-                        defaultValue={(block.styles.color as string) || "#1e293b"}}
+                        defaultValue={(block.styles.color as string) || "#1e293b"}
                         onBlur={(e) => updateBlockStyle(block.id, "color", e.target.value)}
                         className="input flex-1 text-sm font-mono"
                     />
@@ -538,7 +538,7 @@ const SpacingEditor: React.FC<EditorProps> = ({ block }) => {
                         type="text"
                         placeholder="0"
                         key={`padding-left-${block.id}`}
-                        defaultValue={(block.styles["padding-left"] as string) || ""}}
+                        defaultValue={(block.styles["padding-left"] as string) || ""}
                         onBlur={(e) => updateBlockStyle(block.id, "padding-left", e.target.value)}
                         className="input text-sm text-center"
                         title="Left"

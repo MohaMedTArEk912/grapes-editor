@@ -7,10 +7,10 @@
  *   Right  – node palette (drag to add) + selected-node inspector
  */
 
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useProjectStore } from "../../hooks/useProjectStore";
 import { addLogicFlow, deleteLogicFlow, updateLogicFlow } from "../../stores/projectStore";
-import { LogicNode } from "../../hooks/useTauri";
+import { LogicNode, TriggerType } from "../../hooks/useTauri";
 
 // ─── Node type metadata ──────────────────────────────
 
@@ -106,6 +106,9 @@ const NODE_W = 200;
 const NODE_H = 56;
 const PORT_R = 6;
 const GRID_SIZE = 20;
+const DEFAULT_EVENT_NAME = "onClick";
+const FRONTEND_TRIGGER_TYPES: TriggerType["type"][] = ["manual", "event", "mount"];
+const BACKEND_TRIGGER_TYPES: TriggerType["type"][] = ["manual", "api", "schedule"];
 
 function snapToGrid(v: number): number {
     return Math.round(v / GRID_SIZE) * GRID_SIZE;
@@ -158,6 +161,10 @@ const LogicCanvas: React.FC = () => {
     const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
     const [drag, setDrag] = useState<CanvasDrag>(null);
     const [paletteDragOver, setPaletteDragOver] = useState(false);
+    const [triggerDraft, setTriggerDraft] = useState<TriggerType | null>(null);
+    const [triggerDirty, setTriggerDirty] = useState(false);
+    const [triggerSaving, setTriggerSaving] = useState(false);
+    const [triggerError, setTriggerError] = useState<string | null>(null);
 
     const canvasRef = useRef<HTMLDivElement>(null);
     const svgRef = useRef<SVGSVGElement>(null);
@@ -170,6 +177,169 @@ const LogicCanvas: React.FC = () => {
             setSelectedFlowId(flows[0].id);
         }
     }, [flows.length]);
+
+    useEffect(() => {
+        if (!selectedFlow) {
+            setTriggerDraft(null);
+            setTriggerDirty(false);
+            setTriggerError(null);
+            return;
+        }
+        setTriggerDraft(selectedFlow.trigger as TriggerType);
+        setTriggerDirty(false);
+        setTriggerError(null);
+    }, [
+        selectedFlow?.id,
+        selectedFlow?.trigger?.type,
+        (selectedFlow?.trigger as TriggerType | undefined)?.component_id,
+        (selectedFlow?.trigger as TriggerType | undefined)?.event,
+        (selectedFlow?.trigger as TriggerType | undefined)?.api_id,
+        (selectedFlow?.trigger as TriggerType | undefined)?.cron,
+    ]);
+
+    const availableApis = useMemo(
+        () => (project?.apis || []).filter((api) => !api.archived),
+        [project],
+    );
+
+    const componentTargetOptions = useMemo(() => {
+        if (!project) return [] as Array<{ id: string; label: string }>;
+        const options = new Map<string, string>();
+
+        for (const page of project.pages) {
+            if (!page.archived) {
+                options.set(page.id, `Page: ${page.name}`);
+            }
+        }
+        for (const component of project.components) {
+            if (!component.archived) {
+                options.set(component.id, `Component: ${component.name}`);
+            }
+        }
+        for (const block of project.blocks) {
+            if (!block.archived) {
+                options.set(block.id, `Block: ${block.name}`);
+            }
+        }
+
+        return Array.from(options.entries()).map(([id, label]) => ({ id, label }));
+    }, [project]);
+
+    const allowedTriggerTypes =
+        selectedFlow?.context === "backend" ? BACKEND_TRIGGER_TYPES : FRONTEND_TRIGGER_TYPES;
+
+    const updateTriggerDraft = (next: TriggerType) => {
+        setTriggerDraft(next);
+        setTriggerDirty(true);
+        setTriggerError(null);
+    };
+
+    const setTriggerType = (type: TriggerType["type"]) => {
+        const current = triggerDraft;
+        if (type === "event") {
+            updateTriggerDraft({
+                type,
+                component_id: current?.component_id || "",
+                event: current?.event || DEFAULT_EVENT_NAME,
+            });
+            return;
+        }
+        if (type === "api") {
+            const fallbackApiId = availableApis[0]?.id || "";
+            updateTriggerDraft({
+                type,
+                api_id: current?.api_id || fallbackApiId,
+            });
+            return;
+        }
+        if (type === "mount") {
+            updateTriggerDraft({
+                type,
+                component_id: current?.component_id || "",
+            });
+            return;
+        }
+        if (type === "schedule") {
+            updateTriggerDraft({
+                type,
+                cron: current?.cron || "*/5 * * * *",
+            });
+            return;
+        }
+        updateTriggerDraft({ type: "manual" });
+    };
+
+    const validateTrigger = (trigger: TriggerType): string | null => {
+        if (trigger.type === "event") {
+            if (!trigger.component_id?.trim()) return "Event trigger requires a component/page/block ID.";
+            if (!trigger.event?.trim()) return "Event trigger requires an event name.";
+        } else if (trigger.type === "api") {
+            if (!trigger.api_id?.trim()) return "API trigger requires an API ID.";
+        } else if (trigger.type === "mount") {
+            if (!trigger.component_id?.trim()) return "Mount trigger requires a component/page/block ID.";
+        } else if (trigger.type === "schedule") {
+            if (!trigger.cron?.trim()) return "Schedule trigger requires a cron expression.";
+        }
+        return null;
+    };
+
+    const normalizeTrigger = (trigger: TriggerType): TriggerType => {
+        if (trigger.type === "event") {
+            return {
+                type: "event",
+                component_id: trigger.component_id?.trim(),
+                event: trigger.event?.trim(),
+            };
+        }
+        if (trigger.type === "api") {
+            return {
+                type: "api",
+                api_id: trigger.api_id?.trim(),
+            };
+        }
+        if (trigger.type === "mount") {
+            return {
+                type: "mount",
+                component_id: trigger.component_id?.trim(),
+            };
+        }
+        if (trigger.type === "schedule") {
+            return {
+                type: "schedule",
+                cron: trigger.cron?.trim(),
+            };
+        }
+        return { type: "manual" };
+    };
+
+    const handleSaveTrigger = async () => {
+        if (!selectedFlow || !triggerDraft) return;
+        const error = validateTrigger(triggerDraft);
+        if (error) {
+            setTriggerError(error);
+            return;
+        }
+
+        const normalized = normalizeTrigger(triggerDraft);
+        setTriggerSaving(true);
+        try {
+            await updateLogicFlow(selectedFlow.id, { trigger: normalized });
+            setTriggerDraft(normalized);
+            setTriggerDirty(false);
+            setTriggerError(null);
+        } catch (err) {
+            setTriggerError(`Failed to update trigger: ${String(err)}`);
+        } finally {
+            setTriggerSaving(false);
+        }
+    };
+
+    const handleResetTrigger = () => {
+        if (!selectedFlow) return;
+        setTriggerDraft(selectedFlow.trigger as TriggerType);
+        setTriggerDirty(false);
+        setTriggerError(null);
+    };
 
     // ── Save helper (sends full nodes array to backend) ──
     const saveNodes = useCallback(
@@ -452,22 +622,128 @@ const LogicCanvas: React.FC = () => {
             <div className="flex-1 flex flex-col overflow-hidden">
                 {/* Toolbar */}
                 {selectedFlow && (
-                    <div className="h-9 bg-[var(--ide-chrome)] border-b border-[var(--ide-border)] flex items-center px-4 gap-3 flex-shrink-0">
-                        <span className="text-xs font-medium text-[var(--ide-text)]">{selectedFlow.name}</span>
-                        <span className="text-[10px] text-[var(--ide-text-muted)]">{selectedFlow.nodes.length} nodes</span>
-                        <div className="flex-1" />
-                        {selectedNodeId && (
-                            <button
-                                onClick={() => handleDeleteNode(selectedNodeId)}
-                                className="h-6 px-2 text-[10px] rounded border border-red-400/30 text-red-400 hover:bg-red-500/10 transition-colors flex items-center gap-1"
+                    <>
+                        <div className="h-9 bg-[var(--ide-chrome)] border-b border-[var(--ide-border)] flex items-center px-4 gap-3 flex-shrink-0">
+                            <span className="text-xs font-medium text-[var(--ide-text)]">{selectedFlow.name}</span>
+                            <span className="text-[10px] text-[var(--ide-text-muted)]">{selectedFlow.nodes.length} nodes</span>
+                            <div className="flex-1" />
+                            {selectedNodeId && (
+                                <button
+                                    onClick={() => handleDeleteNode(selectedNodeId)}
+                                    className="h-6 px-2 text-[10px] rounded border border-red-400/30 text-red-400 hover:bg-red-500/10 transition-colors flex items-center gap-1"
+                                >
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                    Delete Node
+                                </button>
+                            )}
+                        </div>
+                        <div className="px-4 py-2 bg-[var(--ide-chrome)] border-b border-[var(--ide-border)] flex items-center gap-2 flex-wrap">
+                            <span className="text-[10px] uppercase tracking-wider text-[var(--ide-text-muted)]">Trigger</span>
+                            <select
+                                value={triggerDraft?.type || "manual"}
+                                onChange={(e) => setTriggerType(e.target.value as TriggerType["type"])}
+                                className="h-7 px-2 text-xs bg-[var(--ide-bg-elevated)] border border-[var(--ide-border)] rounded text-[var(--ide-text)] focus:outline-none focus:border-[var(--ide-primary)]"
                             >
-                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
-                                Delete Node
+                                {allowedTriggerTypes.map((type) => (
+                                    <option key={type} value={type}>{type}</option>
+                                ))}
+                            </select>
+
+                            {(triggerDraft?.type === "event" || triggerDraft?.type === "mount") && (
+                                <>
+                                    <input
+                                        list="logic-trigger-target-options"
+                                        value={triggerDraft.component_id || ""}
+                                        onChange={(e) =>
+                                            updateTriggerDraft(
+                                                triggerDraft.type === "event"
+                                                    ? { ...triggerDraft, component_id: e.target.value }
+                                                    : { type: "mount", component_id: e.target.value }
+                                            )
+                                        }
+                                        className="h-7 min-w-[200px] px-2 text-xs bg-[var(--ide-bg-elevated)] border border-[var(--ide-border)] rounded text-[var(--ide-text)] focus:outline-none focus:border-[var(--ide-primary)]"
+                                        placeholder="component/page/block ID"
+                                    />
+                                    <datalist id="logic-trigger-target-options">
+                                        {componentTargetOptions.map((target) => (
+                                            <option key={target.id} value={target.id}>
+                                                {target.label}
+                                            </option>
+                                        ))}
+                                    </datalist>
+                                </>
+                            )}
+
+                            {triggerDraft?.type === "event" && (
+                                <input
+                                    value={triggerDraft.event || ""}
+                                    onChange={(e) =>
+                                        updateTriggerDraft({
+                                            ...triggerDraft,
+                                            event: e.target.value,
+                                        })
+                                    }
+                                    className="h-7 min-w-[140px] px-2 text-xs bg-[var(--ide-bg-elevated)] border border-[var(--ide-border)] rounded text-[var(--ide-text)] focus:outline-none focus:border-[var(--ide-primary)]"
+                                    placeholder="event name (e.g. onClick)"
+                                />
+                            )}
+
+                            {triggerDraft?.type === "api" && (
+                                <select
+                                    value={triggerDraft.api_id || ""}
+                                    onChange={(e) =>
+                                        updateTriggerDraft({
+                                            type: "api",
+                                            api_id: e.target.value,
+                                        })
+                                    }
+                                    className="h-7 min-w-[220px] px-2 text-xs bg-[var(--ide-bg-elevated)] border border-[var(--ide-border)] rounded text-[var(--ide-text)] focus:outline-none focus:border-[var(--ide-primary)]"
+                                >
+                                    <option value="">Select API endpoint ID</option>
+                                    {availableApis.map((api) => (
+                                        <option key={api.id} value={api.id}>
+                                            {api.method} {api.path}
+                                        </option>
+                                    ))}
+                                </select>
+                            )}
+
+                            {triggerDraft?.type === "schedule" && (
+                                <input
+                                    value={triggerDraft.cron || ""}
+                                    onChange={(e) =>
+                                        updateTriggerDraft({
+                                            type: "schedule",
+                                            cron: e.target.value,
+                                        })
+                                    }
+                                    className="h-7 min-w-[180px] px-2 text-xs bg-[var(--ide-bg-elevated)] border border-[var(--ide-border)] rounded text-[var(--ide-text)] focus:outline-none focus:border-[var(--ide-primary)] font-mono"
+                                    placeholder="cron expression"
+                                />
+                            )}
+
+                            <div className="flex-1" />
+                            <button
+                                onClick={handleResetTrigger}
+                                disabled={!triggerDirty || triggerSaving}
+                                className="h-7 px-2 text-[10px] rounded border border-[var(--ide-border)] text-[var(--ide-text-muted)] hover:text-[var(--ide-text)] disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                Reset
                             </button>
-                        )}
-                    </div>
+                            <button
+                                onClick={handleSaveTrigger}
+                                disabled={!triggerDirty || triggerSaving}
+                                className="h-7 px-3 text-[10px] rounded bg-[var(--ide-primary)] text-white hover:bg-[var(--ide-primary-hover)] disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {triggerSaving ? "Saving..." : "Save Trigger"}
+                            </button>
+                            {triggerError && (
+                                <span className="w-full text-[10px] text-red-400">{triggerError}</span>
+                            )}
+                        </div>
+                    </>
                 )}
 
                 {/* Canvas area */}

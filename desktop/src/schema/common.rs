@@ -7,25 +7,25 @@ use serde::{Deserialize, Serialize};
 pub struct PageSchema {
     /// Unique identifier
     pub id: String,
-    
+
     /// Page name (e.g., "Home", "About")
     pub name: String,
-    
+
     /// URL path for this page (e.g., "/", "/about")
     pub path: String,
-    
+
     /// Root block ID for this page
     pub root_block_id: Option<String>,
-    
+
     /// SEO metadata
     pub meta: PageMeta,
-    
+
     /// Whether this page is archived (soft deleted)
     pub archived: bool,
-    
+
     /// Path on the physical file system (relative to root)
     pub physical_path: Option<String>,
-    
+
     /// Hash of the file content for sync detection
     pub version_hash: Option<String>,
 }
@@ -35,25 +35,25 @@ pub struct PageSchema {
 pub struct PageMeta {
     /// Page title for SEO
     pub title: Option<String>,
-    
+
     /// Meta description
     pub description: Option<String>,
-    
+
     /// OpenGraph image URL
     pub og_image: Option<String>,
-    
+
     /// Custom head content (scripts, styles)
     pub custom_head: Option<String>,
 }
 
 impl PageSchema {
     /// Create a new page with default values
-    /// 
+    ///
     /// # Arguments
     /// * `id` - Unique identifier for the page
     /// * `name` - Display name
     /// * `path` - URL path
-    /// 
+    ///
     /// # Returns
     /// A new PageSchema with default meta and not archived
     pub fn new(id: impl Into<String>, name: impl Into<String>, path: impl Into<String>) -> Self {

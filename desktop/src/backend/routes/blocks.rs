@@ -1,13 +1,13 @@
 //! Block routes
 
 use axum::{
-    extract::{State, Path},
+    extract::{Path, State},
     Json,
 };
 use serde::Deserialize;
 
-use crate::backend::state::AppState;
 use crate::backend::error::ApiError;
+use crate::backend::state::AppState;
 use crate::schema::{BlockSchema, BlockType};
 
 /// Add block request
@@ -17,6 +17,7 @@ pub struct AddBlockRequest {
     pub name: String,
     pub parent_id: Option<String>,
     pub page_id: Option<String>,
+    pub component_id: Option<String>,
 }
 
 /// Update block request
@@ -40,9 +41,11 @@ pub async fn add_block(
     State(state): State<AppState>,
     Json(req): Json<AddBlockRequest>,
 ) -> Result<Json<BlockSchema>, ApiError> {
-    let mut project = state.get_project().await
+    let mut project = state
+        .get_project()
+        .await
         .ok_or_else(|| ApiError::NotFound("No project loaded".into()))?;
-    
+
     let block_type = match req.block_type.as_str() {
         "container" => BlockType::Container,
         "text" => BlockType::Text,
@@ -57,25 +60,39 @@ pub async fn add_block(
         "column" => BlockType::Column,
         "flex" => BlockType::Flex,
         "grid" => BlockType::Grid,
+        "instance" => BlockType::Instance,
         _ => BlockType::Custom(req.block_type.clone()),
     };
-    
-    let mut block = BlockSchema::new(
-        uuid::Uuid::new_v4().to_string(),
-        block_type,
-        &req.name,
-    );
-    
+
+    let mut block = BlockSchema::new(uuid::Uuid::new_v4().to_string(), block_type, &req.name);
+
     if let Some(parent_id) = &req.parent_id {
         block.parent_id = Some(parent_id.clone());
     }
-    
+
+    if let Some(comp_id) = &req.component_id {
+        block.component_id = Some(comp_id.clone());
+    }
+
     let block_id = block.id.clone();
     let result = block.clone();
-    
-    // 1. Add to project flat list
-    project.add_block(block);
-    
+
+    // 1. Determine storage location (Blocks vs Components)
+    let mut added_to_component = false;
+
+    if let Some(parent_id) = &req.parent_id {
+        // If parent is in components list, this child belongs there too
+        if project.components.iter().any(|b| b.id == *parent_id) {
+            project.components.push(block.clone());
+            project.touch();
+            added_to_component = true;
+        }
+    }
+
+    if !added_to_component {
+        project.add_block(block);
+    }
+
     // 2. Link to parent if provided
     if let Some(parent_id) = &req.parent_id {
         if let Some(parent) = project.find_block_mut(parent_id) {
@@ -83,12 +100,12 @@ pub async fn add_block(
                 parent.children.push(block_id.clone());
             }
         }
-    } 
+    }
     // 3. Link to page root if no parent but page_id provided
     else if let Some(page_id) = &req.page_id {
         let mut attached_to_root = false;
         let mut existing_root_id = None;
-        
+
         if let Some(page) = project.find_page_mut(page_id) {
             if let Some(root_id) = &page.root_block_id {
                 existing_root_id = Some(root_id.clone());
@@ -97,23 +114,23 @@ pub async fn add_block(
                 attached_to_root = true;
             }
         }
-        
+
         if !attached_to_root {
             if let Some(root_id) = existing_root_id {
-                // Use a block to scope the borrow 
+                // Use a block to scope the borrow
                 {
                     if let Some(root_block) = project.find_block_mut(&root_id) {
                         root_block.children.push(block_id.clone());
                     }
                 }
-                
+
                 if let Some(new_block) = project.find_block_mut(&block_id) {
                     new_block.parent_id = Some(root_id);
                 }
             }
         }
     }
-    
+
     // Auto-sync
     if let Some(root) = &project.root_path {
         let engine = crate::generator::sync_engine::SyncEngine::new(root);
@@ -133,10 +150,13 @@ pub async fn update_block(
     Path(id): Path<String>,
     Json(req): Json<UpdateBlockRequest>,
 ) -> Result<Json<BlockSchema>, ApiError> {
-    let mut project = state.get_project().await
+    let mut project = state
+        .get_project()
+        .await
         .ok_or_else(|| ApiError::NotFound("No project loaded".into()))?;
 
-    let block = project.find_block_mut(&id)
+    let block = project
+        .find_block_mut(&id)
         .ok_or_else(|| ApiError::NotFound(format!("Block {} not found", id)))?;
 
     // Check if we are updating a style
@@ -145,9 +165,16 @@ pub async fn update_block(
 
         let style_value = match req.value {
             serde_json::Value::String(s) => crate::schema::block::StyleValue::String(s),
-            serde_json::Value::Number(n) => crate::schema::block::StyleValue::Number(n.as_f64().unwrap_or(0.0)),
+            serde_json::Value::Number(n) => {
+                crate::schema::block::StyleValue::Number(n.as_f64().unwrap_or(0.0))
+            }
             serde_json::Value::Bool(b) => crate::schema::block::StyleValue::Boolean(b),
-            _ => return Err(ApiError::BadRequest(format!("Invalid style value for {}", style_name))),
+            _ => {
+                return Err(ApiError::BadRequest(format!(
+                    "Invalid style value for {}",
+                    style_name
+                )))
+            }
         };
 
         block.styles.insert(style_name.to_string(), style_value);
@@ -158,14 +185,26 @@ pub async fn update_block(
             block.bindings.remove(binding_key);
         } else {
             match serde_json::from_value::<crate::schema::block::DataBinding>(req.value) {
-                Ok(binding) => { block.bindings.insert(binding_key.to_string(), binding); }
-                Err(e) => return Err(ApiError::BadRequest(format!("Invalid binding value: {}", e))),
+                Ok(binding) => {
+                    block.bindings.insert(binding_key.to_string(), binding);
+                }
+                Err(e) => {
+                    return Err(ApiError::BadRequest(format!(
+                        "Invalid binding value: {}",
+                        e
+                    )))
+                }
             }
         }
     } else if req.property == "bindings" {
         // Replace all bindings at once
-        match serde_json::from_value::<std::collections::HashMap<String, crate::schema::block::DataBinding>>(req.value) {
-            Ok(bindings) => { block.bindings = bindings; }
+        match serde_json::from_value::<
+            std::collections::HashMap<String, crate::schema::block::DataBinding>,
+        >(req.value)
+        {
+            Ok(bindings) => {
+                block.bindings = bindings;
+            }
             Err(e) => return Err(ApiError::BadRequest(format!("Invalid bindings: {}", e))),
         }
     } else if req.property.starts_with("events.") {
@@ -174,12 +213,16 @@ pub async fn update_block(
         if req.value.is_null() {
             block.events.remove(event_name);
         } else if let Some(flow_id) = req.value.as_str() {
-            block.events.insert(event_name.to_string(), flow_id.to_string());
+            block
+                .events
+                .insert(event_name.to_string(), flow_id.to_string());
         }
     } else if req.property == "events" {
         // Replace all events at once
         match serde_json::from_value::<std::collections::HashMap<String, String>>(req.value) {
-            Ok(events) => { block.events = events; }
+            Ok(events) => {
+                block.events = events;
+            }
             Err(e) => return Err(ApiError::BadRequest(format!("Invalid events: {}", e))),
         }
     } else {
@@ -192,7 +235,9 @@ pub async fn update_block(
             }
             "content" => {
                 if let Some(content) = req.value.as_str() {
-                    block.properties.insert("content".into(), serde_json::json!(content));
+                    block
+                        .properties
+                        .insert("content".into(), serde_json::json!(content));
                 }
             }
             _ => {
@@ -220,7 +265,9 @@ pub async fn delete_block(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<bool>, ApiError> {
-    let mut project = state.get_project().await
+    let mut project = state
+        .get_project()
+        .await
         .ok_or_else(|| ApiError::NotFound("No project loaded".into()))?;
 
     // 1. Remove from parent's children if linked
@@ -273,7 +320,7 @@ pub async fn delete_block(
             }
         }
     }
-    
+
     state.set_project(project).await;
     Ok(Json(success))
 }
@@ -284,12 +331,15 @@ pub async fn move_block(
     Path(id): Path<String>,
     Json(req): Json<MoveBlockRequest>,
 ) -> Result<Json<bool>, ApiError> {
-    let mut project = state.get_project().await
+    let mut project = state
+        .get_project()
+        .await
         .ok_or_else(|| ApiError::NotFound("No project loaded".into()))?;
 
     // Verify block exists
     let old_parent_id = {
-        let block = project.find_block(&id)
+        let block = project
+            .find_block(&id)
             .ok_or_else(|| ApiError::NotFound(format!("Block {} not found", id)))?;
         block.parent_id.clone()
     };
@@ -308,7 +358,10 @@ pub async fn move_block(
             let idx = req.index.min(new_parent.children.len());
             new_parent.children.insert(idx, id.clone());
         } else {
-            return Err(ApiError::NotFound(format!("New parent {} not found", new_pid)));
+            return Err(ApiError::NotFound(format!(
+                "New parent {} not found",
+                new_pid
+            )));
         }
     }
 

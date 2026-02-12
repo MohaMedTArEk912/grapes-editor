@@ -1,31 +1,31 @@
 //! Virtual File Tree
-//! 
+//!
 //! Builds a file tree view from the project schema.
 
-use serde::{Deserialize, Serialize};
 use crate::schema::ProjectSchema;
+use serde::{Deserialize, Serialize};
 
 /// A virtual file in the VFS
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VirtualFile {
     /// File path (virtual, e.g., "/pages/Home.page")
     pub path: String,
-    
+
     /// File name
     pub name: String,
-    
+
     /// File type
     pub file_type: VirtualFileType,
-    
+
     /// Entity ID this file represents
     pub entity_id: String,
-    
+
     /// Whether this is a directory (contains children)
     pub is_directory: bool,
-    
+
     /// Child files (for directories)
     pub children: Vec<VirtualFile>,
-    
+
     /// Icon name for UI
     pub icon: String,
 }
@@ -36,23 +36,23 @@ pub struct VirtualFile {
 pub enum VirtualFileType {
     /// Directory (folder)
     Directory,
-    
+
     /// Page file (.page)
     Page,
-    
+
     /// Component/Block file (.component)
     Component,
-    
+
     /// API endpoint file (.api)
     Api,
-    
+
     /// Data model file (.model)
     Model,
-    
+
     /// Logic flow file (.flow)
     Flow,
-    
-    /// Variable file (.var) 
+
+    /// Variable file (.var)
     Variable,
 }
 
@@ -69,7 +69,7 @@ impl VirtualFile {
             icon: "folder".into(),
         }
     }
-    
+
     /// Create a new file
     pub fn file(
         path: impl Into<String>,
@@ -86,7 +86,7 @@ impl VirtualFile {
             VirtualFileType::Flow => "git-branch",
             VirtualFileType::Variable => "variable",
         };
-        
+
         Self {
             path: path.into(),
             name: name.into(),
@@ -97,7 +97,7 @@ impl VirtualFile {
             icon: icon.into(),
         }
     }
-    
+
     /// Add a child to this directory
     pub fn with_child(mut self, child: VirtualFile) -> Self {
         self.children.push(child);
@@ -106,15 +106,15 @@ impl VirtualFile {
 }
 
 /// Build a complete file tree from a project schema
-/// 
+///
 /// # Arguments
 /// * `project` - The project schema to build from
-/// 
+///
 /// # Returns
 /// The root VirtualFile representing the project root
 pub fn build_file_tree(project: &ProjectSchema) -> VirtualFile {
     let mut root = VirtualFile::directory("/", &project.name);
-    
+
     // Pages folder
     let mut pages_dir = VirtualFile::directory("/pages", "Pages");
     for page in &project.pages {
@@ -129,7 +129,7 @@ pub fn build_file_tree(project: &ProjectSchema) -> VirtualFile {
         }
     }
     root.children.push(pages_dir);
-    
+
     // Components folder (blocks that are not tied to pages)
     let mut components_dir = VirtualFile::directory("/components", "Components");
     for block in &project.blocks {
@@ -144,7 +144,7 @@ pub fn build_file_tree(project: &ProjectSchema) -> VirtualFile {
         }
     }
     root.children.push(components_dir);
-    
+
     // API folder
     let mut api_dir = VirtualFile::directory("/api", "API");
     for api in &project.apis {
@@ -159,7 +159,7 @@ pub fn build_file_tree(project: &ProjectSchema) -> VirtualFile {
         }
     }
     root.children.push(api_dir);
-    
+
     // Models folder
     let mut models_dir = VirtualFile::directory("/models", "Models");
     for model in &project.data_models {
@@ -174,7 +174,7 @@ pub fn build_file_tree(project: &ProjectSchema) -> VirtualFile {
         }
     }
     root.children.push(models_dir);
-    
+
     // Logic flows folder
     let mut flows_dir = VirtualFile::directory("/flows", "Logic");
     for flow in &project.logic_flows {
@@ -189,20 +189,25 @@ pub fn build_file_tree(project: &ProjectSchema) -> VirtualFile {
         }
     }
     root.children.push(flows_dir);
-    
+
     root
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::schema::{PageSchema, ApiSchema, HttpMethod};
+    use crate::schema::{ApiSchema, HttpMethod, PageSchema};
 
     #[test]
     fn test_build_file_tree() {
         let mut project = ProjectSchema::new("proj-1", "Test App");
         project.add_page(PageSchema::new("page-extra", "Dashboard", "/dashboard"));
-        project.add_api(ApiSchema::new("api-extra", HttpMethod::Get, "/health", "Health Check"));
+        project.add_api(ApiSchema::new(
+            "api-extra",
+            HttpMethod::Get,
+            "/health",
+            "Health Check",
+        ));
 
         let tree = build_file_tree(&project);
 

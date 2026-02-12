@@ -11,9 +11,10 @@
 
 import React, { useEffect, useState } from "react";
 import { useProjectStore } from "../../hooks/useProjectStore";
+import { setActiveTab, setEditMode, closeProject, installProjectDependencies, clearInstallStatus, setInspectorOpen, toggleTerminal } from "../../stores/projectStore";
 import { useEditorSettings } from "../../hooks/useEditorSettings";
-import { setActiveTab, setEditMode, closeProject, installProjectDependencies, clearInstallStatus, setInspectorOpen } from "../../stores/projectStore";
 import * as EditorSettingsStore from "../../stores/editorSettingsStore";
+
 import CodeEditor from "../Canvas/CodeEditor";
 import ProjectSettingsModal from "../Modals/ProjectSettingsModal";
 import ComponentPalette from "../Visual/ComponentPalette";
@@ -38,14 +39,14 @@ const IDELayout: React.FC<IDELayoutProps> = ({
     canvas,
     terminal
 }) => {
-    const { project, activeTab, editMode, inspectorOpen, loading, loadingMessage, installLog, installError } = useProjectStore();
+    const { project, activeTab, editMode, inspectorOpen, loading, loadingMessage, installLog, installError, terminalOpen } = useProjectStore();
     const editorSettings = useEditorSettings();
+
 
     // Sidebar state
     type SidebarType = "explorer" | "components" | "logic" | "api" | "erd";
     const [sidebarOpen, setSidebarOpen] = useState(!inspectorOpen);
     const [activeSidebar, setActiveSidebar] = useState<SidebarType>(editMode === "visual" ? "components" : "explorer");
-    const [terminalOpen, setTerminalOpen] = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
 
     // Toggle or switch sidebar
@@ -411,7 +412,7 @@ const IDELayout: React.FC<IDELayoutProps> = ({
                         </button>
                     )}
                     <button
-                        onClick={() => setTerminalOpen(!terminalOpen)}
+                        onClick={() => toggleTerminal()}
                         className="hover:bg-white/20 px-2 py-0.5 rounded transition-colors"
                     >
                         {terminalOpen ? "Hide Terminal" : "Terminal"}

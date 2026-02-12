@@ -1,60 +1,63 @@
 //! Block Schema - UI component definitions
-//! 
+//!
 //! Blocks represent visual UI components that compile to React code.
 //! Each block has properties, styles, and can contain child blocks.
 
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::HashMap;
 
 /// Block schema - represents a single UI component
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BlockSchema {
     /// Unique identifier (UUID v4)
     pub id: String,
-    
+
     /// Type of block (determines rendering and properties)
     pub block_type: BlockType,
-    
+
     /// User-friendly name for this block instance
     pub name: String,
-    
+
     /// Component-specific properties (e.g., text content, href, src)
     pub properties: HashMap<String, Value>,
-    
+
     /// Child block IDs (for container blocks)
     pub children: Vec<String>,
-    
+
     /// Parent block ID (None for root blocks)
     pub parent_id: Option<String>,
-    
+
     /// CSS styles for this block
     pub styles: HashMap<String, StyleValue>,
-    
+
     /// Responsive style overrides per breakpoint
     pub responsive_styles: HashMap<Breakpoint, HashMap<String, StyleValue>>,
-    
+
     /// CSS classes (Tailwind utility classes)
     pub classes: Vec<String>,
-    
+
     /// Event bindings (event name -> logic flow ID)
     pub events: HashMap<String, String>,
-    
+
     /// Data bindings (property name -> data source binding)
     #[serde(default)]
     pub bindings: HashMap<String, DataBinding>,
-    
+
     /// Whether this block is archived (soft deleted)
     pub archived: bool,
-    
+
     /// Block order within parent (for sorting)
     pub order: i32,
-    
+
     /// Path on the physical file system (if this block is a separate component)
     pub physical_path: Option<String>,
-    
+
     /// Hash of the block's content for sync detection
     pub version_hash: Option<String>,
+
+    /// ID of the master component if this is an instance
+    pub component_id: Option<String>,
 }
 
 /// Available block types
@@ -69,18 +72,18 @@ pub enum BlockType {
     Column,
     Flex,
     Grid,
-    
+
     // Text blocks
     Text,
     Heading,
     Paragraph,
     Link,
-    
+
     // Media blocks
     Image,
     Video,
     Icon,
-    
+
     // Form blocks
     Form,
     Input,
@@ -89,20 +92,23 @@ pub enum BlockType {
     Checkbox,
     Radio,
     Button,
-    
+
     // Interactive blocks
     Modal,
     Dropdown,
     Tabs,
     Accordion,
-    
+
     // Data blocks
     List,
     Table,
     Card,
-    
+
     // Custom/Symbol
     Custom(String), // Reference to a shared component or custom type
+
+    // Component Instance
+    Instance, // Reference to a reusable component definition
 }
 
 /// Data binding - connects a block property to a data source
@@ -111,7 +117,7 @@ pub struct DataBinding {
     /// Binding source type (e.g., "variable", "api", "state", "prop")
     #[serde(rename = "type")]
     pub binding_type: String,
-    
+
     /// Value or reference path (e.g., variable ID, "response.data.name")
     pub value: Value,
 }
@@ -122,10 +128,10 @@ pub struct DataBinding {
 pub enum StyleValue {
     /// Simple string value (e.g., "red", "10px", "flex")
     String(String),
-    
+
     /// Numeric value (unitless)
     Number(f64),
-    
+
     /// Boolean value (for toggle properties)
     Boolean(bool),
 }
@@ -171,12 +177,12 @@ pub enum Breakpoint {
 
 impl BlockSchema {
     /// Create a new block with minimal required fields
-    /// 
+    ///
     /// # Arguments
     /// * `id` - Unique identifier
     /// * `block_type` - Type of the block
     /// * `name` - Display name
-    /// 
+    ///
     /// # Returns
     /// A new BlockSchema with default values for optional fields
     pub fn new(id: impl Into<String>, block_type: BlockType, name: impl Into<String>) -> Self {
@@ -196,39 +202,40 @@ impl BlockSchema {
             order: 0,
             physical_path: None,
             version_hash: None,
+            component_id: None,
         }
     }
-    
+
     /// Add a property to the block
     pub fn with_property(mut self, key: impl Into<String>, value: Value) -> Self {
         self.properties.insert(key.into(), value);
         self
     }
-    
+
     /// Add a style to the block
     pub fn with_style(mut self, key: impl Into<String>, value: impl Into<StyleValue>) -> Self {
         self.styles.insert(key.into(), value.into());
         self
     }
-    
+
     /// Add a CSS class
     pub fn with_class(mut self, class: impl Into<String>) -> Self {
         self.classes.push(class.into());
         self
     }
-    
+
     /// Set parent ID
     pub fn with_parent(mut self, parent_id: impl Into<String>) -> Self {
         self.parent_id = Some(parent_id.into());
         self
     }
-    
+
     /// Add a child block ID
     pub fn with_child(mut self, child_id: impl Into<String>) -> Self {
         self.children.push(child_id.into());
         self
     }
-    
+
     /// Bind an event to a logic flow
     pub fn with_event(mut self, event: impl Into<String>, flow_id: impl Into<String>) -> Self {
         self.events.insert(event.into(), flow_id.into());
@@ -249,7 +256,7 @@ mod tests {
         assert!(block.children.is_empty());
         assert!(!block.archived);
     }
-    
+
     #[test]
     fn test_block_builder() {
         let block = BlockSchema::new("btn-1", BlockType::Button, "Submit Button")
@@ -257,20 +264,20 @@ mod tests {
             .with_style("backgroundColor", "#6366f1")
             .with_class("rounded-lg")
             .with_class("px-4");
-            
+
         assert_eq!(block.properties.len(), 1);
         assert_eq!(block.styles.len(), 1);
         assert_eq!(block.classes.len(), 2);
     }
-    
+
     #[test]
     fn test_style_value_conversions() {
         let s: StyleValue = "red".into();
         assert!(matches!(s, StyleValue::String(_)));
-        
+
         let n: StyleValue = 10.5.into();
         assert!(matches!(n, StyleValue::Number(_)));
-        
+
         let b: StyleValue = true.into();
         assert!(matches!(b, StyleValue::Boolean(_)));
     }

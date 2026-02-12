@@ -17,7 +17,9 @@ pub struct AddBlockCommand {
 impl Command for AddBlockCommand {
     fn execute(&self) -> CommandResult<()> {
         let mut state_lock = self.state.lock().map_err(|_| CommandError::LockFailed)?;
-        let project = state_lock.as_mut().ok_or_else(|| CommandError::ExecutionError("No project open".into()))?;
+        let project = state_lock
+            .as_mut()
+            .ok_or_else(|| CommandError::ExecutionError("No project open".into()))?;
 
         let block_type_enum = parse_block_type(&self.block_type)?;
         let mut block = BlockSchema::new(&self.block_id, block_type_enum, self.name.clone());
@@ -36,15 +38,19 @@ impl Command for AddBlockCommand {
         project.add_block(block);
         Ok(())
     }
-    
+
     fn undo(&self) -> CommandResult<()> {
         let mut state_lock = self.state.lock().map_err(|_| CommandError::LockFailed)?;
-        let project = state_lock.as_mut().ok_or_else(|| CommandError::ExecutionError("No project open".into()))?;
+        let project = state_lock
+            .as_mut()
+            .ok_or_else(|| CommandError::ExecutionError("No project open".into()))?;
 
         if let Some(parent_id) = &self.parent_id {
             for parent in project.blocks.iter_mut() {
                 if parent.id == *parent_id {
-                    parent.children.retain(|child_id| child_id != &self.block_id);
+                    parent
+                        .children
+                        .retain(|child_id| child_id != &self.block_id);
                     break;
                 }
             }
@@ -53,7 +59,7 @@ impl Command for AddBlockCommand {
         project.archive_block(&self.block_id);
         Ok(())
     }
-    
+
     fn description(&self) -> String {
         format!("Add {} block", self.name)
     }
@@ -73,12 +79,16 @@ pub struct MoveBlockCommand {
 impl Command for MoveBlockCommand {
     fn execute(&self) -> CommandResult<()> {
         let mut state_lock = self.state.lock().map_err(|_| CommandError::LockFailed)?;
-        let project = state_lock.as_mut().ok_or_else(|| CommandError::ExecutionError("No project open".into()))?;
+        let project = state_lock
+            .as_mut()
+            .ok_or_else(|| CommandError::ExecutionError("No project open".into()))?;
 
         for parent in project.blocks.iter_mut() {
             if let Some(old_parent_id) = &self.old_parent_id {
                 if parent.id == *old_parent_id {
-                    parent.children.retain(|child_id| child_id != &self.block_id);
+                    parent
+                        .children
+                        .retain(|child_id| child_id != &self.block_id);
                 }
             }
 
@@ -100,15 +110,19 @@ impl Command for MoveBlockCommand {
         project.touch();
         Ok(())
     }
-    
+
     fn undo(&self) -> CommandResult<()> {
         let mut state_lock = self.state.lock().map_err(|_| CommandError::LockFailed)?;
-        let project = state_lock.as_mut().ok_or_else(|| CommandError::ExecutionError("No project open".into()))?;
+        let project = state_lock
+            .as_mut()
+            .ok_or_else(|| CommandError::ExecutionError("No project open".into()))?;
 
         for parent in project.blocks.iter_mut() {
             if let Some(new_parent_id) = &self.new_parent_id {
                 if parent.id == *new_parent_id {
-                    parent.children.retain(|child_id| child_id != &self.block_id);
+                    parent
+                        .children
+                        .retain(|child_id| child_id != &self.block_id);
                 }
             }
 
@@ -130,7 +144,7 @@ impl Command for MoveBlockCommand {
         project.touch();
         Ok(())
     }
-    
+
     fn description(&self) -> String {
         "Move block".into()
     }
@@ -148,27 +162,35 @@ pub struct UpdatePropertyCommand {
 impl Command for UpdatePropertyCommand {
     fn execute(&self) -> CommandResult<()> {
         let mut state_lock = self.state.lock().map_err(|_| CommandError::LockFailed)?;
-        let project = state_lock.as_mut().ok_or_else(|| CommandError::ExecutionError("No project open".into()))?;
+        let project = state_lock
+            .as_mut()
+            .ok_or_else(|| CommandError::ExecutionError("No project open".into()))?;
 
         let block = project
             .find_block_mut(&self.block_id)
             .ok_or_else(|| CommandError::NotFound(self.block_id.clone()))?;
 
-        block.properties.insert(self.property.clone(), self.new_value.clone());
+        block
+            .properties
+            .insert(self.property.clone(), self.new_value.clone());
         project.touch();
         Ok(())
     }
-    
+
     fn undo(&self) -> CommandResult<()> {
         let mut state_lock = self.state.lock().map_err(|_| CommandError::LockFailed)?;
-        let project = state_lock.as_mut().ok_or_else(|| CommandError::ExecutionError("No project open".into()))?;
+        let project = state_lock
+            .as_mut()
+            .ok_or_else(|| CommandError::ExecutionError("No project open".into()))?;
 
         let block = project
             .find_block_mut(&self.block_id)
             .ok_or_else(|| CommandError::NotFound(self.block_id.clone()))?;
 
         if let Some(old_value) = &self.old_value {
-            block.properties.insert(self.property.clone(), old_value.clone());
+            block
+                .properties
+                .insert(self.property.clone(), old_value.clone());
         } else {
             block.properties.remove(&self.property);
         }
@@ -176,7 +198,7 @@ impl Command for UpdatePropertyCommand {
         project.touch();
         Ok(())
     }
-    
+
     fn description(&self) -> String {
         format!("Update {}", self.property)
     }
@@ -212,6 +234,9 @@ fn parse_block_type(value: &str) -> CommandResult<BlockType> {
         "list" => Ok(BlockType::List),
         "table" => Ok(BlockType::Table),
         "card" => Ok(BlockType::Card),
-        _ => Err(CommandError::ValidationError(format!("Unknown block type: {}", value))),
+        _ => Err(CommandError::ValidationError(format!(
+            "Unknown block type: {}",
+            value
+        ))),
     }
 }

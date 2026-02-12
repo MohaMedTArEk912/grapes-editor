@@ -13,10 +13,10 @@ use thiserror::Error;
 pub enum ApiError {
     #[error("Not found: {0}")]
     NotFound(String),
-    
+
     #[error("Bad request: {0}")]
     BadRequest(String),
-    
+
     #[error("Internal error: {0}")]
     Internal(String),
 }
@@ -28,12 +28,12 @@ impl IntoResponse for ApiError {
             ApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
             ApiError::Internal(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
         };
-        
+
         let body = Json(json!({
             "error": message,
             "status": status.as_u16()
         }));
-        
+
         (status, body).into_response()
     }
 }

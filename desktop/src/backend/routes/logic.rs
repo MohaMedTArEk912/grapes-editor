@@ -1,12 +1,12 @@
 //! Logic flow routes
+use crate::backend::error::ApiError;
+use crate::backend::state::AppState;
+use crate::schema::logic_flow::{FlowContext, LogicFlowSchema, LogicNode, TriggerType};
 use axum::{
-    extract::{State, Path},
+    extract::{Path, State},
     Json,
 };
 use serde::Deserialize;
-use crate::backend::state::AppState;
-use crate::backend::error::ApiError;
-use crate::schema::logic_flow::{LogicFlowSchema, LogicNode, TriggerType, FlowContext};
 
 #[derive(Debug, Deserialize)]
 pub struct CreateLogicFlowRequest {
@@ -20,6 +20,7 @@ pub struct UpdateLogicFlowRequest {
     pub nodes: Option<Vec<LogicNode>>,
     pub entry_node_id: Option<Option<String>>,
     pub description: Option<String>,
+    pub trigger: Option<TriggerType>,
 }
 
 /// Create a new logic flow
@@ -27,22 +28,29 @@ pub async fn create_logic_flow(
     State(state): State<AppState>,
     Json(payload): Json<CreateLogicFlowRequest>,
 ) -> Result<Json<LogicFlowSchema>, ApiError> {
-    let mut project = state.get_project().await
+    let mut project = state
+        .get_project()
+        .await
         .ok_or_else(|| ApiError::NotFound("No project loaded".into()))?;
-    
+
     let id = uuid::Uuid::new_v4().to_string();
     let context = match payload.context.as_str() {
         "frontend" => FlowContext::Frontend,
         "backend" => FlowContext::Backend,
-        other => return Err(ApiError::BadRequest(format!("Unknown context: '{}'. Must be 'frontend' or 'backend'", other))),
+        other => {
+            return Err(ApiError::BadRequest(format!(
+                "Unknown context: '{}'. Must be 'frontend' or 'backend'",
+                other
+            )))
+        }
     };
-    
+
     // Default manual trigger for new flows
     let flow = LogicFlowSchema::new(id, payload.name, TriggerType::Manual, context);
-    
+
     project.logic_flows.push(flow.clone());
     state.set_project(project).await;
-    
+
     Ok(Json(flow))
 }
 
@@ -50,14 +58,18 @@ pub async fn create_logic_flow(
 pub async fn get_logic_flows(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<LogicFlowSchema>>, ApiError> {
-    let project = state.get_project().await
+    let project = state
+        .get_project()
+        .await
         .ok_or_else(|| ApiError::NotFound("No project loaded".into()))?;
-    
-    let flows = project.logic_flows.iter()
+
+    let flows = project
+        .logic_flows
+        .iter()
         .filter(|f| !f.archived)
         .cloned()
         .collect();
-    
+
     Ok(Json(flows))
 }
 
@@ -66,9 +78,11 @@ pub async fn delete_logic_flow(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<bool>, ApiError> {
-    let mut project = state.get_project().await
+    let mut project = state
+        .get_project()
+        .await
         .ok_or_else(|| ApiError::NotFound("No project loaded".into()))?;
-    
+
     let mut found = false;
     for flow in project.logic_flows.iter_mut() {
         if flow.id == id {
@@ -77,7 +91,7 @@ pub async fn delete_logic_flow(
             break;
         }
     }
-    
+
     if found {
         state.set_project(project).await;
     }
@@ -91,10 +105,14 @@ pub async fn update_logic_flow(
     Path(id): Path<String>,
     Json(payload): Json<UpdateLogicFlowRequest>,
 ) -> Result<Json<LogicFlowSchema>, ApiError> {
-    let mut project = state.get_project().await
+    let mut project = state
+        .get_project()
+        .await
         .ok_or_else(|| ApiError::NotFound("No project loaded".into()))?;
 
-    let flow = project.logic_flows.iter_mut()
+    let flow = project
+        .logic_flows
+        .iter_mut()
         .find(|f| f.id == id)
         .ok_or_else(|| ApiError::NotFound(format!("Logic flow '{}' not found", id)))?;
 
@@ -109,6 +127,9 @@ pub async fn update_logic_flow(
     }
     if let Some(entry) = payload.entry_node_id {
         flow.entry_node_id = entry;
+    }
+    if let Some(trigger) = payload.trigger {
+        flow.trigger = trigger;
     }
 
     let updated = flow.clone();

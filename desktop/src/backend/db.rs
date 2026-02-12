@@ -1,11 +1,11 @@
 //! Database module - SQLite persistence layer
 
-use rusqlite::{Connection, Result, params};
-use std::sync::{Arc, Mutex};
 use crate::schema::{
-    ProjectSchema, BlockSchema, PageSchema, ApiSchema,
-    project::ProjectSettings, BlockType, HttpMethod
+    project::ProjectSettings, ApiSchema, BlockSchema, BlockType, HttpMethod, PageSchema,
+    ProjectSchema,
 };
+use rusqlite::{params, Connection, Result};
+use std::sync::{Arc, Mutex};
 
 /// Database connection pool wrapper (simple mutex for SQLite)
 #[derive(Clone)]
@@ -17,18 +17,18 @@ impl Database {
     /// Initialize database connection and migrations
     pub fn new(path: &str) -> Result<Self> {
         let conn = Connection::open(path)?;
-        
+
         // Enable foreign keys
         conn.execute("PRAGMA foreign_keys = ON", [])?;
-        
+
         // Apply migrations
         Self::migrate(&conn)?;
-        
+
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
         })
     }
-    
+
     /// Create tables
     fn migrate(conn: &Connection) -> Result<()> {
         // Projects table
@@ -48,7 +48,7 @@ impl Database {
 
         // Ensure root_path column exists for migrations (ignore error if it already exists)
         let _ = conn.execute("ALTER TABLE projects ADD COLUMN root_path TEXT", []);
-        
+
         // Pages table
         conn.execute(
             "CREATE TABLE IF NOT EXISTS pages (
@@ -63,7 +63,7 @@ impl Database {
             )",
             [],
         )?;
-        
+
         // Blocks table
         conn.execute(
             "CREATE TABLE IF NOT EXISTS blocks (
@@ -101,7 +101,7 @@ impl Database {
             )",
             [],
         )?;
-        
+
         // Data Models table
         conn.execute(
             "CREATE TABLE IF NOT EXISTS models (
@@ -140,19 +140,26 @@ impl Database {
         )?;
 
         // Migration: add classes_json column to blocks (ignore error if exists)
-        let _ = conn.execute("ALTER TABLE blocks ADD COLUMN classes_json TEXT DEFAULT '[]'", []);
+        let _ = conn.execute(
+            "ALTER TABLE blocks ADD COLUMN classes_json TEXT DEFAULT '[]'",
+            [],
+        );
 
         // Migration: add bindings_json column to blocks (ignore error if exists)
-        let _ = conn.execute("ALTER TABLE blocks ADD COLUMN bindings_json TEXT DEFAULT '{}'", []);
+        let _ = conn.execute(
+            "ALTER TABLE blocks ADD COLUMN bindings_json TEXT DEFAULT '{}'",
+            [],
+        );
 
         Ok(())
     }
-    
+
     // ===== Workspace Settings =====
 
     pub fn get_workspace_path(&self) -> Result<Option<String>> {
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare("SELECT value FROM app_settings WHERE key = 'workspace_path'")?;
+        let mut stmt =
+            conn.prepare("SELECT value FROM app_settings WHERE key = 'workspace_path'")?;
         let mut rows = stmt.query([])?;
         if let Some(row) = rows.next()? {
             Ok(Some(row.get(0)?))
@@ -169,7 +176,7 @@ impl Database {
         )?;
         Ok(())
     }
-    
+
     // ===== Projects =====
 
     pub fn get_all_projects(&self) -> Result<Vec<ProjectSchema>> {
@@ -178,12 +185,13 @@ impl Database {
             "SELECT id, name, description, version, created_at, updated_at, settings_json, root_path 
              FROM projects ORDER BY updated_at DESC"
         )?;
-        
+
         let project_iter = stmt.query_map([], |row| {
             let id: String = row.get(0)?;
             let settings_json: String = row.get(6)?;
-            let settings: ProjectSettings = serde_json::from_str(&settings_json).unwrap_or_default();
-            
+            let settings: ProjectSettings =
+                serde_json::from_str(&settings_json).unwrap_or_default();
+
             let created_at: chrono::DateTime<chrono::Utc> = row.get(4)?;
             let updated_at: chrono::DateTime<chrono::Utc> = row.get(5)?;
 
@@ -201,6 +209,7 @@ impl Database {
                 logic_flows: Vec::new(),
                 data_models: Vec::new(),
                 variables: Vec::new(),
+                components: Vec::new(),
                 root_path: row.get(7)?,
             })
         })?;
@@ -211,19 +220,20 @@ impl Database {
         }
         Ok(projects)
     }
-    
+
     pub fn get_project_by_id(&self, id: &str) -> Result<Option<ProjectSchema>> {
         let conn = self.conn.lock().unwrap();
-        
+
         let mut stmt = conn.prepare(
             "SELECT id, name, description, version, created_at, updated_at, settings_json, root_path 
              FROM projects WHERE id = ?"
         )?;
-        
+
         let mut project_iter = stmt.query_map([id], |row| {
             let settings_json: String = row.get(6)?;
-            let settings: ProjectSettings = serde_json::from_str(&settings_json).unwrap_or_default();
-            
+            let settings: ProjectSettings =
+                serde_json::from_str(&settings_json).unwrap_or_default();
+
             let created_at: chrono::DateTime<chrono::Utc> = row.get(4)?;
             let updated_at: chrono::DateTime<chrono::Utc> = row.get(5)?;
 
@@ -241,15 +251,17 @@ impl Database {
                 logic_flows: Vec::new(),
                 data_models: Vec::new(),
                 variables: Vec::new(),
+                components: Vec::new(),
                 root_path: row.get(7)?,
             })
         })?;
-        
+
         if let Some(project_res) = project_iter.next() {
             let mut project = project_res?;
-            
+
             // Load pages
-            let mut stmt = conn.prepare("SELECT * FROM pages WHERE project_id = ? AND archived = 0")?;
+            let mut stmt =
+                conn.prepare("SELECT * FROM pages WHERE project_id = ? AND archived = 0")?;
             let pages = stmt.query_map([&project.id], |row| {
                 Ok(PageSchema {
                     id: row.get(0)?,
@@ -262,8 +274,10 @@ impl Database {
                     version_hash: None,
                 })
             })?;
-            for p in pages { project.pages.push(p?); }
-            
+            for p in pages {
+                project.pages.push(p?);
+            }
+
             // Load blocks
             let mut stmt = conn.prepare("SELECT id, project_id, page_id, parent_id, block_type, name, properties_json, styles_json, events_json, archived, block_order, classes_json, bindings_json FROM blocks WHERE project_id = ? AND archived = 0 ORDER BY block_order")?;
             let blocks = stmt.query_map([&project.id], |row| {
@@ -297,6 +311,7 @@ impl Database {
                     "List" => BlockType::List,
                     "Table" => BlockType::Table,
                     "Card" => BlockType::Card,
+                    "Instance" => BlockType::Instance,
                     other => {
                         if let Some(name) = other.strip_prefix("Custom:") {
                             BlockType::Custom(name.to_string())
@@ -306,8 +321,12 @@ impl Database {
                     }
                 };
 
-                let classes_json: String = row.get::<_, String>(11).unwrap_or_else(|_| "[]".to_string());
-                let bindings_json: String = row.get::<_, String>(12).unwrap_or_else(|_| "{}".to_string());
+                let classes_json: String = row
+                    .get::<_, String>(11)
+                    .unwrap_or_else(|_| "[]".to_string());
+                let bindings_json: String = row
+                    .get::<_, String>(12)
+                    .unwrap_or_else(|_| "{}".to_string());
 
                 Ok(BlockSchema {
                     id: row.get(0)?,
@@ -325,23 +344,30 @@ impl Database {
                     classes: serde_json::from_str(&classes_json).unwrap_or_default(),
                     physical_path: None,
                     version_hash: None,
+                    component_id: None,
                 })
             })?;
-            for b in blocks { project.blocks.push(b?); }
+            for b in blocks {
+                project.blocks.push(b?);
+            }
 
             // Reconstruct children arrays from parent_id relationships
-            let id_parent_pairs: Vec<(String, Option<String>)> = project.blocks.iter()
+            let id_parent_pairs: Vec<(String, Option<String>)> = project
+                .blocks
+                .iter()
                 .map(|b| (b.id.clone(), b.parent_id.clone()))
                 .collect();
             for block in &mut project.blocks {
-                block.children = id_parent_pairs.iter()
+                block.children = id_parent_pairs
+                    .iter()
                     .filter(|(_, pid)| pid.as_deref() == Some(&block.id))
                     .map(|(id, _)| id.clone())
                     .collect();
             }
-            
+
             // Load APIs
-            let mut stmt = conn.prepare("SELECT * FROM apis WHERE project_id = ? AND archived = 0")?;
+            let mut stmt =
+                conn.prepare("SELECT * FROM apis WHERE project_id = ? AND archived = 0")?;
             let apis = stmt.query_map([&project.id], |row| {
                 let method_str: String = row.get(2)?;
                 let method = match method_str.as_str() {
@@ -351,7 +377,7 @@ impl Database {
                     "PATCH" => HttpMethod::Patch,
                     _ => HttpMethod::Get,
                 };
-                
+
                 Ok(ApiSchema {
                     id: row.get(0)?,
                     method,
@@ -360,7 +386,7 @@ impl Database {
                     description: row.get(5)?,
                     logic_flow_id: row.get(6)?,
                     archived: row.get(7)?,
-                    permissions: Vec::new(), 
+                    permissions: Vec::new(),
                     request_body: None,
                     response_body: None,
                     query_params: Vec::new(),
@@ -368,7 +394,9 @@ impl Database {
                     rate_limit: None,
                 })
             })?;
-            for a in apis { project.apis.push(a?); }
+            for a in apis {
+                project.apis.push(a?);
+            }
 
             // Load Data Models
             let mut stmt = conn.prepare("SELECT id, name, fields_json, relations_json, archived FROM models WHERE project_id = ? AND archived = 0")?;
@@ -390,7 +418,9 @@ impl Database {
                     archived: row.get(4)?,
                 })
             })?;
-            for m in models { project.data_models.push(m?); }
+            for m in models {
+                project.data_models.push(m?);
+            }
 
             // Load Logic Flows
             let mut stmt = conn.prepare("SELECT id, name, description, flow_json, archived FROM logic_flows WHERE project_id = ? AND archived = 0")?;
@@ -416,17 +446,19 @@ impl Database {
                 flow.archived = row.get(4)?;
                 Ok(flow)
             })?;
-            for f in flows { project.logic_flows.push(f?); }
+            for f in flows {
+                project.logic_flows.push(f?);
+            }
 
             Ok(Some(project))
         } else {
             Ok(None)
         }
     }
-    
+
     pub fn save_project(&self, project: &ProjectSchema) -> Result<()> {
         let conn = self.conn.lock().unwrap();
-        
+
         // Upsert Project
         conn.execute(
             "INSERT OR REPLACE INTO projects (id, name, description, version, created_at, updated_at, settings_json, root_path)
@@ -442,63 +474,113 @@ impl Database {
                 project.root_path
             ],
         )?;
-        
+
         // === Cleanup stale rows that are no longer in the in-memory project ===
         // Delete pages not in current project
         if !project.pages.is_empty() {
-            let page_ids: Vec<String> = project.pages.iter().map(|p| format!("'{}'", p.id.replace('\'', "''"))).collect();
+            let page_ids: Vec<String> = project
+                .pages
+                .iter()
+                .map(|p| format!("'{}'", p.id.replace('\'', "''")))
+                .collect();
             conn.execute(
-                &format!("DELETE FROM pages WHERE project_id = ?1 AND id NOT IN ({})", page_ids.join(",")),
+                &format!(
+                    "DELETE FROM pages WHERE project_id = ?1 AND id NOT IN ({})",
+                    page_ids.join(",")
+                ),
                 params![project.id],
             )?;
         } else {
-            conn.execute("DELETE FROM pages WHERE project_id = ?1", params![project.id])?;
+            conn.execute(
+                "DELETE FROM pages WHERE project_id = ?1",
+                params![project.id],
+            )?;
         }
-        
+
         // Delete blocks not in current project
         if !project.blocks.is_empty() {
-            let block_ids: Vec<String> = project.blocks.iter().map(|b| format!("'{}'", b.id.replace('\'', "''"))).collect();
+            let block_ids: Vec<String> = project
+                .blocks
+                .iter()
+                .map(|b| format!("'{}'", b.id.replace('\'', "''")))
+                .collect();
             conn.execute(
-                &format!("DELETE FROM blocks WHERE project_id = ?1 AND id NOT IN ({})", block_ids.join(",")),
+                &format!(
+                    "DELETE FROM blocks WHERE project_id = ?1 AND id NOT IN ({})",
+                    block_ids.join(",")
+                ),
                 params![project.id],
             )?;
         } else {
-            conn.execute("DELETE FROM blocks WHERE project_id = ?1", params![project.id])?;
+            conn.execute(
+                "DELETE FROM blocks WHERE project_id = ?1",
+                params![project.id],
+            )?;
         }
-        
+
         // Delete APIs not in current project
         if !project.apis.is_empty() {
-            let api_ids: Vec<String> = project.apis.iter().map(|a| format!("'{}'", a.id.replace('\'', "''"))).collect();
+            let api_ids: Vec<String> = project
+                .apis
+                .iter()
+                .map(|a| format!("'{}'", a.id.replace('\'', "''")))
+                .collect();
             conn.execute(
-                &format!("DELETE FROM apis WHERE project_id = ?1 AND id NOT IN ({})", api_ids.join(",")),
+                &format!(
+                    "DELETE FROM apis WHERE project_id = ?1 AND id NOT IN ({})",
+                    api_ids.join(",")
+                ),
                 params![project.id],
             )?;
         } else {
-            conn.execute("DELETE FROM apis WHERE project_id = ?1", params![project.id])?;
+            conn.execute(
+                "DELETE FROM apis WHERE project_id = ?1",
+                params![project.id],
+            )?;
         }
-        
+
         // Delete models not in current project
         if !project.data_models.is_empty() {
-            let model_ids: Vec<String> = project.data_models.iter().map(|m| format!("'{}'", m.id.replace('\'', "''"))).collect();
+            let model_ids: Vec<String> = project
+                .data_models
+                .iter()
+                .map(|m| format!("'{}'", m.id.replace('\'', "''")))
+                .collect();
             conn.execute(
-                &format!("DELETE FROM models WHERE project_id = ?1 AND id NOT IN ({})", model_ids.join(",")),
+                &format!(
+                    "DELETE FROM models WHERE project_id = ?1 AND id NOT IN ({})",
+                    model_ids.join(",")
+                ),
                 params![project.id],
             )?;
         } else {
-            conn.execute("DELETE FROM models WHERE project_id = ?1", params![project.id])?;
+            conn.execute(
+                "DELETE FROM models WHERE project_id = ?1",
+                params![project.id],
+            )?;
         }
-        
+
         // Delete logic flows not in current project
         if !project.logic_flows.is_empty() {
-            let flow_ids: Vec<String> = project.logic_flows.iter().map(|f| format!("'{}'", f.id.replace('\'', "''"))).collect();
+            let flow_ids: Vec<String> = project
+                .logic_flows
+                .iter()
+                .map(|f| format!("'{}'", f.id.replace('\'', "''")))
+                .collect();
             conn.execute(
-                &format!("DELETE FROM logic_flows WHERE project_id = ?1 AND id NOT IN ({})", flow_ids.join(",")),
+                &format!(
+                    "DELETE FROM logic_flows WHERE project_id = ?1 AND id NOT IN ({})",
+                    flow_ids.join(",")
+                ),
                 params![project.id],
             )?;
         } else {
-            conn.execute("DELETE FROM logic_flows WHERE project_id = ?1", params![project.id])?;
+            conn.execute(
+                "DELETE FROM logic_flows WHERE project_id = ?1",
+                params![project.id],
+            )?;
         }
-        
+
         // Upsert Pages
         for page in &project.pages {
             conn.execute(
@@ -515,9 +597,10 @@ impl Database {
                  ]
             )?;
         }
-        
+
         // Build a map: block_id -> page_id for proper page association
-        let mut block_page_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        let mut block_page_map: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
         for page in &project.pages {
             if let Some(root_id) = &page.root_block_id {
                 // Walk the block tree from root to assign page_id
@@ -564,6 +647,7 @@ impl Database {
                 BlockType::List => "List",
                 BlockType::Table => "Table",
                 BlockType::Card => "Card",
+                BlockType::Instance => "Instance",
                 BlockType::Custom(name) => name.as_str(),
             };
             let page_id = block_page_map.get(&block.id).cloned();
@@ -587,7 +671,7 @@ impl Database {
                  ]
             )?;
         }
-        
+
         // Upsert APIs
         for api in &project.apis {
             let method_str = match api.method {
@@ -652,17 +736,17 @@ impl Database {
 
     pub fn delete_project(&self, id: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap();
-        
+
         // Delete related data first
         conn.execute("DELETE FROM blocks WHERE project_id = ?", [id])?;
         conn.execute("DELETE FROM pages WHERE project_id = ?", [id])?;
         conn.execute("DELETE FROM apis WHERE project_id = ?", [id])?;
         conn.execute("DELETE FROM models WHERE project_id = ?", [id])?;
         conn.execute("DELETE FROM logic_flows WHERE project_id = ?", [id])?;
-        
+
         // Delete project
         conn.execute("DELETE FROM projects WHERE id = ?", [id])?;
-        
+
         Ok(())
     }
 }

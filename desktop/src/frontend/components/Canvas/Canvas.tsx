@@ -13,10 +13,10 @@ import {
     addBlockAtPosition,
     updateBlockPosition,
     setViewport,
+    closeComponentEditor,
 } from "../../stores/projectStore";
 import { useProjectStore } from "../../hooks/useProjectStore";
 import { BlockSchema } from "../../hooks/useTauri";
-import CodeEditor from "./CodeEditor";
 
 // ─── Constants ───────────────────────────────────────
 
@@ -51,11 +51,6 @@ interface DragState {
 }
 
 // ─── Helpers ─────────────────────────────────────────
-
-/** Check if a drag event carries a palette block (available during dragover via types). */
-function hasPaletteBlockType(dt: DataTransfer): boolean {
-    return dt.types.includes(MIME_BLOCK) || dt.types.includes(MIME_BLOCK_FALLBACK);
-}
 
 /** Read the actual block type string (only works during drop). */
 function readBlockType(dt: DataTransfer): string | null {
@@ -108,7 +103,7 @@ function clamp(value: number, min: number, max: number): number {
 function blockClasses(type: string): string {
     switch (type) {
         case "container":
-            return "p-4 bg-white rounded-xl border border-slate-200/80 min-h-[80px]";
+            return "p-4 bg-white rounded-xl border border-slate-300 min-h-[80px] hover:border-indigo-300 transition-colors";
         case "section":
             return "p-6 bg-gradient-to-b from-slate-50 to-white rounded-xl border border-slate-200/80";
         case "text": case "paragraph":
@@ -133,6 +128,8 @@ function blockClasses(type: string): string {
             return "p-4 bg-white rounded-xl border border-blue-200/50 min-h-[80px]";
         case "grid":
             return "p-4 bg-white rounded-xl border border-purple-200/50 min-h-[80px]";
+        case "instance":
+            return "p-0 border-2 border-dashed border-indigo-400/60 rounded-xl overflow-hidden bg-indigo-50/10 hover:bg-indigo-50/30 transition-colors";
         default:
             return "p-3 bg-white rounded-lg border border-slate-200/80 min-h-[40px]";
     }
@@ -141,7 +138,7 @@ function blockClasses(type: string): string {
 // ─── Main Canvas ─────────────────────────────────────
 
 const Canvas: React.FC = () => {
-    const { project, selectedPageId, viewport, editMode } = useProjectStore();
+    const { project, selectedPageId, selectedComponentId, viewport } = useProjectStore();
     const [isDragOver, setIsDragOver] = useState(false);
     const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
     const dragRef = useRef<DragState | null>(null);
@@ -253,138 +250,166 @@ const Canvas: React.FC = () => {
     }, []);
 
     // ── Palette drop handlers ──
-    const onDragOver = (e: React.DragEvent) => {
+    const onDragOver = useCallback((e: React.DragEvent) => {
         e.preventDefault();
         e.stopPropagation();
-        if (hasPaletteBlockType(e.dataTransfer)) {
-            e.dataTransfer.dropEffect = "copy";
-            setIsDragOver(true);
-        }
-    };
+        e.dataTransfer.dropEffect = "copy";
+        setIsDragOver(true);
+    }, []);
 
-    const onDrop = async (e: React.DragEvent) => {
+    const onDrop = useCallback(async (e: React.DragEvent) => {
         e.preventDefault();
         e.stopPropagation();
         setIsDragOver(false);
-        const type = readBlockType(e.dataTransfer);
-        if (!type || !artboardRef.current) return;
-        const r = artboardRef.current.getBoundingClientRect();
-        const boundedWidth = Math.min(blockWidth(type), Math.max(120, r.width - BLOCK_BOUNDARY_PADDING * 2));
-        const boundedHeight = blockMinHeight(type);
-        const maxX = Math.max(BLOCK_BOUNDARY_PADDING, r.width - boundedWidth - BLOCK_BOUNDARY_PADDING);
-        const maxY = Math.max(BLOCK_BOUNDARY_PADDING, r.height - boundedHeight - BLOCK_BOUNDARY_PADDING);
-        const x = Math.round(clamp(e.clientX - r.left, BLOCK_BOUNDARY_PADDING, maxX));
-        const y = Math.round(clamp(e.clientY - r.top, BLOCK_BOUNDARY_PADDING, maxY));
-        const name = `New ${type.charAt(0).toUpperCase() + type.slice(1)}`;
-        await addBlockAtPosition(type, name, x, y);
-    };
 
-    const onDragLeave = (e: React.DragEvent) => {
+        const type = readBlockType(e.dataTransfer);
+        const componentId = e.dataTransfer.getData("application/akasha-component-id");
+
+        if (!type || !artboardRef.current) {
+            return;
+        }
+
+        try {
+            const r = artboardRef.current.getBoundingClientRect();
+            const boundedWidth = Math.min(blockWidth(type), Math.max(120, r.width - BLOCK_BOUNDARY_PADDING * 2));
+            const boundedHeight = blockMinHeight(type);
+            const maxX = Math.max(BLOCK_BOUNDARY_PADDING, r.width - boundedWidth - BLOCK_BOUNDARY_PADDING);
+            const maxY = Math.max(BLOCK_BOUNDARY_PADDING, r.height - boundedHeight - BLOCK_BOUNDARY_PADDING);
+            const x = Math.round(clamp(e.clientX - r.left, BLOCK_BOUNDARY_PADDING, maxX));
+            const y = Math.round(clamp(e.clientY - r.top, BLOCK_BOUNDARY_PADDING, maxY));
+
+            // Auto-generate name based on component type
+            const name = `${type.charAt(0).toUpperCase() + type.slice(1)}`;
+            await addBlockAtPosition(type, name, x, y, componentId || undefined);
+
+        } catch (err) {
+            console.error("[Canvas DnD] Failed to add block at drop position:", err);
+        }
+    }, []);
+
+    const onDragLeave = useCallback((e: React.DragEvent) => {
         const next = e.relatedTarget as Node | null;
         if (!next || !e.currentTarget.contains(next)) setIsDragOver(false);
-    };
+    }, []);
 
     // ── Early returns ──
     if (!project) return <WelcomeScreen />;
 
     return (
         <div className="h-full bg-[var(--ide-canvas-bg)] flex flex-col relative overflow-hidden">
-            {editMode === "code" ? (
-                <div className="flex-1 animate-fade-in">
-                    <CodeEditor />
-                </div>
-            ) : (
-                <>
-                    {/* Viewport Switcher Bar */}
-                    <div className="h-8 bg-[var(--ide-chrome)] border-b border-[var(--ide-border)] px-4 flex items-center justify-center gap-1 shrink-0 select-none">
-                        {(Object.entries(ARTBOARD_SIZES) as [string, { width: number; minHeight: number; label: string }][]).map(([key, val]) => (
-                            <button
-                                key={key}
-                                onClick={() => setViewport(key as "desktop" | "tablet" | "mobile")}
-                                className={`h-6 px-3 text-[10px] font-semibold rounded transition-colors ${
-                                    viewport === key
-                                        ? "bg-[var(--ide-primary)] text-white"
-                                        : "text-[var(--ide-text-muted)] hover:text-[var(--ide-text)] hover:bg-[var(--ide-text)]/10"
-                                }`}
-                                title={`${val.label} (${val.width}px)`}
-                            >
-                                {key === "desktop" && (
-                                    <svg className="w-3.5 h-3.5 inline mr-1 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                                    </svg>
-                                )}
-                                {key === "tablet" && (
-                                    <svg className="w-3.5 h-3.5 inline mr-1 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 18h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                                    </svg>
-                                )}
-                                {key === "mobile" && (
-                                    <svg className="w-3.5 h-3.5 inline mr-1 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                                    </svg>
-                                )}
-                                {val.label}
-                            </button>
-                        ))}
-                        <span className="ml-2 text-[9px] font-mono text-[var(--ide-text-muted)] tabular-nums">
-                            {artboardWidth} &times; {artboardMinHeight}
-                        </span>
-                    </div>
-
-                    <div ref={scrollRef} className="flex-1 overflow-auto relative">
-                    {/* Surface */}
-                    <div
-                        className="relative canvas-bg select-none"
-                        style={{ width: surfaceW, height: surfaceH }}
-                        onClick={() => selectBlock(null)}
+            {/* Viewport Switcher Bar */}
+            <div className="h-8 bg-[var(--ide-chrome)] border-b border-[var(--ide-border)] px-4 flex items-center justify-center gap-1 shrink-0 select-none">
+                {(Object.entries(ARTBOARD_SIZES) as [string, { width: number; minHeight: number; label: string }][]).map(([key, val]) => (
+                    <button
+                        key={key}
+                        onClick={() => setViewport(key as "desktop" | "tablet" | "mobile")}
+                        className={`h-6 px-3 text-[10px] font-semibold rounded transition-colors ${viewport === key
+                            ? "bg-[var(--ide-primary)] text-white"
+                            : "text-[var(--ide-text-muted)] hover:text-[var(--ide-text)] hover:bg-[var(--ide-text)]/10"
+                            }`}
+                        title={`${val.label} (${val.width}px)`}
                     >
-                        {/* ── Artboard ── */}
+                        {key === "desktop" && (
+                            <svg className="w-3.5 h-3.5 inline mr-1 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                            </svg>
+                        )}
+                        {key === "tablet" && (
+                            <svg className="w-3.5 h-3.5 inline mr-1 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 18h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                            </svg>
+                        )}
+                        {key === "mobile" && (
+                            <svg className="w-3.5 h-3.5 inline mr-1 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                            </svg>
+                        )}
+                        {val.label}
+                    </button>
+                ))}
+                <span className="ml-2 text-[9px] font-mono text-[var(--ide-text-muted)] tabular-nums">
+                    {artboardWidth} &times; {artboardMinHeight}
+                </span>
+            </div>
+
+            <div ref={scrollRef} className="flex-1 overflow-auto relative">
+                {/* Surface */}
+                <div
+                    className="relative canvas-bg select-none"
+                    style={{ width: surfaceW, height: surfaceH }}
+                    onClick={() => selectBlock(null)}
+                >
+                    {/* ── Artboard ── */}
+                    <div
+                        className="absolute bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08),0_0_0_1px_rgba(0,0,0,0.04)] flex flex-col transition-[width,min-height] duration-500 ease-[cubic-bezier(0.2,0,0,1)]"
+                        style={{
+                            left: Math.max(ARTBOARD_MARGIN, (surfaceW - artboardWidth) / 2),
+                            top: ARTBOARD_MARGIN,
+                            width: artboardWidth,
+                            minHeight: artboardMinHeight,
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {/* ── Content Area (clean white page) ── */}
                         <div
-                            className="absolute bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08),0_0_0_1px_rgba(0,0,0,0.04)] flex flex-col transition-[width,min-height] duration-500 ease-[cubic-bezier(0.2,0,0,1)]"
-                            style={{
-                                left: Math.max(ARTBOARD_MARGIN, (surfaceW - artboardWidth) / 2),
-                                top: ARTBOARD_MARGIN,
-                                width: artboardWidth,
-                                minHeight: artboardMinHeight,
-                            }}
-                            onClick={(e) => e.stopPropagation()}
+                            ref={artboardRef}
+                            className={`flex-1 relative bg-white overflow-hidden transition-colors duration-200 ${isDragOver ? "bg-indigo-50/30" : ""}`}
+                            style={{ minHeight: artboardMinHeight }}
+                            onClick={() => selectBlock(null)}
+                            onDragOver={onDragOver}
+                            onDrop={onDrop}
+                            onDragLeave={onDragLeave}
                         >
-                            {/* ── Content Area (clean white page) ── */}
-                            <div
-                                ref={artboardRef}
-                                className={`flex-1 relative bg-white overflow-hidden transition-colors duration-200 ${isDragOver ? "bg-indigo-50/30" : ""}`}
-                                style={{ minHeight: artboardMinHeight }}
-                                onClick={() => selectBlock(null)}
-                                onDragOver={onDragOver}
-                                onDrop={onDrop}
-                                onDragLeave={onDragLeave}
-                            >
-                                <div className="pointer-events-none absolute inset-3 rounded-lg border border-slate-200/90 shadow-[inset_0_0_0_1px_rgba(148,163,184,0.08)]" />
-
-                                {/* Drop feedback */}
-                                {isDragOver && (
-                                    <div className="pointer-events-none absolute inset-0 z-30">
-                                        <div className="absolute inset-4 border-2 border-dashed border-indigo-400/40 bg-indigo-500/[0.02]" />
+                            {/* Component Editing Banner */}
+                            {project && selectedComponentId && (
+                                <div className="absolute top-0 left-0 right-0 z-40 bg-indigo-600/95 backdrop-blur-sm text-white px-4 py-2 flex items-center justify-between shadow-lg border-b border-indigo-500/50">
+                                    <div className="flex items-center gap-2">
+                                        <div className="bg-white/20 p-1.5 rounded-lg">
+                                            <span className="text-sm">🧩</span>
+                                        </div>
+                                        <div>
+                                            <p className="text-[10px] text-indigo-100 font-bold uppercase tracking-wider leading-none">Editing Master Component</p>
+                                            <h3 className="text-xs font-bold truncate max-w-[150px]">
+                                                {project.components.find(c => c.id === selectedComponentId)?.name || "Unknown Component"}
+                                            </h3>
+                                        </div>
                                     </div>
-                                )}
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); closeComponentEditor(); }}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-[10px] font-bold transition-all border border-white/10 active:scale-95"
+                                    >
+                                        Exit Editor
+                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            )}
 
-                                {/* Blocks */}
-                                {rootBlocks.map((block, idx) => (
-                                    <CanvasBlock
-                                        key={block.id}
-                                        block={block}
-                                        index={idx}
-                                        artboardWidth={artboardWidth}
-                                        artboardHeight={artboardMinHeight}
-                                        onMouseDown={(e) => startDrag(e, block)}
-                                    />
-                                ))}
-                            </div>
+                            <div className="pointer-events-none absolute inset-3 rounded-lg border border-slate-200/90 shadow-[inset_0_0_0_1px_rgba(148,163,184,0.08)]" />
+
+                            {/* Drop feedback */}
+                            {isDragOver && (
+                                <div className="pointer-events-none absolute inset-0 z-30">
+                                    <div className="absolute inset-4 border-2 border-dashed border-indigo-400/40 bg-indigo-500/[0.02]" />
+                                </div>
+                            )}
+
+                            {/* Blocks */}
+                            {rootBlocks.map((block, idx) => (
+                                <CanvasBlock
+                                    key={block.id}
+                                    block={block}
+                                    index={idx}
+                                    artboardWidth={artboardWidth}
+                                    artboardHeight={artboardMinHeight}
+                                    onMouseDown={(e) => startDrag(e, block)}
+                                />
+                            ))}
                         </div>
                     </div>
                 </div>
-                </>
-            )}
+            </div>
         </div>
     );
 };
@@ -425,7 +450,15 @@ const CanvasBlock: React.FC<CanvasBlockProps> = ({ block, index, artboardWidth, 
             style={{ left: pos.x, top: pos.y, width: w, minHeight: minH }}
             onMouseDown={onMouseDown}
             data-block-id={block.id}
+            // Allow palette drag-over events to bubble through to the artboard
+            onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }}
         >
+            {/* Hover label for structure visibility */}
+            {!selected && isContainer && (
+                <div className="absolute -top-5 left-0 text-[9px] text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none uppercase tracking-wider font-semibold z-20 bg-white/80 px-1 rounded shadow-sm border border-slate-100">
+                    {block.name || block.block_type}
+                </div>
+            )}
             {/* Selection chrome */}
             {selected && (
                 <>
@@ -475,6 +508,7 @@ const ChildBlock: React.FC<{ block: BlockSchema }> = ({ block }) => {
                 blockClasses(block.block_type),
             ].filter(Boolean).join(" ")}
             onClick={(e) => { e.stopPropagation(); selectBlock(block.id); }}
+            onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }}
         >
             {selected && (
                 <div className="absolute -top-5 left-0 bg-indigo-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-sm z-10 pointer-events-none whitespace-nowrap">
@@ -494,9 +528,22 @@ const ChildBlock: React.FC<{ block: BlockSchema }> = ({ block }) => {
 // ─── Block Content ───────────────────────────────────
 
 const BlockContent: React.FC<{ block: BlockSchema }> = ({ block }) => {
+    const { project } = useProjectStore();
     const text = block.properties.text as string | undefined;
 
     switch (block.block_type) {
+        case "instance": {
+            const master = project?.components.find(c => c.id === block.component_id);
+            return (
+                <div className="flex flex-col items-center justify-center p-4 min-h-[80px]">
+                    <span className="text-2xl mb-1">🧩</span>
+                    <span className="text-xs font-bold text-indigo-600 uppercase tracking-widest text-center">
+                        {master ? master.name : "Unknown Component"}
+                    </span>
+                    <span className="text-[9px] text-indigo-400 mt-0.5">Instance</span>
+                </div>
+            );
+        }
         case "text": case "paragraph":
             return <p className="text-slate-600 text-sm leading-relaxed">{text || "Text content..."}</p>;
         case "heading":

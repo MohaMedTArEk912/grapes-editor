@@ -1,8 +1,8 @@
 //! App state - shared state for the API server
 
-use std::sync::Arc;
-use crate::schema::ProjectSchema;
 use crate::backend::db::Database;
+use crate::schema::ProjectSchema;
+use std::sync::Arc;
 
 /// Shared application state
 #[derive(Clone)]
@@ -20,14 +20,16 @@ impl AppState {
     pub fn new() -> Result<Self, anyhow::Error> {
         // Use 'akasha.db' in the current directory
         let db = Database::new("akasha.db")?;
-        
+
         Ok(Self {
             db: Arc::new(db),
-            watcher: Arc::new(tokio::sync::Mutex::new(crate::backend::watcher::FsWatcher::new())),
+            watcher: Arc::new(tokio::sync::Mutex::new(
+                crate::backend::watcher::FsWatcher::new(),
+            )),
             app_handle: Arc::new(tokio::sync::Mutex::new(None)),
         })
     }
-    
+
     /// Get all projects from DB
     pub async fn get_all_projects(&self) -> Vec<ProjectSchema> {
         self.db.get_all_projects().unwrap_or_else(|e| {
@@ -38,7 +40,9 @@ impl AppState {
 
     /// Get current project from DB (returns the most recently updated project, fully loaded)
     pub async fn get_project(&self) -> Option<ProjectSchema> {
-        let projects = self.db.get_all_projects()
+        let projects = self
+            .db
+            .get_all_projects()
             .map_err(|e| log::error!("Failed to load projects: {}", e))
             .ok()?;
         let first = projects.first()?;

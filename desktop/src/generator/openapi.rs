@@ -3,8 +3,8 @@
 //! Generates an OpenAPI 3.0 specification from the project schema's
 //! data models and API endpoints.
 
-use serde_json::{json, Value};
 use crate::schema::ProjectSchema;
+use serde_json::{json, Value};
 
 pub struct OpenApiGenerator;
 
@@ -41,8 +41,14 @@ impl OpenApiGenerator {
 
             // Add timestamps if enabled
             if model.timestamps {
-                properties.insert("createdAt".into(), json!({"type": "string", "format": "date-time"}));
-                properties.insert("updatedAt".into(), json!({"type": "string", "format": "date-time"}));
+                properties.insert(
+                    "createdAt".into(),
+                    json!({"type": "string", "format": "date-time"}),
+                );
+                properties.insert(
+                    "updatedAt".into(),
+                    json!({"type": "string", "format": "date-time"}),
+                );
             }
 
             let mut schema_obj: serde_json::Map<String, Value> = serde_json::Map::new();
@@ -79,15 +85,21 @@ impl OpenApiGenerator {
                 }
             }
 
-            schemas.insert(create_dto_name, json!({
-                "type": "object",
-                "properties": create_props,
-                "required": create_required,
-            }));
-            schemas.insert(update_dto_name, json!({
-                "type": "object",
-                "properties": update_props,
-            }));
+            schemas.insert(
+                create_dto_name,
+                json!({
+                    "type": "object",
+                    "properties": create_props,
+                    "required": create_required,
+                }),
+            );
+            schemas.insert(
+                update_dto_name,
+                json!({
+                    "type": "object",
+                    "properties": update_props,
+                }),
+            );
         }
 
         // ── Generate paths from API endpoints ──
@@ -114,12 +126,14 @@ impl OpenApiGenerator {
             // Parameters from path
             let params: Vec<Value> = extract_path_params(path)
                 .iter()
-                .map(|p| json!({
-                    "name": p,
-                    "in": "path",
-                    "required": true,
-                    "schema": { "type": "string" }
-                }))
+                .map(|p| {
+                    json!({
+                        "name": p,
+                        "in": "path",
+                        "required": true,
+                        "schema": { "type": "string" }
+                    })
+                })
                 .collect();
             if !params.is_empty() {
                 operation.insert("parameters".into(), json!(params));
@@ -129,14 +143,17 @@ impl OpenApiGenerator {
             if method == "post" || method == "put" || method == "patch" {
                 if let Some(ref body) = api.request_body {
                     let body_schema = data_shape_to_schema(body);
-                    operation.insert("requestBody".into(), json!({
-                        "required": true,
-                        "content": {
-                            "application/json": {
-                                "schema": body_schema
+                    operation.insert(
+                        "requestBody".into(),
+                        json!({
+                            "required": true,
+                            "content": {
+                                "application/json": {
+                                    "schema": body_schema
+                                }
                             }
-                        }
-                    }));
+                        }),
+                    );
                 } else {
                     // Infer from resource name
                     let dto_ref = format!("Create{}Dto", capitalize(&tag));
@@ -164,22 +181,25 @@ impl OpenApiGenerator {
                 _ => "200",
             };
 
-            operation.insert("responses".into(), json!({
-                status_code: {
-                    "description": "Successful operation",
-                    "content": {
-                        "application/json": {
-                            "schema": response_schema
+            operation.insert(
+                "responses".into(),
+                json!({
+                    status_code: {
+                        "description": "Successful operation",
+                        "content": {
+                            "application/json": {
+                                "schema": response_schema
+                            }
                         }
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    },
+                    "404": {
+                        "description": "Not found"
                     }
-                },
-                "401": {
-                    "description": "Unauthorized"
-                },
-                "404": {
-                    "description": "Not found"
-                }
-            }));
+                }),
+            );
 
             // Insert into paths
             let path_entry = paths.entry(path.clone()).or_insert_with(|| json!({}));
@@ -258,7 +278,9 @@ fn to_camel_case(s: &str) -> String {
     let parts: Vec<&str> = s.split(|c: char| !c.is_alphanumeric()).collect();
     let mut result = String::new();
     for (i, part) in parts.iter().enumerate() {
-        if part.is_empty() { continue; }
+        if part.is_empty() {
+            continue;
+        }
         if i == 0 {
             result.push_str(&part.to_lowercase());
         } else {

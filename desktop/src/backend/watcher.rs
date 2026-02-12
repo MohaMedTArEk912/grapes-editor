@@ -1,8 +1,8 @@
 //! File System Watcher
-//! 
+//!
 //! Monitors the project root directory for changes and notifies the frontend.
 
-use notify::{RecursiveMode, Watcher, Config};
+use notify::{Config, RecursiveMode, Watcher};
 use std::path::PathBuf;
 use tauri::Emitter;
 use tokio::sync::mpsc;
@@ -36,7 +36,7 @@ impl FsWatcher {
     ) -> anyhow::Result<()> {
         let root_path = root_path.into();
         let canon_root = root_path.canonicalize()?;
-        
+
         info!("Starting file watcher for: {:?}", canon_root);
 
         // Stop existing watcher if any
@@ -70,8 +70,9 @@ impl FsWatcher {
 
                 for path in event.paths {
                     if let Ok(rel_path) = path.strip_prefix(&canon_root_clone) {
-                        let rel_path_str = rel_path.to_string_lossy().to_string().replace('\\', "/");
-                        
+                        let rel_path_str =
+                            rel_path.to_string_lossy().to_string().replace('\\', "/");
+
                         let payload = VfsChangeEvent {
                             path: rel_path_str,
                             kind: kind.to_string(),

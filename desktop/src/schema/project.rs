@@ -1,66 +1,64 @@
 //! Project Schema - Master schema that ties everything together
-//! 
+//!
 //! The ProjectSchema is the single source of truth for an entire project.
 //! It contains all blocks, pages, APIs, data models, logic flows, and variables.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use super::data_model::{DefaultValue, FieldSchema, FieldType};
 use super::{
-    BlockSchema, BlockType, ApiSchema, HttpMethod, DataModelSchema, LogicFlowSchema,
-    VariableSchema, PageSchema
+    ApiSchema, BlockSchema, BlockType, DataModelSchema, HttpMethod, LogicFlowSchema, PageSchema,
+    VariableSchema,
 };
-use super::data_model::{FieldSchema, FieldType, DefaultValue};
 
 /// The master project schema - contains the entire project state
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectSchema {
     /// Schema version for migrations
     pub version: String,
-    
+
     /// Unique project identifier (UUID v4)
     pub id: String,
-    
+
     /// Project name
     pub name: String,
-    
+
     /// Project description
     pub description: Option<String>,
-    
+
     /// Creation timestamp
     pub created_at: DateTime<Utc>,
-    
+
     /// Last update timestamp
     pub updated_at: DateTime<Utc>,
-    
+
     // ===== Frontend =====
-    
     /// All UI blocks in the project
     pub blocks: Vec<BlockSchema>,
-    
+
     /// All pages in the project
     pub pages: Vec<PageSchema>,
-    
+
+    /// Reusable component definitions (Master Components)
+    pub components: Vec<BlockSchema>,
+
     // ===== Backend =====
-    
     /// All API endpoints
     pub apis: Vec<ApiSchema>,
-    
+
     /// All logic flows (event handlers, API handlers)
     pub logic_flows: Vec<LogicFlowSchema>,
-    
+
     // ===== Database =====
-    
     /// All data models (database tables)
     pub data_models: Vec<DataModelSchema>,
-    
+
     // ===== State =====
-    
     /// All state variables
     pub variables: Vec<VariableSchema>,
-    
+
     // ===== Project Settings =====
-    
     /// Project-wide settings
     pub settings: ProjectSettings,
 
@@ -73,16 +71,16 @@ pub struct ProjectSchema {
 pub struct ProjectSettings {
     /// Default locale
     pub default_locale: String,
-    
+
     /// Supported locales
     pub locales: Vec<String>,
-    
+
     /// Theme configuration
     pub theme: ThemeSettings,
-    
+
     /// Build configuration
     pub build: BuildSettings,
-    
+
     /// SEO defaults
     pub seo: SeoSettings,
 }
@@ -92,13 +90,13 @@ pub struct ProjectSettings {
 pub struct ThemeSettings {
     /// Primary color (hex)
     pub primary_color: String,
-    
+
     /// Secondary color (hex)
     pub secondary_color: String,
-    
+
     /// Font family
     pub font_family: String,
-    
+
     /// Border radius (px)
     pub border_radius: u8,
 }
@@ -119,13 +117,13 @@ impl Default for ThemeSettings {
 pub struct BuildSettings {
     /// Frontend framework to generate
     pub frontend_framework: FrontendFramework,
-    
+
     /// Backend framework to generate
     pub backend_framework: BackendFramework,
-    
+
     /// Database provider
     pub database_provider: DatabaseProvider,
-    
+
     /// Whether to use TypeScript
     pub typescript: bool,
 }
@@ -175,13 +173,13 @@ pub enum DatabaseProvider {
 pub struct SeoSettings {
     /// Default page title suffix
     pub title_suffix: Option<String>,
-    
+
     /// Default meta description
     pub default_description: Option<String>,
-    
+
     /// Default OpenGraph image
     pub default_og_image: Option<String>,
-    
+
     /// Favicon URL
     pub favicon: Option<String>,
 }
@@ -200,7 +198,7 @@ impl Default for SeoSettings {
 impl ProjectSchema {
     /// Current schema version
     pub const CURRENT_VERSION: &'static str = "1.0.0";
-    
+
     /// Create a new project with default content
     ///
     /// # Arguments
@@ -251,49 +249,92 @@ impl ProjectSchema {
         header.parent_id = Some(home_root_id.clone());
         header.children = vec![header_title_id.clone()];
         header.order = 0;
-        header.classes = ["bg-white", "shadow-sm", "py-4", "px-6"].iter().map(|s| s.to_string()).collect();
+        header.classes = ["bg-white", "shadow-sm", "py-4", "px-6"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
 
         let mut header_title = BlockSchema::new(&header_title_id, BlockType::Heading, "Site Title");
         header_title.parent_id = Some(header_id.clone());
         header_title.order = 0;
-        header_title.classes = ["text-xl", "font-bold", "text-indigo-600"].iter().map(|s| s.to_string()).collect();
-        header_title.properties.insert("text".into(), serde_json::Value::String(name_str.clone()));
+        header_title.classes = ["text-xl", "font-bold", "text-indigo-600"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        header_title
+            .properties
+            .insert("text".into(), serde_json::Value::String(name_str.clone()));
 
         let mut hero = BlockSchema::new(&hero_id, BlockType::Section, "Hero");
         hero.parent_id = Some(home_root_id.clone());
-        hero.children = vec![hero_heading_id.clone(), hero_text_id.clone(), hero_btn_id.clone()];
+        hero.children = vec![
+            hero_heading_id.clone(),
+            hero_text_id.clone(),
+            hero_btn_id.clone(),
+        ];
         hero.order = 1;
-        hero.classes = ["py-20", "px-6", "text-center"].iter().map(|s| s.to_string()).collect();
+        hero.classes = ["py-20", "px-6", "text-center"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
 
         let mut hero_heading = BlockSchema::new(&hero_heading_id, BlockType::Heading, "Hero Title");
         hero_heading.parent_id = Some(hero_id.clone());
         hero_heading.order = 0;
-        hero_heading.classes = ["text-4xl", "font-bold", "text-gray-900", "mb-4"].iter().map(|s| s.to_string()).collect();
-        hero_heading.properties.insert("text".into(), serde_json::Value::String(format!("Welcome to {}", &name_str)));
+        hero_heading.classes = ["text-4xl", "font-bold", "text-gray-900", "mb-4"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        hero_heading.properties.insert(
+            "text".into(),
+            serde_json::Value::String(format!("Welcome to {}", &name_str)),
+        );
 
-        let mut hero_text = BlockSchema::new(&hero_text_id, BlockType::Paragraph, "Hero Description");
+        let mut hero_text =
+            BlockSchema::new(&hero_text_id, BlockType::Paragraph, "Hero Description");
         hero_text.parent_id = Some(hero_id.clone());
         hero_text.order = 1;
-        hero_text.classes = ["text-lg", "text-gray-600", "mb-8"].iter().map(|s| s.to_string()).collect();
-        hero_text.properties.insert("text".into(), serde_json::Value::String("Build something amazing with your new project.".into()));
+        hero_text.classes = ["text-lg", "text-gray-600", "mb-8"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        hero_text.properties.insert(
+            "text".into(),
+            serde_json::Value::String("Build something amazing with your new project.".into()),
+        );
 
         let mut hero_btn = BlockSchema::new(&hero_btn_id, BlockType::Button, "Get Started");
         hero_btn.parent_id = Some(hero_id.clone());
         hero_btn.order = 2;
-        hero_btn.classes = ["bg-indigo-600", "text-white", "px-6", "py-3", "rounded-lg"].iter().map(|s| s.to_string()).collect();
-        hero_btn.properties.insert("text".into(), serde_json::Value::String("Get Started".into()));
+        hero_btn.classes = ["bg-indigo-600", "text-white", "px-6", "py-3", "rounded-lg"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        hero_btn.properties.insert(
+            "text".into(),
+            serde_json::Value::String("Get Started".into()),
+        );
 
         let mut footer = BlockSchema::new(&footer_id, BlockType::Section, "Footer");
         footer.parent_id = Some(home_root_id.clone());
         footer.children = vec![footer_text_id.clone()];
         footer.order = 2;
-        footer.classes = ["py-8", "px-6", "text-center", "bg-gray-50", "border-t"].iter().map(|s| s.to_string()).collect();
+        footer.classes = ["py-8", "px-6", "text-center", "bg-gray-50", "border-t"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
 
         let mut footer_text = BlockSchema::new(&footer_text_id, BlockType::Paragraph, "Copyright");
         footer_text.parent_id = Some(footer_id.clone());
         footer_text.order = 0;
-        footer_text.classes = ["text-sm", "text-gray-500"].iter().map(|s| s.to_string()).collect();
-        footer_text.properties.insert("text".into(), serde_json::Value::String(format!("\u{00A9} 2025 {}. All rights reserved.", &name_str)));
+        footer_text.classes = ["text-sm", "text-gray-500"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        footer_text.properties.insert(
+            "text".into(),
+            serde_json::Value::String(format!("\u{00A9} 2025 {}. All rights reserved.", &name_str)),
+        );
 
         // ===== About Page Blocks =====
         let about_heading_id = format!("{}-about-heading", &id_str);
@@ -303,52 +344,139 @@ impl ProjectSchema {
         about_root.children = vec![about_heading_id.clone(), about_text_id.clone()];
         about_root.order = 0;
 
-        let mut about_heading = BlockSchema::new(&about_heading_id, BlockType::Heading, "About Title");
+        let mut about_heading =
+            BlockSchema::new(&about_heading_id, BlockType::Heading, "About Title");
         about_heading.parent_id = Some(about_root_id.clone());
         about_heading.order = 0;
-        about_heading.classes = ["text-3xl", "font-bold", "text-gray-900", "mb-4", "px-6", "pt-10"].iter().map(|s| s.to_string()).collect();
-        about_heading.properties.insert("text".into(), serde_json::Value::String("About Us".into()));
+        about_heading.classes = [
+            "text-3xl",
+            "font-bold",
+            "text-gray-900",
+            "mb-4",
+            "px-6",
+            "pt-10",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        about_heading
+            .properties
+            .insert("text".into(), serde_json::Value::String("About Us".into()));
 
-        let mut about_text = BlockSchema::new(&about_text_id, BlockType::Paragraph, "About Description");
+        let mut about_text =
+            BlockSchema::new(&about_text_id, BlockType::Paragraph, "About Description");
         about_text.parent_id = Some(about_root_id.clone());
         about_text.order = 1;
-        about_text.classes = ["text-lg", "text-gray-600", "px-6"].iter().map(|s| s.to_string()).collect();
-        about_text.properties.insert("text".into(), serde_json::Value::String("Learn more about our project and what we do.".into()));
+        about_text.classes = ["text-lg", "text-gray-600", "px-6"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        about_text.properties.insert(
+            "text".into(),
+            serde_json::Value::String("Learn more about our project and what we do.".into()),
+        );
 
         // ===== Contact Page Blocks =====
         let contact_heading_id = format!("{}-contact-heading", &id_str);
         let contact_text_id = format!("{}-contact-text", &id_str);
 
-        let mut contact_root = BlockSchema::new(&contact_root_id, BlockType::Container, "Page Root");
+        let mut contact_root =
+            BlockSchema::new(&contact_root_id, BlockType::Container, "Page Root");
         contact_root.children = vec![contact_heading_id.clone(), contact_text_id.clone()];
         contact_root.order = 0;
 
-        let mut contact_heading = BlockSchema::new(&contact_heading_id, BlockType::Heading, "Contact Title");
+        let mut contact_heading =
+            BlockSchema::new(&contact_heading_id, BlockType::Heading, "Contact Title");
         contact_heading.parent_id = Some(contact_root_id.clone());
         contact_heading.order = 0;
-        contact_heading.classes = ["text-3xl", "font-bold", "text-gray-900", "mb-4", "px-6", "pt-10"].iter().map(|s| s.to_string()).collect();
-        contact_heading.properties.insert("text".into(), serde_json::Value::String("Contact Us".into()));
+        contact_heading.classes = [
+            "text-3xl",
+            "font-bold",
+            "text-gray-900",
+            "mb-4",
+            "px-6",
+            "pt-10",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        contact_heading.properties.insert(
+            "text".into(),
+            serde_json::Value::String("Contact Us".into()),
+        );
 
-        let mut contact_text = BlockSchema::new(&contact_text_id, BlockType::Paragraph, "Contact Description");
+        let mut contact_text = BlockSchema::new(
+            &contact_text_id,
+            BlockType::Paragraph,
+            "Contact Description",
+        );
         contact_text.parent_id = Some(contact_root_id.clone());
         contact_text.order = 1;
-        contact_text.classes = ["text-lg", "text-gray-600", "px-6"].iter().map(|s| s.to_string()).collect();
-        contact_text.properties.insert("text".into(), serde_json::Value::String("Get in touch with us. We would love to hear from you.".into()));
+        contact_text.classes = ["text-lg", "text-gray-600", "px-6"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        contact_text.properties.insert(
+            "text".into(),
+            serde_json::Value::String(
+                "Get in touch with us. We would love to hear from you.".into(),
+            ),
+        );
 
         // ===== Default Data Model: User =====
         let user_model_id = format!("{}-model-user", &id_str);
         let user_model = DataModelSchema::new(&user_model_id, "User")
-            .with_field(FieldSchema::new(format!("{}-field-email", &id_str), "email", FieldType::Email).unique())
-            .with_field(FieldSchema::new(format!("{}-field-name", &id_str), "name", FieldType::String))
-            .with_field(FieldSchema::new(format!("{}-field-role", &id_str), "role", FieldType::String)
-                .with_default(DefaultValue::Static { value: "user".into() }));
+            .with_field(
+                FieldSchema::new(
+                    format!("{}-field-email", &id_str),
+                    "email",
+                    FieldType::Email,
+                )
+                .unique(),
+            )
+            .with_field(FieldSchema::new(
+                format!("{}-field-name", &id_str),
+                "name",
+                FieldType::String,
+            ))
+            .with_field(
+                FieldSchema::new(format!("{}-field-role", &id_str), "role", FieldType::String)
+                    .with_default(DefaultValue::Static {
+                        value: "user".into(),
+                    }),
+            );
 
         // ===== Default API Endpoints =====
-        let api_list = ApiSchema::new(format!("{}-api-list-users", &id_str), HttpMethod::Get, "/api/users", "List Users");
-        let api_create = ApiSchema::new(format!("{}-api-create-user", &id_str), HttpMethod::Post, "/api/users", "Create User");
-        let api_get = ApiSchema::new(format!("{}-api-get-user", &id_str), HttpMethod::Get, "/api/users/:id", "Get User");
-        let api_update = ApiSchema::new(format!("{}-api-update-user", &id_str), HttpMethod::Put, "/api/users/:id", "Update User");
-        let api_delete = ApiSchema::new(format!("{}-api-delete-user", &id_str), HttpMethod::Delete, "/api/users/:id", "Delete User");
+        let api_list = ApiSchema::new(
+            format!("{}-api-list-users", &id_str),
+            HttpMethod::Get,
+            "/api/users",
+            "List Users",
+        );
+        let api_create = ApiSchema::new(
+            format!("{}-api-create-user", &id_str),
+            HttpMethod::Post,
+            "/api/users",
+            "Create User",
+        );
+        let api_get = ApiSchema::new(
+            format!("{}-api-get-user", &id_str),
+            HttpMethod::Get,
+            "/api/users/:id",
+            "Get User",
+        );
+        let api_update = ApiSchema::new(
+            format!("{}-api-update-user", &id_str),
+            HttpMethod::Put,
+            "/api/users/:id",
+            "Update User",
+        );
+        let api_delete = ApiSchema::new(
+            format!("{}-api-delete-user", &id_str),
+            HttpMethod::Delete,
+            "/api/users/:id",
+            "Delete User",
+        );
 
         Self {
             version: Self::CURRENT_VERSION.into(),
@@ -358,11 +486,21 @@ impl ProjectSchema {
             created_at: now,
             updated_at: now,
             blocks: vec![
-                home_root, header, header_title,
-                hero, hero_heading, hero_text, hero_btn,
-                footer, footer_text,
-                about_root, about_heading, about_text,
-                contact_root, contact_heading, contact_text,
+                home_root,
+                header,
+                header_title,
+                hero,
+                hero_heading,
+                hero_text,
+                hero_btn,
+                footer,
+                footer_text,
+                about_root,
+                about_heading,
+                about_text,
+                contact_root,
+                contact_heading,
+                contact_text,
             ],
             pages: vec![home_page, about_page, contact_page],
             apis: vec![api_list, api_create, api_get, api_update, api_delete],
@@ -371,65 +509,74 @@ impl ProjectSchema {
             variables: Vec::new(),
             settings: ProjectSettings::default(),
             root_path: None,
+            components: Vec::new(),
         }
     }
-    
+
     /// Update the timestamp
     pub fn touch(&mut self) {
         self.updated_at = Utc::now();
     }
-    
+
     /// Add a block to the project
     pub fn add_block(&mut self, block: BlockSchema) {
         self.blocks.push(block);
         self.touch();
     }
-    
+
     /// Add a page to the project
     pub fn add_page(&mut self, page: PageSchema) {
         self.pages.push(page);
         self.touch();
     }
-    
+
     /// Add an API endpoint
     pub fn add_api(&mut self, api: ApiSchema) {
         self.apis.push(api);
         self.touch();
     }
-    
+
     /// Add a logic flow
     pub fn add_logic_flow(&mut self, flow: LogicFlowSchema) {
         self.logic_flows.push(flow);
         self.touch();
     }
-    
+
     /// Add a data model
     pub fn add_data_model(&mut self, model: DataModelSchema) {
         self.data_models.push(model);
         self.touch();
     }
-    
+
     /// Add a variable
     pub fn add_variable(&mut self, variable: VariableSchema) {
         self.variables.push(variable);
         self.touch();
     }
-    
+
     /// Find a block by ID
     pub fn find_block(&self, id: &str) -> Option<&BlockSchema> {
-        self.blocks.iter().find(|b| b.id == id && !b.archived)
+        self.blocks
+            .iter()
+            .find(|b| b.id == id && !b.archived)
+            .or_else(|| self.components.iter().find(|b| b.id == id && !b.archived))
     }
-    
+
     /// Find a block by ID (mutable)
     pub fn find_block_mut(&mut self, id: &str) -> Option<&mut BlockSchema> {
-        self.blocks.iter_mut().find(|b| b.id == id && !b.archived)
+        if let Some(block) = self.blocks.iter_mut().find(|b| b.id == id && !b.archived) {
+            return Some(block);
+        }
+        self.components
+            .iter_mut()
+            .find(|b| b.id == id && !b.archived)
     }
-    
+
     /// Find a page by ID
     pub fn find_page(&self, id: &str) -> Option<&PageSchema> {
         self.pages.iter().find(|p| p.id == id && !p.archived)
     }
-    
+
     /// Find a page by ID (mutable)
     pub fn find_page_mut(&mut self, id: &str) -> Option<&mut PageSchema> {
         self.pages.iter_mut().find(|p| p.id == id && !p.archived)
@@ -439,22 +586,22 @@ impl ProjectSchema {
     pub fn find_api(&self, id: &str) -> Option<&ApiSchema> {
         self.apis.iter().find(|a| a.id == id && !a.archived)
     }
-    
+
     /// Find a data model by ID
     pub fn find_model(&self, id: &str) -> Option<&DataModelSchema> {
         self.data_models.iter().find(|m| m.id == id && !m.archived)
     }
-    
+
     /// Find a logic flow by ID
     pub fn find_flow(&self, id: &str) -> Option<&LogicFlowSchema> {
         self.logic_flows.iter().find(|f| f.id == id && !f.archived)
     }
-    
+
     /// Find a variable by ID
     pub fn find_variable(&self, id: &str) -> Option<&VariableSchema> {
         self.variables.iter().find(|v| v.id == id && !v.archived)
     }
-    
+
     /// Archive an entity by ID (soft delete)
     pub fn archive_block(&mut self, id: &str) -> bool {
         if let Some(block) = self.blocks.iter_mut().find(|b| b.id == id) {
@@ -462,7 +609,30 @@ impl ProjectSchema {
             self.touch();
             return true;
         }
+        if let Some(block) = self.components.iter_mut().find(|b| b.id == id) {
+            block.archived = true;
+            self.touch();
+            return true;
+        }
         false
+    }
+
+    /// Add a component definition to the project
+    pub fn add_component(&mut self, component: BlockSchema) {
+        self.components.push(component);
+        self.touch();
+    }
+
+    /// Find a component by ID
+    pub fn find_component(&self, id: &str) -> Option<&BlockSchema> {
+        self.components.iter().find(|c| c.id == id && !c.archived)
+    }
+
+    /// Find a component by ID (mutable)
+    pub fn find_component_mut(&mut self, id: &str) -> Option<&mut BlockSchema> {
+        self.components
+            .iter_mut()
+            .find(|c| c.id == id && !c.archived)
     }
 
     /// Update a page in the project
@@ -482,12 +652,12 @@ impl ProjectSchema {
         }
         false
     }
-    
+
     /// Serialize to JSON string
     pub fn to_json(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string_pretty(self)
     }
-    
+
     /// Deserialize from JSON string
     pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(json)
@@ -529,38 +699,38 @@ mod tests {
         // Should have 5 CRUD API endpoints
         assert_eq!(project.apis.len(), 5);
     }
-    
+
     #[test]
     fn test_add_and_find() {
         use crate::schema::BlockType;
-        
+
         let mut project = ProjectSchema::new("proj-2", "Test");
-        
+
         let block = BlockSchema::new("block-1", BlockType::Container, "Main Container");
         project.add_block(block);
-        
+
         let found = project.find_block("block-1");
         assert!(found.is_some());
         assert_eq!(found.unwrap().name, "Main Container");
     }
-    
+
     #[test]
     fn test_archive() {
         use crate::schema::BlockType;
-        
+
         let mut project = ProjectSchema::new("proj-3", "Test");
         project.add_block(BlockSchema::new("block-1", BlockType::Text, "Hello"));
-        
+
         assert!(project.archive_block("block-1"));
         assert!(project.find_block("block-1").is_none()); // Archived blocks not found
     }
-    
+
     #[test]
     fn test_serialization() {
         let project = ProjectSchema::new("proj-4", "Serialization Test");
         let json = project.to_json().expect("Serialize failed");
         let restored = ProjectSchema::from_json(&json).expect("Deserialize failed");
-        
+
         assert_eq!(restored.id, project.id);
         assert_eq!(restored.name, project.name);
     }

@@ -190,6 +190,14 @@ const FileTreeItem: React.FC<FileTreeItemProps> = ({
         }
     }, [expanded, entry.is_directory, children.length, loadChildren]);
 
+    // Re-fetch children when refreshVersion changes (e.g. after delete/rename)
+    useEffect(() => {
+        if (entry.is_directory && expanded && refreshVersion > 0) {
+            loadChildren();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [refreshVersion]);
+
 
     const submitRename = async () => {
         if (!newName.trim() || newName === entry.name) {
@@ -216,6 +224,10 @@ const FileTreeItem: React.FC<FileTreeItemProps> = ({
             await api.deleteFile(entry.path);
             toast.success(`${entry.is_directory ? "Folder" : "File"} "${entry.name}" deleted`);
             setDeleteConfirmOpen(false);
+            // Clear selection if the deleted file was selected
+            if (selectedPath === entry.path) {
+                selectFile(null);
+            }
             await onRefresh();
         } catch (err) {
             toast.error(`Failed to delete: ${err}`);

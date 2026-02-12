@@ -1,5 +1,5 @@
 //! Akasha — Visual Full-Stack SaaS Builder
-//! 
+//!
 //! This is the Rust core engine for Akasha. It handles:
 //! - Schema management (the source of truth)
 //! - Command execution (all mutations)
@@ -13,12 +13,12 @@ use tauri::State;
 use tokio::net::TcpListener;
 
 // Module declarations
-pub mod schema;
+pub mod backend;
 pub mod commands;
-pub mod vfs;
 pub mod generator;
+pub mod schema;
 pub mod storage;
-pub mod backend; // Backend API server
+pub mod vfs; // Backend API server
 
 // Re-exports
 pub use schema::ProjectSchema;
@@ -46,16 +46,13 @@ impl Default for AppState {
 
 /// Create a new project
 #[tauri::command]
-fn create_project(
-    state: State<AppState>,
-    name: String,
-) -> Result<ProjectSchema, String> {
+fn create_project(state: State<AppState>, name: String) -> Result<ProjectSchema, String> {
     let project_id = uuid::Uuid::new_v4().to_string();
     let project = ProjectSchema::new(project_id, name);
-    
+
     let mut state_lock = state.project.lock().map_err(|_| "Lock failed")?;
     *state_lock = Some(project.clone());
-    
+
     log::info!("Created new project: {}", project.name);
     Ok(project)
 }
@@ -71,7 +68,7 @@ fn get_project(state: State<AppState>) -> Result<Option<ProjectSchema>, String> 
 #[tauri::command]
 fn export_project_json(state: State<AppState>) -> Result<String, String> {
     let state_lock = state.project.lock().map_err(|_| "Lock failed")?;
-    
+
     match state_lock.as_ref() {
         Some(project) => project.to_json().map_err(|e| e.to_string()),
         None => Err("No project open".into()),
@@ -80,15 +77,12 @@ fn export_project_json(state: State<AppState>) -> Result<String, String> {
 
 /// Load project from JSON string
 #[tauri::command]
-fn import_project_json(
-    state: State<AppState>,
-    json: String,
-) -> Result<ProjectSchema, String> {
+fn import_project_json(state: State<AppState>, json: String) -> Result<ProjectSchema, String> {
     let project = ProjectSchema::from_json(&json).map_err(|e| e.to_string())?;
-    
+
     let mut state_lock = state.project.lock().map_err(|_| "Lock failed")?;
     *state_lock = Some(project.clone());
-    
+
     log::info!("Imported project: {}", project.name);
     Ok(project)
 }
@@ -102,26 +96,26 @@ fn add_block(
     parent_id: Option<String>,
 ) -> Result<schema::BlockSchema, String> {
     let mut state_lock = state.project.lock().map_err(|_| "Lock failed")?;
-    
+
     let project = state_lock.as_mut().ok_or("No project open")?;
-    
+
     let block_type_enum = parse_block_type(&block_type)?;
     let block_id = uuid::Uuid::new_v4().to_string();
-    
+
     let mut block = schema::BlockSchema::new(&block_id, block_type_enum, name);
-    
+
     if let Some(pid) = parent_id {
         block.parent_id = Some(pid.clone());
-        
+
         // Add this block as child of parent
         if let Some(parent) = project.find_block_mut(&pid) {
             parent.children.push(block_id.clone());
         }
     }
-    
+
     let block_clone = block.clone();
     project.add_block(block);
-    
+
     log::info!("Added block: {}", block_clone.id);
     Ok(block_clone)
 }
@@ -136,11 +130,11 @@ fn update_block_property(
 ) -> Result<(), String> {
     let mut state_lock = state.project.lock().map_err(|_| "Lock failed")?;
     let project = state_lock.as_mut().ok_or("No project open")?;
-    
+
     let block = project.find_block_mut(&block_id).ok_or("Block not found")?;
     block.properties.insert(property, value);
     project.touch();
-    
+
     // Auto-sync to disk if root path is set
     if let Some(root) = &project.root_path {
         let engine = crate::generator::sync_engine::SyncEngine::new(root);
@@ -164,7 +158,9 @@ fn update_block_style(
     let project = state_lock.as_mut().ok_or("No project open")?;
 
     let block = project.find_block_mut(&block_id).ok_or("Block not found")?;
-    block.styles.insert(style, crate::schema::block::StyleValue::String(value));
+    block
+        .styles
+        .insert(style, crate::schema::block::StyleValue::String(value));
     project.touch();
 
     // Auto-sync to disk if root path is set
@@ -174,19 +170,16 @@ fn update_block_style(
             log::error!("Auto-sync failed for block {}: {}", block_id, e);
         }
     }
-    
+
     Ok(())
 }
 
 /// Archive a block (soft delete)
 #[tauri::command]
-fn archive_block(
-    state: State<AppState>,
-    block_id: String,
-) -> Result<bool, String> {
+fn archive_block(state: State<AppState>, block_id: String) -> Result<bool, String> {
     let mut state_lock = state.project.lock().map_err(|_| "Lock failed")?;
     let project = state_lock.as_mut().ok_or("No project open")?;
-    
+
     let result = project.archive_block(&block_id);
     log::info!("Archived block: {} (success: {})", block_id, result);
     Ok(result)
@@ -201,14 +194,14 @@ fn add_page(
 ) -> Result<schema::PageSchema, String> {
     let mut state_lock = state.project.lock().map_err(|_| "Lock failed")?;
     let project = state_lock.as_mut().ok_or("No project open")?;
-    
+
     let page_id = uuid::Uuid::new_v4().to_string();
     let page = schema::PageSchema::new(&page_id, name, path);
-    
+
     let page_clone = page.clone();
     project.add_page(page);
     project.touch();
-    
+
     // Auto-sync to disk if root path is set
     if let Some(root) = &project.root_path {
         let engine = crate::generator::sync_engine::SyncEngine::new(root);
@@ -216,26 +209,23 @@ fn add_page(
             log::error!("Auto-sync failed for page {}: {}", page_clone.id, e);
         }
     }
-    
+
     log::info!("Added page: {}", page_clone.id);
     Ok(page_clone)
 }
 
 /// Add a data model to the project
 #[tauri::command]
-fn add_data_model(
-    state: State<AppState>,
-    name: String,
-) -> Result<schema::DataModelSchema, String> {
+fn add_data_model(state: State<AppState>, name: String) -> Result<schema::DataModelSchema, String> {
     let mut state_lock = state.project.lock().map_err(|_| "Lock failed")?;
     let project = state_lock.as_mut().ok_or("No project open")?;
-    
+
     let model_id = uuid::Uuid::new_v4().to_string();
     let model = schema::DataModelSchema::new(&model_id, name);
-    
+
     let model_clone = model.clone();
     project.add_data_model(model);
-    
+
     log::info!("Added data model: {}", model_clone.name);
     Ok(model_clone)
 }
@@ -250,14 +240,14 @@ fn add_api(
 ) -> Result<schema::ApiSchema, String> {
     let mut state_lock = state.project.lock().map_err(|_| "Lock failed")?;
     let project = state_lock.as_mut().ok_or("No project open")?;
-    
+
     let api_id = uuid::Uuid::new_v4().to_string();
     let http_method = parse_http_method(&method)?;
     let api = schema::ApiSchema::new(&api_id, http_method, path, name);
-    
+
     let api_clone = api.clone();
     project.add_api(api);
-    
+
     log::info!("Added API: {} {}", method, api_clone.path);
     Ok(api_clone)
 }
@@ -271,20 +261,22 @@ fn set_project_root(
 ) -> Result<(), String> {
     let mut state_lock = state.project.lock().map_err(|_| "Lock failed")?;
     let project = state_lock.as_mut().ok_or("No project open")?;
-    
+
     project.root_path = Some(path.clone());
-    
+
     // Initialize structure
     let engine = crate::generator::sync_engine::SyncEngine::new(path.clone());
-    engine.init_project_structure(project).map_err(|e| e.to_string())?;
-    
+    engine
+        .init_project_structure(project)
+        .map_err(|e| e.to_string())?;
+
     // Start file watcher if we have an app handle
     tauri::async_runtime::block_on(async {
         let app_handle_opt = {
             let app_handle_lock = backend_state.app_handle.lock().await;
             app_handle_lock.clone()
         };
-        
+
         if let Some(app_handle) = app_handle_opt {
             let mut watcher = backend_state.watcher.lock().await;
             if let Err(e) = watcher.watch(&path, app_handle) {
@@ -292,64 +284,62 @@ fn set_project_root(
             }
         }
     });
-    
+
     Ok(())
 }
 
 /// Manually trigger a full sync to disk
 #[tauri::command]
-fn sync_to_disk(
-    state: State<AppState>,
-) -> Result<(), String> {
+fn sync_to_disk(state: State<AppState>) -> Result<(), String> {
     let mut state_lock = state.project.lock().map_err(|_| "Lock failed")?;
     let project = state_lock.as_mut().ok_or("No project open")?;
-    
+
     let root = project.root_path.as_ref().ok_or("No root path set")?;
     let engine = crate::generator::sync_engine::SyncEngine::new(root);
-    
+
     // Sync all pages
     for page in &project.pages {
         if !page.archived {
-            engine.sync_page_to_disk(&page.id, project).map_err(|e| e.to_string())?;
+            engine
+                .sync_page_to_disk(&page.id, project)
+                .map_err(|e| e.to_string())?;
         }
     }
-    
+
     Ok(())
 }
 
 /// Sync changes from disk back to the project schema
 #[tauri::command]
-fn sync_disk_to_project(
-    state: State<AppState>,
-) -> Result<(), String> {
+fn sync_disk_to_project(state: State<AppState>) -> Result<(), String> {
     let mut state_lock = state.project.lock().map_err(|_| "Lock failed")?;
     let project = state_lock.as_mut().ok_or("No project open")?;
-    
+
     let root = project.root_path.as_ref().ok_or("No root path set")?;
     let engine = crate::generator::sync_engine::SyncEngine::new(root);
-    
-    engine.sync_disk_to_project(project).map_err(|e| e.to_string())?;
-    
+
+    engine
+        .sync_disk_to_project(project)
+        .map_err(|e| e.to_string())?;
+
     Ok(())
 }
 
 /// Spawn the development server (npm run dev)
 #[tauri::command]
-fn start_dev_server(
-    state: State<AppState>,
-) -> Result<u32, String> {
+fn start_dev_server(state: State<AppState>) -> Result<u32, String> {
     let project_lock = state.project.lock().map_err(|_| "Lock failed")?;
     let project = project_lock.as_ref().ok_or("No project open")?;
     let root = project.root_path.as_ref().ok_or("No root path set")?;
-    
+
     // Check if process already running
     let mut dev_lock = state.dev_process.lock().map_err(|_| "Lock failed")?;
     if let Some(mut child) = dev_lock.take() {
         let _ = child.kill();
     }
-    
+
     log::info!("Starting dev server in: {}", root);
-    
+
     // On Windows, we often need to run cmd /C npm
     let child = if cfg!(target_os = "windows") {
         std::process::Command::new("cmd")
@@ -368,23 +358,26 @@ fn start_dev_server(
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
-    }.map_err(|e| format!("Failed to start dev server: {}", e))?;
-        
+    }
+    .map_err(|e| format!("Failed to start dev server: {}", e))?;
+
     let pid = child.id();
     *dev_lock = Some(child);
-    
+
     Ok(pid)
 }
 
 /// Install npm dependencies in the project root
 #[tauri::command]
-async fn install_dependencies(
-    state: State<'_, AppState>,
-) -> Result<String, String> {
+async fn install_dependencies(state: State<'_, AppState>) -> Result<String, String> {
     let root = {
         let project_lock = state.project.lock().map_err(|_| "Lock failed")?;
         let project = project_lock.as_ref().ok_or("No project open")?;
-        project.root_path.as_ref().ok_or("No root path set")?.clone()
+        project
+            .root_path
+            .as_ref()
+            .ok_or("No root path set")?
+            .clone()
     };
 
     log::info!("Installing dependencies in: {}", root);
@@ -412,7 +405,10 @@ async fn install_dependencies(
     let timeout = Duration::from_secs(300);
 
     loop {
-        if let Some(status) = child.try_wait().map_err(|e| format!("Failed to check npm install status: {}", e))? {
+        if let Some(status) = child
+            .try_wait()
+            .map_err(|e| format!("Failed to check npm install status: {}", e))?
+        {
             if status.success() {
                 log::info!("npm install completed successfully");
                 return Ok("Dependencies installed successfully".to_string());
@@ -426,7 +422,10 @@ async fn install_dependencies(
             let _ = child.kill();
             let _ = child.wait();
             log::error!("npm install timed out after {} seconds", timeout.as_secs());
-            return Err(format!("npm install timed out after {} seconds", timeout.as_secs()));
+            return Err(format!(
+                "npm install timed out after {} seconds",
+                timeout.as_secs()
+            ));
         }
 
         // Use async sleep to avoid blocking the Tokio runtime
@@ -436,12 +435,12 @@ async fn install_dependencies(
 
 /// Stop the development server
 #[tauri::command]
-fn stop_dev_server(
-    state: State<AppState>,
-) -> Result<(), String> {
+fn stop_dev_server(state: State<AppState>) -> Result<(), String> {
     let mut dev_lock = state.dev_process.lock().map_err(|_| "Lock failed")?;
     if let Some(mut child) = dev_lock.take() {
-        child.kill().map_err(|e| format!("Failed to kill process: {}", e))?;
+        child
+            .kill()
+            .map_err(|e| format!("Failed to kill process: {}", e))?;
         log::info!("Stopped dev server");
     }
     Ok(())
@@ -545,11 +544,11 @@ async fn shutdown_signal() {
 pub fn run() {
     // Initialize logging
     let _ = env_logger::try_init();
-    
+
     // Start Embedded Backend API Server (Axum)
     // This provides the REST API that the frontend uses on port 3001
     log::info!("Starting embedded API server...");
-    
+
     let backend_state = match crate::backend::BackendAppState::new() {
         Ok(state) => state,
         Err(e) => {
@@ -557,11 +556,11 @@ pub fn run() {
             return;
         }
     };
-    
+
     let backend_state_clone = backend_state.clone();
     let router = crate::backend::create_router(backend_state.clone());
     let addr = backend_bind_addr();
-    
+
     // Spawn server in a background task
     tauri::async_runtime::spawn(async move {
         match TcpListener::bind(&addr).await {
@@ -576,7 +575,7 @@ pub fn run() {
             }
         }
     });
-    
+
     tauri::Builder::default()
         .manage(AppState::default())
         .manage(backend_state.clone())

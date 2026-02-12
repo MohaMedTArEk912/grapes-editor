@@ -27,6 +27,7 @@ export interface ProjectSchema {
     variables: VariableSchema[];
     settings: ProjectSettings;
     root_path?: string;
+    components: BlockSchema[];
 }
 
 export interface InstallStep {
@@ -58,6 +59,8 @@ export interface BlockSchema {
     bindings: Record<string, DataBinding>;
     event_handlers: EventHandler[];
     archived: boolean;
+    component_id?: string;
+    children?: string[]; // Add children? It was missing in original View but BlockSchema usually has it? 
 }
 
 export type StyleValue = string | number | boolean;
@@ -138,10 +141,11 @@ export interface LogicFlowSchema {
 }
 
 export interface TriggerType {
-    type: string;
+    type: 'event' | 'api' | 'mount' | 'schedule' | 'manual';
     component_id?: string;
     event?: string;
     api_id?: string;
+    cron?: string;
 }
 
 export interface LogicNode {
@@ -315,12 +319,13 @@ export function useApi() {
         },
 
         // Block operations
-        addBlock: (blockType: string, name: string, parentId?: string, pageId?: string) =>
+        addBlock: (blockType: string, name: string, parentId?: string, pageId?: string, componentId?: string) =>
             apiCall<BlockSchema>('POST', '/api/blocks', {
                 block_type: blockType,
                 name,
                 parent_id: parentId,
                 page_id: pageId,
+                component_id: componentId,
             }),
 
         updateBlockProperty: (blockId: string, property: string, value: unknown) =>
@@ -364,7 +369,7 @@ export function useApi() {
         deleteLogicFlow: (id: string) =>
             apiCall<boolean>('DELETE', `/api/logic/${id}`),
 
-        updateLogicFlow: (id: string, updates: { name?: string; nodes?: LogicNode[]; entry_node_id?: string | null; description?: string }) =>
+        updateLogicFlow: (id: string, updates: { name?: string; nodes?: LogicNode[]; entry_node_id?: string | null; description?: string; trigger?: TriggerType }) =>
             apiCall<LogicFlowSchema>('PUT', `/api/logic/${id}`, updates),
 
         // Data model operations
@@ -410,7 +415,17 @@ export function useApi() {
         addApi: (method: string, path: string, name: string) =>
             apiCall<ApiSchema>('POST', '/api/endpoints', { method, path, name }),
 
-        updateEndpoint: (id: string, updates: { method?: string; path?: string; name?: string; description?: string; auth_required?: boolean }) =>
+        updateEndpoint: (id: string, updates: {
+            method?: string;
+            path?: string;
+            name?: string;
+            description?: string;
+            auth_required?: boolean;
+            request_body?: DataShape | null;
+            response_body?: DataShape | null;
+            permissions?: string[];
+            logic_flow_id?: string | null;
+        }) =>
             apiCall<ApiSchema>('PUT', `/api/endpoints/${id}`, updates),
 
         archiveApi: (id: string) =>
@@ -472,6 +487,14 @@ export function useApi() {
         installDependencies: async () => {
             return apiCall<InstallResult>('POST', '/api/project/install');
         },
+
+        // Component operations
+        getComponents: () => apiCall<BlockSchema[]>('GET', '/api/components'),
+
+        createComponent: (name: string, description?: string) =>
+            apiCall<BlockSchema>('POST', '/api/components', { name, description }),
+
+        getComponent: (id: string) => apiCall<BlockSchema>('GET', `/api/components/${id}`),
     };
 }
 

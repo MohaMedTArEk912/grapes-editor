@@ -236,6 +236,7 @@ interface EndpointDetailProps {
 }
 
 const EndpointDetail: React.FC<EndpointDetailProps> = ({ api, onDelete }) => {
+    const { project } = useProjectStore();
     const toast = useToast();
     const [isEditing, setIsEditing] = useState(false);
     const [editData, setEditData] = useState({
@@ -247,6 +248,9 @@ const EndpointDetail: React.FC<EndpointDetailProps> = ({ api, onDelete }) => {
     });
     const [reqBody, setReqBody] = useState<DataShape | undefined>(api.request_body);
     const [resBody, setResBody] = useState<DataShape | undefined>(api.response_body);
+    const backendFlows = (project?.logic_flows || []).filter(
+        (flow) => !flow.archived && flow.context === "backend"
+    );
 
     // Reset form when selected api changes
     useEffect(() => {
@@ -453,20 +457,49 @@ const EndpointDetail: React.FC<EndpointDetailProps> = ({ api, onDelete }) => {
                 {/* Logic Flow */}
                 <div className="bg-[var(--ide-bg-panel)] rounded-lg p-4 border border-[var(--ide-border)]">
                     <h3 className="text-sm font-semibold text-[var(--ide-text)] mb-3">Handler Logic</h3>
-                    {!api.logic_flow_id ? (
+                    <div className="space-y-3">
+                        <select
+                            value={api.logic_flow_id || ""}
+                            onChange={async (e) => {
+                                try {
+                                    await updateEndpoint(api.id, { logic_flow_id: e.target.value || null });
+                                    toast.success(e.target.value ? "Logic flow linked" : "Logic flow unlinked");
+                                } catch (err) {
+                                    toast.error(`Failed to update logic flow link: ${err}`);
+                                }
+                            }}
+                            className="w-full px-3 py-2 text-sm bg-[var(--ide-bg)] border border-[var(--ide-border)] rounded text-[var(--ide-text)] focus:outline-none focus:border-[var(--ide-primary)]"
+                        >
+                            <option value="">— No flow linked —</option>
+                            {backendFlows.map((flow) => (
+                                <option key={flow.id} value={flow.id}>
+                                    {flow.name}
+                                </option>
+                            ))}
+                        </select>
+
                         <button
                             onClick={async () => {
                                 try {
-                                    await addLogicFlow(`${api.name}_handler`, "backend");
-                                    toast.success("Logic flow created — switching to Logic tab");
+                                    const flow = await addLogicFlow(`${api.name}_handler`, "backend");
+                                    await updateEndpoint(api.id, { logic_flow_id: flow.id });
+                                    toast.success("Logic flow created and linked — switching to Logic tab");
                                     setActiveTab("logic");
-                                } catch (err) { toast.error(`Failed to create logic flow: ${err}`); }
+                                } catch (err) {
+                                    toast.error(`Failed to create logic flow: ${err}`);
+                                }
                             }}
                             className="w-full py-3 border-2 border-dashed border-[var(--ide-border)] rounded-lg text-[var(--ide-text-muted)] hover:border-[var(--ide-primary)] hover:text-[var(--ide-primary)] transition-colors"
-                        >+ Create Logic Flow</button>
-                    ) : (
-                        <p className="text-sm text-[var(--ide-text-muted)]">Connected to logic flow: {api.logic_flow_id}</p>
-                    )}
+                        >
+                            + Create & Link Logic Flow
+                        </button>
+
+                        {api.logic_flow_id && (
+                            <p className="text-sm text-[var(--ide-text-muted)]">
+                                Connected to logic flow: {api.logic_flow_id}
+                            </p>
+                        )}
+                    </div>
                 </div>
 
                 {/* Permissions */}

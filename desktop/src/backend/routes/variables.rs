@@ -1,15 +1,15 @@
 //! Variable routes - CRUD for state variables
 
 use axum::{
-    extract::{State, Path},
+    extract::{Path, State},
     Json,
 };
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::backend::state::AppState;
 use crate::backend::error::ApiError;
-use crate::schema::variable::{VariableSchema, VariableType, VariableScope};
+use crate::backend::state::AppState;
+use crate::schema::variable::{VariableSchema, VariableScope, VariableType};
 
 #[derive(Debug, Deserialize)]
 pub struct CreateVariableRequest {
@@ -37,14 +37,18 @@ pub struct UpdateVariableRequest {
 pub async fn get_variables(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<VariableSchema>>, ApiError> {
-    let project = state.get_project().await
+    let project = state
+        .get_project()
+        .await
         .ok_or_else(|| ApiError::NotFound("No project loaded".into()))?;
-    
-    let vars: Vec<VariableSchema> = project.variables.iter()
+
+    let vars: Vec<VariableSchema> = project
+        .variables
+        .iter()
         .filter(|v| !v.archived)
         .cloned()
         .collect();
-    
+
     Ok(Json(vars))
 }
 
@@ -53,13 +57,15 @@ pub async fn create_variable(
     State(state): State<AppState>,
     Json(req): Json<CreateVariableRequest>,
 ) -> Result<Json<VariableSchema>, ApiError> {
-    let mut project = state.get_project().await
+    let mut project = state
+        .get_project()
+        .await
         .ok_or_else(|| ApiError::NotFound("No project loaded".into()))?;
-    
+
     let var_type = parse_var_type(&req.var_type)?;
     let default_value = req.default_value.unwrap_or(default_for_type(&var_type));
     let scope = parse_scope(req.scope.as_deref(), req.page_id.as_deref())?;
-    
+
     let mut var = VariableSchema::new(
         uuid::Uuid::new_v4().to_string(),
         req.name,
@@ -69,11 +75,11 @@ pub async fn create_variable(
     var.scope = scope;
     var.description = req.description;
     var.persist = req.persist.unwrap_or(false);
-    
+
     let result = var.clone();
     project.variables.push(var);
     state.set_project(project).await;
-    
+
     Ok(Json(result))
 }
 
@@ -83,13 +89,17 @@ pub async fn update_variable(
     Path(id): Path<String>,
     Json(req): Json<UpdateVariableRequest>,
 ) -> Result<Json<VariableSchema>, ApiError> {
-    let mut project = state.get_project().await
+    let mut project = state
+        .get_project()
+        .await
         .ok_or_else(|| ApiError::NotFound("No project loaded".into()))?;
-    
-    let var = project.variables.iter_mut()
+
+    let var = project
+        .variables
+        .iter_mut()
         .find(|v| v.id == id && !v.archived)
         .ok_or_else(|| ApiError::NotFound(format!("Variable '{}' not found", id)))?;
-    
+
     if let Some(name) = req.name {
         var.name = name;
     }
@@ -108,10 +118,10 @@ pub async fn update_variable(
     if let Some(persist) = req.persist {
         var.persist = persist;
     }
-    
+
     let result = var.clone();
     state.set_project(project).await;
-    
+
     Ok(Json(result))
 }
 
@@ -120,9 +130,11 @@ pub async fn delete_variable(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<bool>, ApiError> {
-    let mut project = state.get_project().await
+    let mut project = state
+        .get_project()
+        .await
         .ok_or_else(|| ApiError::NotFound("No project loaded".into()))?;
-    
+
     let mut found = false;
     for var in project.variables.iter_mut() {
         if var.id == id {
@@ -131,11 +143,11 @@ pub async fn delete_variable(
             break;
         }
     }
-    
+
     if found {
         state.set_project(project).await;
     }
-    
+
     Ok(Json(found))
 }
 
@@ -146,7 +158,10 @@ fn parse_var_type(s: &str) -> Result<VariableType, ApiError> {
         "boolean" => Ok(VariableType::Boolean),
         "array" => Ok(VariableType::Array),
         "object" => Ok(VariableType::Object),
-        other => Err(ApiError::BadRequest(format!("Unknown variable type: '{}'. Use: string, number, boolean, array, object", other))),
+        other => Err(ApiError::BadRequest(format!(
+            "Unknown variable type: '{}'. Use: string, number, boolean, array, object",
+            other
+        ))),
     }
 }
 
@@ -156,14 +171,22 @@ fn parse_scope(scope: Option<&str>, page_id: Option<&str>) -> Result<VariableSco
         "page" => {
             let pid = page_id
                 .ok_or_else(|| ApiError::BadRequest("page_id required for page scope".into()))?;
-            Ok(VariableScope::Page { page_id: pid.to_string() })
+            Ok(VariableScope::Page {
+                page_id: pid.to_string(),
+            })
         }
         "component" => {
-            let cid = page_id
-                .ok_or_else(|| ApiError::BadRequest("page_id (component_id) required for component scope".into()))?;
-            Ok(VariableScope::Component { component_id: cid.to_string() })
+            let cid = page_id.ok_or_else(|| {
+                ApiError::BadRequest("page_id (component_id) required for component scope".into())
+            })?;
+            Ok(VariableScope::Component {
+                component_id: cid.to_string(),
+            })
         }
-        other => Err(ApiError::BadRequest(format!("Unknown scope: '{}'. Use: global, page, component", other))),
+        other => Err(ApiError::BadRequest(format!(
+            "Unknown scope: '{}'. Use: global, page, component",
+            other
+        ))),
     }
 }
 

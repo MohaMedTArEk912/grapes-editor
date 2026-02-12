@@ -1,5 +1,5 @@
 //! Backend Code Generator
-//! 
+//!
 //! Generates a production-ready NestJS + Prisma backend from API schemas,
 //! data models, and logic flows. Output includes:
 //!   - Prisma service with typed client
@@ -11,8 +11,8 @@
 //!   - main.ts with Swagger, CORS, global pipes
 //!   - package.json, tsconfig, nest-cli, .env, Dockerfile, docker-compose
 
-use crate::schema::{ProjectSchema, ApiSchema, HttpMethod, DataModelSchema};
 use crate::schema::data_model::FieldType;
+use crate::schema::{ApiSchema, DataModelSchema, HttpMethod, ProjectSchema};
 use std::collections::HashMap;
 
 // ─── public API ──────────────────────────────────────────
@@ -30,28 +30,54 @@ impl<'a> BackendGenerator<'a> {
         let mut files: Vec<GeneratedFile> = Vec::new();
 
         // ── Prisma service (singleton) ──
-        files.push(gf("src/prisma/prisma.service.ts", self.gen_prisma_service()));
+        files.push(gf(
+            "src/prisma/prisma.service.ts",
+            self.gen_prisma_service(),
+        ));
         files.push(gf("src/prisma/prisma.module.ts", self.gen_prisma_module()));
 
         // ── Auth module ──
         files.push(gf("src/auth/auth.module.ts", self.gen_auth_module()));
         files.push(gf("src/auth/auth.service.ts", self.gen_auth_service()));
-        files.push(gf("src/auth/auth.controller.ts", self.gen_auth_controller()));
+        files.push(gf(
+            "src/auth/auth.controller.ts",
+            self.gen_auth_controller(),
+        ));
         files.push(gf("src/auth/jwt.strategy.ts", self.gen_jwt_strategy()));
         files.push(gf("src/auth/jwt-auth.guard.ts", self.gen_jwt_guard()));
         files.push(gf("src/auth/roles.guard.ts", self.gen_roles_guard()));
-        files.push(gf("src/auth/roles.decorator.ts", Self::gen_roles_decorator()));
+        files.push(gf(
+            "src/auth/roles.decorator.ts",
+            Self::gen_roles_decorator(),
+        ));
         files.push(gf("src/auth/dto/register.dto.ts", self.gen_register_dto()));
         files.push(gf("src/auth/dto/login.dto.ts", self.gen_login_dto()));
 
         // ── Per-model service + controller + DTOs ──
-        let models: Vec<&DataModelSchema> = self.project.data_models.iter().filter(|m| !m.archived).collect();
+        let models: Vec<&DataModelSchema> = self
+            .project
+            .data_models
+            .iter()
+            .filter(|m| !m.archived)
+            .collect();
         for model in &models {
             let lower = model.name.to_lowercase();
-            files.push(gf(&format!("src/{0}/{0}.service.ts", lower), self.gen_model_service(model)));
-            files.push(gf(&format!("src/{0}/{0}.module.ts", lower), self.gen_model_module(model)));
-            files.push(gf(&format!("src/{0}/dto/create-{0}.dto.ts", lower), self.gen_create_dto(model)));
-            files.push(gf(&format!("src/{0}/dto/update-{0}.dto.ts", lower), self.gen_update_dto(model)));
+            files.push(gf(
+                &format!("src/{0}/{0}.service.ts", lower),
+                self.gen_model_service(model),
+            ));
+            files.push(gf(
+                &format!("src/{0}/{0}.module.ts", lower),
+                self.gen_model_module(model),
+            ));
+            files.push(gf(
+                &format!("src/{0}/dto/create-{0}.dto.ts", lower),
+                self.gen_create_dto(model),
+            ));
+            files.push(gf(
+                &format!("src/{0}/dto/update-{0}.dto.ts", lower),
+                self.gen_update_dto(model),
+            ));
         }
 
         // ── Controllers (grouped by API resource) ──
@@ -70,7 +96,10 @@ impl<'a> BackendGenerator<'a> {
         }
 
         // ── App module (wires everything) ──
-        files.push(gf("src/app.module.ts", self.gen_app_module(&models, &ctrl_map)));
+        files.push(gf(
+            "src/app.module.ts",
+            self.gen_app_module(&models, &ctrl_map),
+        ));
 
         // ── main.ts ──
         files.push(gf("src/main.ts", self.gen_main()));
@@ -115,14 +144,20 @@ import { PrismaClient } from '@prisma/client';
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   async onModuleInit() {
-    await this.$connect();
+    try {
+      await this.$connect();
+    } catch (error) {
+      // Keep server bootable in fresh environments; first DB query can retry.
+      console.warn('Prisma connect failed during startup:', error);
+    }
   }
 
   async onModuleDestroy() {
     await this.$disconnect();
   }
 }
-"#.into()
+"#
+        .into()
     }
 
     fn gen_prisma_module(&self) -> String {
@@ -135,7 +170,8 @@ import { PrismaService } from './prisma.service';
   exports: [PrismaService],
 })
 export class PrismaModule {}
-"#.into()
+"#
+        .into()
     }
 }
 
@@ -163,7 +199,8 @@ import { JwtStrategy } from './jwt.strategy';
   exports: [AuthService],
 })
 export class AuthModule {}
-"#.into()
+"#
+        .into()
     }
 
     fn gen_auth_service(&self) -> String {
@@ -214,7 +251,8 @@ export class AuthService {
     return this.jwt.sign({ sub: userId, email });
   }
 }
-"#.into()
+"#
+        .into()
     }
 
     fn gen_auth_controller(&self) -> String {
@@ -244,7 +282,8 @@ export class AuthController {
     return this.auth.getProfile(req.user.sub);
   }
 }
-"#.into()
+"#
+        .into()
     }
 
     fn gen_jwt_strategy(&self) -> String {
@@ -266,7 +305,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     return { sub: payload.sub, email: payload.email };
   }
 }
-"#.into()
+"#
+        .into()
     }
 
     fn gen_jwt_guard(&self) -> String {
@@ -275,7 +315,8 @@ import { AuthGuard } from '@nestjs/passport';
 
 @Injectable()
 export class JwtAuthGuard extends AuthGuard('jwt') {}
-"#.into()
+"#
+        .into()
     }
 
     fn gen_roles_guard(&self) -> String {
@@ -299,7 +340,8 @@ export class RolesGuard implements CanActivate {
     return requiredRoles.some((role) => user?.role === role || user?.roles?.includes(role));
   }
 }
-"#.into()
+"#
+        .into()
     }
 
     fn gen_roles_decorator() -> String {
@@ -307,7 +349,8 @@ export class RolesGuard implements CanActivate {
 
 export const ROLES_KEY = 'roles';
 export const Roles = (...roles: string[]) => SetMetadata(ROLES_KEY, roles);
-"#.into()
+"#
+        .into()
     }
 
     fn gen_register_dto(&self) -> String {
@@ -325,7 +368,8 @@ export class RegisterDto {
   @IsOptional()
   name?: string;
 }
-"#.into()
+"#
+        .into()
     }
 
     fn gen_login_dto(&self) -> String {
@@ -338,7 +382,8 @@ export class LoginDto {
   @IsString()
   password: string;
 }
-"#.into()
+"#
+        .into()
     }
 }
 
@@ -359,21 +404,29 @@ impl<'a> BackendGenerator<'a> {
         } else {
             String::new()
         };
-        let where_clause = if model.soft_delete { "...this.baseWhere, " } else { "" };
+        let where_clause = if model.soft_delete {
+            "...this.baseWhere, "
+        } else {
+            ""
+        };
         let soft_delete_method = if model.soft_delete {
-            format!(r#"
+            format!(
+                r#"
   async softDelete(id: string) {{
     return this.prisma.{camel}.update({{
       where: {{ id }},
       data: {{ deletedAt: new Date() }},
     }});
   }}
-"#, camel = camel)
+"#,
+                camel = camel
+            )
         } else {
             String::new()
         };
 
-        format!(r#"import {{ Injectable, NotFoundException }} from '@nestjs/common';
+        format!(
+            r#"import {{ Injectable, NotFoundException }} from '@nestjs/common';
 import {{ PrismaService }} from '../prisma/prisma.service';
 import {{ Create{pascal}Dto }} from './dto/create-{lower}.dto';
 import {{ Update{pascal}Dto }} from './dto/update-{lower}.dto';
@@ -424,7 +477,8 @@ export class {pascal}Service {{
     fn gen_model_module(&self, model: &DataModelSchema) -> String {
         let pascal = to_pascal_case(&model.name);
         let lower = model.name.to_lowercase();
-        format!(r#"import {{ Module }} from '@nestjs/common';
+        format!(
+            r#"import {{ Module }} from '@nestjs/common';
 import {{ {pascal}Service }} from './{lower}.service';
 import {{ {pascal}Controller }} from './{lower}.controller';
 
@@ -434,7 +488,10 @@ import {{ {pascal}Controller }} from './{lower}.controller';
   exports: [{pascal}Service],
 }})
 export class {pascal}Module {{}}
-"#, pascal = pascal, lower = lower)
+"#,
+            pascal = pascal,
+            lower = lower
+        )
     }
 
     fn gen_create_dto(&self, model: &DataModelSchema) -> String {
@@ -444,16 +501,26 @@ export class {pascal}Module {{}}
 
         for field in &model.fields {
             // Skip auto-generated fields
-            if field.primary_key || field.name == "id" { continue; }
-            if field.name == "createdAt" || field.name == "updatedAt" || field.name == "deletedAt" { continue; }
+            if field.primary_key || field.name == "id" {
+                continue;
+            }
+            if field.name == "createdAt" || field.name == "updatedAt" || field.name == "deletedAt" {
+                continue;
+            }
             if field.name == "password" {
                 // password is a special case — keep it
             }
 
             let ts_type = field_type_to_ts(&field.field_type);
-            let decorators = field_type_to_decorators(&field.field_type, field.required, &field.name, &mut imports);
+            let decorators = field_type_to_decorators(
+                &field.field_type,
+                field.required,
+                &field.name,
+                &mut imports,
+            );
 
-            dto_fields.push_str(&format!("{decorators}  {name}{opt}: {ts_type};\n\n",
+            dto_fields.push_str(&format!(
+                "{decorators}  {name}{opt}: {ts_type};\n\n",
                 decorators = decorators,
                 name = field.name,
                 opt = if field.required { "" } else { "?" },
@@ -467,10 +534,14 @@ export class {pascal}Module {{}}
         let import_line = if imports.is_empty() {
             String::new()
         } else {
-            format!("import {{ {} }} from 'class-validator';\n\n", imports.join(", "))
+            format!(
+                "import {{ {} }} from 'class-validator';\n\n",
+                imports.join(", ")
+            )
         };
 
-        format!("{import_line}export class Create{pascal}Dto {{\n{fields}}}\n",
+        format!(
+            "{import_line}export class Create{pascal}Dto {{\n{fields}}}\n",
             import_line = import_line,
             pascal = pascal,
             fields = dto_fields,
@@ -480,33 +551,60 @@ export class {pascal}Module {{}}
     fn gen_update_dto(&self, model: &DataModelSchema) -> String {
         let pascal = to_pascal_case(&model.name);
         let lower = model.name.to_lowercase();
-        format!(r#"import {{ PartialType }} from '@nestjs/mapped-types';
+        format!(
+            r#"import {{ PartialType }} from '@nestjs/mapped-types';
 import {{ Create{pascal}Dto }} from './create-{lower}.dto';
 
 export class Update{pascal}Dto extends PartialType(Create{pascal}Dto) {{}}
-"#, pascal = pascal, lower = lower)
+"#,
+            pascal = pascal,
+            lower = lower
+        )
     }
 }
 
 // ─── Controllers ─────────────────────────────────────────
 
 impl<'a> BackendGenerator<'a> {
-    fn gen_controller(&self, resource: &str, apis: &[&ApiSchema], models: &[&DataModelSchema]) -> String {
+    fn gen_controller(
+        &self,
+        resource: &str,
+        apis: &[&ApiSchema],
+        models: &[&DataModelSchema],
+    ) -> String {
         let pascal = to_pascal_case(resource);
 
         // Find matching model for this resource (by name similarity)
-        let model = models.iter().find(|m| m.name.to_lowercase() == *resource || pluralize(&m.name.to_lowercase()) == *resource);
+        let model = models.iter().find(|m| {
+            m.name.to_lowercase() == *resource || pluralize(&m.name.to_lowercase()) == *resource
+        });
 
         let mut method_strs = String::new();
         let mut needs_body = false;
         let mut needs_param = false;
         let mut needs_query = false;
         let mut needs_guard = false;
+        let mut needs_req_res = false;
+        let mut needs_prisma = false;
+        let has_logic_endpoints = apis.iter().any(|a| {
+            a.logic_flow_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .is_some()
+        });
 
         for api in apis {
             let decorator = http_decorator(&api.method);
-            let path_suffix = api.path.strip_prefix(&format!("/{}", resource)).unwrap_or(&api.path);
-            let path_suffix = if path_suffix.is_empty() { "/" } else { path_suffix };
+            let path_suffix = api
+                .path
+                .strip_prefix(&format!("/{}", resource))
+                .unwrap_or(&api.path);
+            let path_suffix = if path_suffix.is_empty() {
+                "/"
+            } else {
+                path_suffix
+            };
 
             // Map :id params to NestJS style
             let nest_path = path_suffix.replace(":id", ":id");
@@ -520,11 +618,15 @@ impl<'a> BackendGenerator<'a> {
                 let perms: Vec<&str> = api.permissions.iter().map(|s| s.as_str()).collect();
                 let has_specific_roles = perms.iter().any(|p| *p != "authenticated");
                 if has_specific_roles {
-                    let roles_str: Vec<String> = perms.iter()
+                    let roles_str: Vec<String> = perms
+                        .iter()
                         .filter(|p| **p != "authenticated")
                         .map(|p| format!("'{}'", p))
                         .collect();
-                    format!("  @UseGuards(JwtAuthGuard, RolesGuard)\n  @Roles({})\n", roles_str.join(", "))
+                    format!(
+                        "  @UseGuards(JwtAuthGuard, RolesGuard)\n  @Roles({})\n",
+                        roles_str.join(", ")
+                    )
                 } else {
                     "  @UseGuards(JwtAuthGuard)\n".to_string()
                 }
@@ -532,57 +634,81 @@ impl<'a> BackendGenerator<'a> {
                 String::new()
             };
 
-            if has_id { needs_param = true; }
+            if has_id {
+                needs_param = true;
+            }
 
             // Build method signature + body based on HTTP method and model
-            let body = match (&api.method, model) {
-                (HttpMethod::Get, Some(m)) if !has_id => {
-                    needs_query = true;
-                    let lower = m.name.to_lowercase();
-                    format!(
-                        "  @Get('{path}')\n  async {fn_name}(@Query('page') page?: string, @Query('limit') limit?: string) {{\n    return this.{lower}Service.findAll(+(page ?? 1), +(limit ?? 20));\n  }}\n",
-                        path = nest_path, fn_name = fn_name, lower = lower,
-                    )
-                }
-                (HttpMethod::Get, Some(m)) if has_id => {
-                    let lower = m.name.to_lowercase();
-                    format!(
-                        "  @Get('{path}')\n  async {fn_name}(@Param('id') id: string) {{\n    return this.{lower}Service.findOne(id);\n  }}\n",
-                        path = nest_path, fn_name = fn_name, lower = lower,
-                    )
-                }
-                (HttpMethod::Post, Some(m)) => {
-                    needs_body = true;
-                    let p = to_pascal_case(&m.name);
-                    let lower = m.name.to_lowercase();
-                    format!(
-                        "  @Post('{path}')\n  async {fn_name}(@Body() dto: Create{p}Dto) {{\n    return this.{lower}Service.create(dto);\n  }}\n",
-                        path = nest_path, fn_name = fn_name, p = p, lower = lower,
-                    )
-                }
-                (HttpMethod::Put | HttpMethod::Patch, Some(m)) if has_id => {
-                    needs_body = true;
-                    let p = to_pascal_case(&m.name);
-                    let lower = m.name.to_lowercase();
-                    let dec = if api.method == HttpMethod::Put { "Put" } else { "Patch" };
-                    format!(
-                        "  @{dec}('{path}')\n  async {fn_name}(@Param('id') id: string, @Body() dto: Update{p}Dto) {{\n    return this.{lower}Service.update(id, dto);\n  }}\n",
-                        dec = dec, path = nest_path, fn_name = fn_name, p = p, lower = lower,
-                    )
-                }
-                (HttpMethod::Delete, Some(m)) if has_id => {
-                    let lower = m.name.to_lowercase();
-                    format!(
-                        "  @Delete('{path}')\n  async {fn_name}(@Param('id') id: string) {{\n    return this.{lower}Service.remove(id);\n  }}\n",
-                        path = nest_path, fn_name = fn_name, lower = lower,
-                    )
-                }
-                // Fallback for APIs without a matching model
-                _ => {
-                    format!(
-                        "  @{dec}('{path}')\n  async {fn_name}() {{\n    return {{ message: '{name}' }};\n  }}\n",
-                        dec = decorator, path = nest_path, fn_name = fn_name, name = api.name,
-                    )
+            let flow_id = api
+                .logic_flow_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty());
+
+            let body = if let Some(flow_id) = flow_id {
+                needs_req_res = true;
+                needs_prisma = true;
+                format!(
+                    "  @{dec}('{path}')\n  async {fn_name}(@Req() req: any, @Res() res: any) {{\n    req.prisma = this.prisma;\n    const output = await runFlow({flow_id}, {{\n      trigger: 'api',\n      payload: req.body,\n      context: {{ req, res }},\n    }});\n\n    if (res.headersSent) {{\n      return;\n    }}\n    if (output.error) {{\n      return res.status(500).json(output);\n    }}\n    return res.status(200).json(output);\n  }}\n",
+                    dec = decorator,
+                    path = nest_path,
+                    fn_name = fn_name,
+                    flow_id = format!("'{}'", flow_id.replace('\'', "\\'")),
+                )
+            } else {
+                match (&api.method, model) {
+                    (HttpMethod::Get, Some(m)) if !has_id => {
+                        needs_query = true;
+                        let lower = m.name.to_lowercase();
+                        format!(
+                            "  @Get('{path}')\n  async {fn_name}(@Query('page') page?: string, @Query('limit') limit?: string) {{\n    return this.{lower}Service.findAll(+(page ?? 1), +(limit ?? 20));\n  }}\n",
+                            path = nest_path, fn_name = fn_name, lower = lower,
+                        )
+                    }
+                    (HttpMethod::Get, Some(m)) if has_id => {
+                        let lower = m.name.to_lowercase();
+                        format!(
+                            "  @Get('{path}')\n  async {fn_name}(@Param('id') id: string) {{\n    return this.{lower}Service.findOne(id);\n  }}\n",
+                            path = nest_path, fn_name = fn_name, lower = lower,
+                        )
+                    }
+                    (HttpMethod::Post, Some(m)) => {
+                        needs_body = true;
+                        let p = to_pascal_case(&m.name);
+                        let lower = m.name.to_lowercase();
+                        format!(
+                            "  @Post('{path}')\n  async {fn_name}(@Body() dto: Create{p}Dto) {{\n    return this.{lower}Service.create(dto);\n  }}\n",
+                            path = nest_path, fn_name = fn_name, p = p, lower = lower,
+                        )
+                    }
+                    (HttpMethod::Put | HttpMethod::Patch, Some(m)) if has_id => {
+                        needs_body = true;
+                        let p = to_pascal_case(&m.name);
+                        let lower = m.name.to_lowercase();
+                        let dec = if api.method == HttpMethod::Put {
+                            "Put"
+                        } else {
+                            "Patch"
+                        };
+                        format!(
+                            "  @{dec}('{path}')\n  async {fn_name}(@Param('id') id: string, @Body() dto: Update{p}Dto) {{\n    return this.{lower}Service.update(id, dto);\n  }}\n",
+                            dec = dec, path = nest_path, fn_name = fn_name, p = p, lower = lower,
+                        )
+                    }
+                    (HttpMethod::Delete, Some(m)) if has_id => {
+                        let lower = m.name.to_lowercase();
+                        format!(
+                            "  @Delete('{path}')\n  async {fn_name}(@Param('id') id: string) {{\n    return this.{lower}Service.remove(id);\n  }}\n",
+                            path = nest_path, fn_name = fn_name, lower = lower,
+                        )
+                    }
+                    // Fallback for APIs without a matching model
+                    _ => {
+                        format!(
+                            "  @{dec}('{path}')\n  async {fn_name}() {{\n    return {{ message: '{name}' }};\n  }}\n",
+                            dec = decorator, path = nest_path, fn_name = fn_name, name = api.name,
+                        )
+                    }
                 }
             };
 
@@ -599,18 +725,36 @@ impl<'a> BackendGenerator<'a> {
                 import_decorators.push(d);
             }
         }
-        if needs_body { import_decorators.push("Body"); }
-        if needs_param { import_decorators.push("Param"); }
-        if needs_query { import_decorators.push("Query"); }
-        if needs_guard { import_decorators.push("UseGuards"); }
+        if needs_body {
+            import_decorators.push("Body");
+        }
+        if needs_param {
+            import_decorators.push("Param");
+        }
+        if needs_query {
+            import_decorators.push("Query");
+        }
+        if needs_guard {
+            import_decorators.push("UseGuards");
+        }
+        if needs_req_res {
+            import_decorators.push("Req");
+            import_decorators.push("Res");
+        }
 
         let mut extra_imports = String::new();
+        if has_logic_endpoints {
+            extra_imports.push_str("import { runFlow } from '../logic';\n");
+        }
+        if needs_prisma {
+            extra_imports.push_str("import { PrismaService } from '../prisma/prisma.service';\n");
+        }
         if needs_guard {
             extra_imports.push_str("import { JwtAuthGuard } from '../auth/jwt-auth.guard';\n");
             // Check if any endpoint uses specific role permissions
-            let has_roles = apis.iter().any(|a| {
-                a.permissions.iter().any(|p| p != "authenticated")
-            });
+            let has_roles = apis
+                .iter()
+                .any(|a| a.permissions.iter().any(|p| p != "authenticated"));
             if has_roles {
                 extra_imports.push_str("import { RolesGuard } from '../auth/roles.guard';\n");
                 extra_imports.push_str("import { Roles } from '../auth/roles.decorator';\n");
@@ -620,22 +764,39 @@ impl<'a> BackendGenerator<'a> {
         if let Some(m) = model {
             let p = to_pascal_case(&m.name);
             let lower = m.name.to_lowercase();
-            extra_imports.push_str(&format!("import {{ {}Service }} from './{}.service';\n", p, lower));
+            extra_imports.push_str(&format!(
+                "import {{ {}Service }} from './{}.service';\n",
+                p, lower
+            ));
             if needs_body {
-                extra_imports.push_str(&format!("import {{ Create{}Dto }} from './dto/create-{}.dto';\n", p, lower));
-                extra_imports.push_str(&format!("import {{ Update{}Dto }} from './dto/update-{}.dto';\n", p, lower));
+                extra_imports.push_str(&format!(
+                    "import {{ Create{}Dto }} from './dto/create-{}.dto';\n",
+                    p, lower
+                ));
+                extra_imports.push_str(&format!(
+                    "import {{ Update{}Dto }} from './dto/update-{}.dto';\n",
+                    p, lower
+                ));
             }
         }
 
-        let constructor = if let Some(m) = model {
+        let mut constructor_params = Vec::new();
+        if let Some(m) = model {
             let lower = m.name.to_lowercase();
             let p = to_pascal_case(&m.name);
-            format!("  constructor(private {}Service: {}Service) {{}}\n\n", lower, p)
-        } else {
+            constructor_params.push(format!("private {}Service: {}Service", lower, p));
+        }
+        if needs_prisma {
+            constructor_params.push("private prisma: PrismaService".to_string());
+        }
+        let constructor = if constructor_params.is_empty() {
             String::new()
+        } else {
+            format!("  constructor({}) {{}}\n\n", constructor_params.join(", "))
         };
 
-        format!(r#"import {{ {decorators} }} from '@nestjs/common';
+        format!(
+            r#"import {{ {decorators} }} from '@nestjs/common';
 {extra_imports}
 @Controller('{resource}')
 export class {pascal}Controller {{
@@ -654,28 +815,45 @@ export class {pascal}Controller {{
 // ─── App module ──────────────────────────────────────────
 
 impl<'a> BackendGenerator<'a> {
-    fn gen_app_module(&self, models: &[&DataModelSchema], ctrl_map: &HashMap<String, Vec<&ApiSchema>>) -> String {
+    fn gen_app_module(
+        &self,
+        models: &[&DataModelSchema],
+        ctrl_map: &HashMap<String, Vec<&ApiSchema>>,
+    ) -> String {
         let mut imports_code = String::from("import { Module } from '@nestjs/common';\nimport { PrismaModule } from './prisma/prisma.module';\nimport { AuthModule } from './auth/auth.module';\n");
         let mut module_list = vec!["PrismaModule".to_string(), "AuthModule".to_string()];
 
         for m in models {
             let pascal = to_pascal_case(&m.name);
             let lower = m.name.to_lowercase();
-            imports_code.push_str(&format!("import {{ {}Module }} from './{}/{}.module';\n", pascal, lower, lower));
+            imports_code.push_str(&format!(
+                "import {{ {}Module }} from './{}/{}.module';\n",
+                pascal, lower, lower
+            ));
             module_list.push(format!("{}Module", pascal));
         }
 
         // If a controller resource doesn't match any model, import it standalone
         for resource in ctrl_map.keys() {
-            let has_model = models.iter().any(|m| m.name.to_lowercase() == *resource || pluralize(&m.name.to_lowercase()) == *resource);
+            let has_model = models.iter().any(|m| {
+                m.name.to_lowercase() == *resource || pluralize(&m.name.to_lowercase()) == *resource
+            });
             if !has_model {
                 let pascal = to_pascal_case(resource);
-                imports_code.push_str(&format!("import {{ {}Controller }} from './{}/{}.controller';\n", pascal, resource, resource));
+                imports_code.push_str(&format!(
+                    "import {{ {}Controller }} from './{}/{}.controller';\n",
+                    pascal, resource, resource
+                ));
             }
         }
 
-        let standalone_controllers: Vec<String> = ctrl_map.keys()
-            .filter(|r| !models.iter().any(|m| m.name.to_lowercase() == **r || pluralize(&m.name.to_lowercase()) == **r))
+        let standalone_controllers: Vec<String> = ctrl_map
+            .keys()
+            .filter(|r| {
+                !models.iter().any(|m| {
+                    m.name.to_lowercase() == **r || pluralize(&m.name.to_lowercase()) == **r
+                })
+            })
             .map(|r| format!("{}Controller", to_pascal_case(r)))
             .collect();
 
@@ -685,7 +863,8 @@ impl<'a> BackendGenerator<'a> {
             format!("\n  controllers: [{}],", standalone_controllers.join(", "))
         };
 
-        format!(r#"{imports_code}
+        format!(
+            r#"{imports_code}
 @Module({{
   imports: [{modules}],{controllers_str}
 }})
@@ -743,7 +922,8 @@ async function bootstrap() {
 }
 
 bootstrap();
-"#.into()
+"#
+        .into()
     }
 }
 
@@ -752,15 +932,18 @@ bootstrap();
 impl<'a> BackendGenerator<'a> {
     fn gen_package_json(&self) -> String {
         let name = self.project.name.to_lowercase().replace(' ', "-");
-        format!(r#"{{
+        format!(
+            r#"{{
   "name": "{name}-backend",
   "version": "1.0.0",
   "private": true,
   "scripts": {{
     "build": "nest build",
-    "start": "node dist/main",
+    "start": "nest start",
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main",
+    "test": "npm run test:e2e",
+    "test:e2e": "jest --config ./test/jest-e2e.json",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
@@ -785,15 +968,23 @@ impl<'a> BackendGenerator<'a> {
   }},
   "devDependencies": {{
     "@nestjs/cli": "^10.0.0",
+    "@nestjs/testing": "^10.0.0",
     "@types/bcrypt": "^5.0.0",
+    "@types/jest": "^29.5.12",
     "@types/node": "^20.0.0",
     "@types/passport-jwt": "^4.0.0",
+    "@types/supertest": "^6.0.2",
+    "jest": "^29.7.0",
     "prisma": "^5.0.0",
+    "supertest": "^7.0.0",
+    "ts-jest": "^29.2.4",
     "ts-node": "^10.9.0",
     "typescript": "^5.3.0"
   }}
 }}
-"#, name = name)
+"#,
+            name = name
+        )
     }
 
     fn gen_tsconfig() -> String {
@@ -818,7 +1009,8 @@ impl<'a> BackendGenerator<'a> {
     "noFallthroughCasesInSwitch": true
   }
 }
-"#.into()
+"#
+        .into()
     }
 
     fn gen_tsconfig_build() -> String {
@@ -826,7 +1018,8 @@ impl<'a> BackendGenerator<'a> {
   "extends": "./tsconfig.json",
   "exclude": ["node_modules", "test", "dist", "**/*spec.ts"]
 }
-"#.into()
+"#
+        .into()
     }
 
     fn gen_nest_cli() -> String {
@@ -838,11 +1031,13 @@ impl<'a> BackendGenerator<'a> {
     "deleteOutDir": true
   }
 }
-"#.into()
+"#
+        .into()
     }
 
     fn gen_dotenv(&self) -> String {
-        format!(r#"# Database
+        format!(
+            r#"# Database
 DATABASE_URL="postgresql://postgres:postgres@localhost:5432/{db}?schema=public"
 
 # Auth
@@ -852,7 +1047,9 @@ JWT_EXPIRES_IN="7d"
 # Server
 PORT=3000
 CORS_ORIGIN="http://localhost:5173"
-"#, db = self.project.name.to_lowercase().replace(' ', "_"))
+"#,
+            db = self.project.name.to_lowercase().replace(' ', "_")
+        )
     }
 
     fn gen_dockerfile() -> String {
@@ -879,12 +1076,14 @@ COPY --from=builder /app/prisma ./prisma
 
 EXPOSE 3000
 CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main"]
-"#.into()
+"#
+        .into()
     }
 
     fn gen_docker_compose(&self) -> String {
         let db_name = self.project.name.to_lowercase().replace(' ', "_");
-        format!(r#"version: '3.8'
+        format!(
+            r#"version: '3.8'
 
 services:
   db:
@@ -913,7 +1112,9 @@ services:
 
 volumes:
   pgdata:
-"#, db = db_name)
+"#,
+            db = db_name
+        )
     }
 
     fn gen_dockerignore() -> String {
@@ -921,11 +1122,13 @@ volumes:
 dist
 .env
 .git
-"#.into()
+"#
+        .into()
     }
 
     fn gen_readme(&self) -> String {
-        format!(r#"# {} — Backend
+        format!(
+            r#"# {} — Backend
 
 Auto-generated NestJS + Prisma backend.
 
@@ -959,19 +1162,27 @@ Swagger docs at `http://localhost:3000/docs`.
 ## Environment Variables
 
 See `.env.example` for all required variables.
-"#, self.project.name)
+"#,
+            self.project.name
+        )
     }
 }
 
 // ─── helpers ─────────────────────────────────────────────
 
 fn gf(path: &str, content: String) -> GeneratedFile {
-    GeneratedFile { path: path.to_string(), content }
+    GeneratedFile {
+        path: path.to_string(),
+        content,
+    }
 }
 
 fn extract_resource(path: &str) -> String {
     // /api/users/:id → users, /users → users
-    let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty() && *s != "api").collect();
+    let segments: Vec<&str> = path
+        .split('/')
+        .filter(|s| !s.is_empty() && *s != "api")
+        .collect();
     segments.first().unwrap_or(&"resource").to_string()
 }
 
@@ -987,7 +1198,11 @@ fn http_decorator(m: &HttpMethod) -> &'static str {
 
 fn field_type_to_ts(ft: &FieldType) -> &'static str {
     match ft {
-        FieldType::String | FieldType::Text | FieldType::Email | FieldType::Url | FieldType::Uuid => "string",
+        FieldType::String
+        | FieldType::Text
+        | FieldType::Email
+        | FieldType::Url
+        | FieldType::Uuid => "string",
         FieldType::Int => "number",
         FieldType::Float => "number",
         FieldType::Boolean => "boolean",
@@ -997,7 +1212,12 @@ fn field_type_to_ts(ft: &FieldType) -> &'static str {
     }
 }
 
-fn field_type_to_decorators<'b>(ft: &FieldType, required: bool, name: &str, imports: &mut Vec<&'b str>) -> String {
+fn field_type_to_decorators<'b>(
+    ft: &FieldType,
+    required: bool,
+    name: &str,
+    imports: &mut Vec<&'b str>,
+) -> String {
     let mut decs = Vec::new();
 
     if !required {
@@ -1074,7 +1294,10 @@ fn to_camel_case_single(s: &str) -> String {
 
 /// Convert a name like "Get Users" to "getUsers"
 fn to_camel_case(s: &str) -> String {
-    let words: Vec<&str> = s.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).collect();
+    let words: Vec<&str> = s
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .collect();
     let mut result = String::new();
     for (i, word) in words.iter().enumerate() {
         if i == 0 {
@@ -1095,7 +1318,7 @@ fn pluralize(s: &str) -> String {
     if s.ends_with('s') {
         s.to_string()
     } else if s.ends_with('y') {
-        format!("{}ies", &s[..s.len()-1])
+        format!("{}ies", &s[..s.len() - 1])
     } else {
         format!("{}s", s)
     }
@@ -1105,11 +1328,17 @@ fn pluralize(s: &str) -> String {
 
 impl<'a> BackendGenerator<'a> {
     fn gen_seed(&self) -> String {
-        let models: Vec<&DataModelSchema> = self.project.data_models.iter().filter(|m| !m.archived).collect();
+        let models: Vec<&DataModelSchema> = self
+            .project
+            .data_models
+            .iter()
+            .filter(|m| !m.archived)
+            .collect();
         let mut seed_blocks = String::new();
 
         // Always seed an admin user
-        seed_blocks.push_str(r#"
+        seed_blocks.push_str(
+            r#"
   // Seed admin user
   const adminPassword = await bcrypt.hash('admin123', 10);
   await prisma.user.upsert({
@@ -1123,7 +1352,8 @@ impl<'a> BackendGenerator<'a> {
     },
   });
   console.log('  ✓ Admin user seeded');
-"#);
+"#,
+        );
 
         for model in &models {
             let pascal = to_pascal_case(&model.name);
@@ -1132,7 +1362,9 @@ impl<'a> BackendGenerator<'a> {
             // Build a sample record from fields
             let mut sample_fields = Vec::new();
             for field in &model.fields {
-                if field.primary_key { continue; }
+                if field.primary_key {
+                    continue;
+                }
                 let val = match field.field_type {
                     FieldType::String | FieldType::Text => format!("'Sample {}'", field.name),
                     FieldType::Email => "'seed@example.com'".into(),
@@ -1151,7 +1383,8 @@ impl<'a> BackendGenerator<'a> {
             }
 
             if !sample_fields.is_empty() {
-                seed_blocks.push_str(&format!(r#"
+                seed_blocks.push_str(&format!(
+                    r#"
   // Seed {pascal}
   await prisma.{lower}.create({{
     data: {{
@@ -1167,7 +1400,8 @@ impl<'a> BackendGenerator<'a> {
             }
         }
 
-        format!(r#"import {{ PrismaClient }} from '@prisma/client';
+        format!(
+            r#"import {{ PrismaClient }} from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
@@ -1199,7 +1433,9 @@ main()
         // Build sample create DTO fields
         let mut dto_fields = Vec::new();
         for field in &model.fields {
-            if field.primary_key { continue; }
+            if field.primary_key {
+                continue;
+            }
             let val = match field.field_type {
                 FieldType::String | FieldType::Text => format!("'Test {}'", field.name),
                 FieldType::Email => "'test@example.com'".into(),
@@ -1213,7 +1449,8 @@ main()
         }
         let dto_body = dto_fields.join(",\n");
 
-        format!(r#"import {{ Test, TestingModule }} from '@nestjs/testing';
+        format!(
+            r#"import {{ Test, TestingModule }} from '@nestjs/testing';
 import {{ INestApplication, ValidationPipe }} from '@nestjs/common';
 import * as request from 'supertest';
 import {{ AppModule }} from '../src/app.module';
@@ -1353,7 +1590,8 @@ describe('AuthController (e2e)', () => {
       .expect(401);
   });
 });
-"#.into()
+"#
+        .into()
     }
 
     fn gen_jest_config() -> String {
@@ -1366,7 +1604,8 @@ describe('AuthController (e2e)', () => {
     "^.+\\.(t|j)s$": "ts-jest"
   }
 }
-"#.into()
+"#
+        .into()
     }
 }
 
@@ -1384,6 +1623,7 @@ pub struct GeneratedFile {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::schema::logic_flow::{FlowContext, LogicFlowSchema, TriggerType};
 
     #[test]
     fn test_to_pascal_case() {
@@ -1400,19 +1640,71 @@ mod tests {
     #[test]
     fn test_generate_backend() {
         let mut project = ProjectSchema::new("proj-1", "My App");
-        project.add_api(ApiSchema::new("api-1", HttpMethod::Get, "/users", "Get Users"));
-        project.add_api(ApiSchema::new("api-2", HttpMethod::Post, "/users", "Create User"));
+        project.add_api(ApiSchema::new(
+            "api-1",
+            HttpMethod::Get,
+            "/users",
+            "Get Users",
+        ));
+        project.add_api(ApiSchema::new(
+            "api-2",
+            HttpMethod::Post,
+            "/users",
+            "Create User",
+        ));
 
         let generator = BackendGenerator::new(&project);
         let output = generator.generate();
 
         // Should have controller, service, module, DTOs, auth, prisma, deployable config
-        assert!(output.files.iter().any(|f| f.path.contains("users.controller.ts")));
-        assert!(output.files.iter().any(|f| f.path.contains("user.service.ts")));
-        assert!(output.files.iter().any(|f| f.path.contains("prisma.service.ts")));
-        assert!(output.files.iter().any(|f| f.path.contains("auth.service.ts")));
+        assert!(output
+            .files
+            .iter()
+            .any(|f| f.path.contains("users.controller.ts")));
+        assert!(output
+            .files
+            .iter()
+            .any(|f| f.path.contains("user.service.ts")));
+        assert!(output
+            .files
+            .iter()
+            .any(|f| f.path.contains("prisma.service.ts")));
+        assert!(output
+            .files
+            .iter()
+            .any(|f| f.path.contains("auth.service.ts")));
         assert!(output.files.iter().any(|f| f.path == "Dockerfile"));
         assert!(output.files.iter().any(|f| f.path == "docker-compose.yml"));
         assert!(output.files.iter().any(|f| f.path == ".env"));
+    }
+
+    #[test]
+    fn test_logic_flow_api_bypasses_crud_in_controller() {
+        let mut project = ProjectSchema::new("proj-2", "My App");
+        project.apis.clear();
+        let api_id = "api-logic-1".to_string();
+        let mut api = ApiSchema::new(&api_id, HttpMethod::Post, "/users", "Create User Via Flow");
+        api.logic_flow_id = Some("flow-api-1".into());
+        project.add_api(api);
+        project.add_logic_flow(LogicFlowSchema::new(
+            "flow-api-1",
+            "API Flow",
+            TriggerType::Api { api_id },
+            FlowContext::Backend,
+        ));
+
+        let generator = BackendGenerator::new(&project);
+        let output = generator.generate();
+        let users_controller = output
+            .files
+            .iter()
+            .find(|f| f.path == "src/users/users.controller.ts")
+            .expect("users controller should be generated");
+
+        assert!(users_controller.content.contains("runFlow('flow-api-1'"));
+        assert!(users_controller
+            .content
+            .contains("req.prisma = this.prisma;"));
+        assert!(!users_controller.content.contains("this.userService.create"));
     }
 }

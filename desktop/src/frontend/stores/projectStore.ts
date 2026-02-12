@@ -16,11 +16,13 @@ interface ProjectState {
     error: string | null;
     selectedBlockId: string | null;
     selectedPageId: string | null;
+    selectedComponentId: string | null;
     activeTab: "canvas" | "logic" | "api" | "erd" | "variables";
     viewport: "desktop" | "tablet" | "mobile";
     editMode: "visual" | "code";
     inspectorOpen: boolean;
     selectedFilePath: string | null;
+    terminalOpen: boolean;
 
     // Workspace state
     workspacePath: string | null;
@@ -38,6 +40,7 @@ const initialState: ProjectState = {
     error: null,
     selectedBlockId: null,
     selectedPageId: null,
+    selectedComponentId: null,
     activeTab: "canvas",
     viewport: "desktop",
     editMode: "visual",
@@ -46,6 +49,7 @@ const initialState: ProjectState = {
     projects: [],
     isDashboardActive: true,
     selectedFilePath: null,
+    terminalOpen: false,
 };
 
 // Internal state
@@ -269,8 +273,8 @@ export async function createProject(name: string): Promise<void> {
         if (state.workspacePath) {
             const projectPath = `${state.workspacePath}/${name}`.replace(/\\/g, '/');
             await api.setProjectRoot(projectPath);
-            // Reload project to get updated root_path
-            const refreshedProject = await api.getProject();
+            // Reload the specific project by ID to get updated root_path
+            const refreshedProject = await api.loadProjectById(project.id);
             if (refreshedProject) {
                 project = refreshedProject;
             }
@@ -309,8 +313,8 @@ export async function openProject(id: string): Promise<void> {
         if (!project.root_path && state.workspacePath) {
             const projectPath = `${state.workspacePath}/${project.name}`.replace(/\\/g, '/');
             await api.setProjectRoot(projectPath);
-            // Reload to get updated root_path
-            const refreshedProject = await api.getProject();
+            // Reload the specific project by ID to get updated root_path
+            const refreshedProject = await api.loadProjectById(id);
             if (refreshedProject) {
                 project = refreshedProject;
             }
@@ -445,18 +449,75 @@ export async function exportProject(): Promise<string> {
     return api.exportProjectJson();
 }
 
+
+
+
 /**
- * Add a new block
+ * Select a master component for editing
+ */
+export function selectComponent(componentId: string | null): void {
+    updateState(() => ({
+        selectedComponentId: componentId,
+        selectedPageId: null, // Deselect page
+        selectedBlockId: null, // Deselect any page block
+        activeTab: "canvas",
+        isDashboardActive: false
+    }));
+}
+
+/**
+ * Close component editor and return to dashboard
+ */
+export function closeComponentEditor(): void {
+    updateState(() => ({
+        selectedComponentId: null,
+        activeTab: "canvas",
+        isDashboardActive: true
+    }));
+}
+
+/**
+ * Add a new block (wrapper with component support)
  */
 export async function addBlock(
     blockType: string,
     name: string,
-    parentId?: string
+    parentId?: string,
+    componentId?: string
 ): Promise<BlockSchema> {
-    const block = await api.addBlock(blockType, name, parentId, state.selectedPageId || undefined);
+    const block = await api.addBlock(blockType, name, parentId, state.selectedPageId || undefined, componentId);
     await loadProject();
     isDirtyValue = true;
     return block;
+}
+
+/**
+ * Create a new master component
+ */
+export async function createMasterComponent(
+    name: string,
+    description?: string
+): Promise<BlockSchema> {
+    const component = await api.createComponent(name, description);
+    await loadProject();
+    isDirtyValue = true;
+    return component;
+}
+
+/**
+ * Instantiate a reusable component
+ */
+export async function instantiateComponent(
+    componentId: string,
+    parentId?: string
+): Promise<BlockSchema> {
+    const component = state.project?.components.find(c => c.id === componentId);
+    if (!component) throw new Error("Component not found");
+
+    // Create an instance block
+    // We pass "instance" as block type (which backend maps to BlockType::Instance)
+    // And componentId to link it
+    return addBlock("instance", component.name, parentId, componentId);
 }
 
 /**
@@ -577,9 +638,19 @@ export async function addBlockAtPosition(
     blockType: string,
     name: string,
     x: number,
-    y: number
+    y: number,
+    componentId?: string
 ): Promise<BlockSchema> {
-    const block = await api.addBlock(blockType, name);
+    let parentId: string | undefined;
+
+    if (state.selectedComponentId) {
+        parentId = state.selectedComponentId;
+    } else if (state.selectedPageId) {
+        const page = state.project?.pages.find(p => p.id === state.selectedPageId);
+        parentId = page?.root_block_id;
+    }
+
+    const block = await api.addBlock(blockType, name, parentId, undefined, componentId);
     await api.updateBlockProperty(block.id, "x", x);
     await api.updateBlockProperty(block.id, "y", y);
     await loadProject();
@@ -741,7 +812,17 @@ export async function archiveApi(id: string): Promise<void> {
  */
 export async function updateEndpoint(
     id: string,
-    updates: { method?: string; path?: string; name?: string; description?: string; auth_required?: boolean }
+    updates: {
+        method?: string;
+        path?: string;
+        name?: string;
+        description?: string;
+        auth_required?: boolean;
+        request_body?: import("../hooks/useTauri").DataShape | null;
+        response_body?: import("../hooks/useTauri").DataShape | null;
+        permissions?: string[];
+        logic_flow_id?: string | null;
+    }
 ): Promise<void> {
     await api.updateEndpoint(id, updates);
     await loadProject();
@@ -978,10 +1059,14 @@ export async function setProjectRoot(path: string): Promise<void> {
 /**
  * Add a new logic flow
  */
-export async function addLogicFlow(name: string, context: 'frontend' | 'backend'): Promise<void> {
-    await api.createLogicFlow(name, context);
+export async function addLogicFlow(
+    name: string,
+    context: 'frontend' | 'backend'
+): Promise<import("../hooks/useTauri").LogicFlowSchema> {
+    const created = await api.createLogicFlow(name, context);
     await loadProject();
     isDirtyValue = true;
+    return created;
 }
 
 /**
@@ -998,7 +1083,13 @@ export async function deleteLogicFlow(id: string): Promise<void> {
  */
 export async function updateLogicFlow(
     id: string,
-    updates: { name?: string; nodes?: import("../hooks/useTauri").LogicNode[]; entry_node_id?: string | null; description?: string }
+    updates: {
+        name?: string;
+        nodes?: import("../hooks/useTauri").LogicNode[];
+        entry_node_id?: string | null;
+        description?: string;
+        trigger?: import("../hooks/useTauri").TriggerType;
+    }
 ): Promise<void> {
     await api.updateLogicFlow(id, updates);
     await loadProject();
@@ -1080,7 +1171,10 @@ export async function getAllFolders(basePath: string = ""): Promise<{ label: str
  * Get a block by ID
  */
 export function getBlock(blockId: string): BlockSchema | undefined {
-    return state.project?.blocks.find(b => b.id === blockId && !b.archived);
+    if (!state.project) return undefined;
+    const inBlocks = state.project.blocks.find(b => b.id === blockId && !b.archived);
+    if (inBlocks) return inBlocks;
+    return state.project.components.find(b => b.id === blockId && !b.archived);
 }
 
 /**
@@ -1089,26 +1183,22 @@ export function getBlock(blockId: string): BlockSchema | undefined {
 export function getRootBlocks(): BlockSchema[] {
     if (!state.project) return [];
 
-    const roots = state.project.blocks.filter((b) => !b.parent_id && !b.archived);
+    // Prioritize component editing
+    if (state.selectedComponentId) {
+        const comp = state.project.components.find(c => c.id === state.selectedComponentId && !c.archived);
+        return comp ? [comp] : [];
+    }
+
     const activePageId = state.selectedPageId;
-    if (!activePageId) return roots;
+    if (!activePageId) return [];
 
     const activePage = state.project.pages.find((page) => page.id === activePageId && !page.archived);
     const selectedRootId = activePage?.root_block_id;
 
-    const pageRootIds = new Set(
-        state.project.pages
-            .filter((page) => !page.archived && !!page.root_block_id)
-            .map((page) => page.root_block_id as string)
-    );
+    if (!selectedRootId) return [];
 
-    if (!selectedRootId) {
-        // No bound page root: keep only non-page global roots.
-        return roots.filter((block) => !pageRootIds.has(block.id));
-    }
-
-    // Show selected page root + any global roots not tied to pages.
-    return roots.filter((block) => block.id === selectedRootId || !pageRootIds.has(block.id));
+    // STRICT SCOPING: Only return the root block expressly bound to this page.
+    return state.project.blocks.filter((block) => block.id === selectedRootId && !block.archived);
 }
 
 /**
@@ -1116,9 +1206,18 @@ export function getRootBlocks(): BlockSchema[] {
  */
 export function getBlockChildren(parentId: string): BlockSchema[] {
     if (!state.project) return [];
-    return state.project.blocks.filter(
+
+    // Search in regular blocks
+    const childrenRequest = state.project.blocks.filter(
         b => b.parent_id === parentId && !b.archived
     );
+
+    // Also search in components list (for component editing)
+    const componentChildren = state.project.components.filter(
+        b => b.parent_id === parentId && !b.archived
+    );
+
+    return [...childrenRequest, ...componentChildren];
 }
 
 /**
@@ -1131,3 +1230,12 @@ export function getPage(pageId: string): PageSchema | undefined {
 // Export reactive state access — use getSnapshot() for current state
 export const isDirty = () => isDirtyValue;
 export function clearDirty(): void { isDirtyValue = false; }
+
+/**
+ * Toggle the terminal panel
+ */
+export function toggleTerminal(open?: boolean): void {
+    updateState((prev) => ({
+        terminalOpen: open ?? !prev.terminalOpen
+    }));
+}

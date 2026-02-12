@@ -1,12 +1,12 @@
 //! Sync Engine - Handles bidirectional synchronization between IDE and file system
-//! 
-//! This engine maps BlockSchema entities to physical TSX/CSS files and 
+//!
+//! This engine maps BlockSchema entities to physical TSX/CSS files and
 //! parses code changes back into the schema.
 
-use std::path::PathBuf;
-use std::fs;
-use crate::schema::ProjectSchema;
 use crate::generator::pascal_case;
+use crate::schema::ProjectSchema;
+use std::fs;
+use std::path::PathBuf;
 
 pub struct SyncEngine {
     pub root_path: PathBuf,
@@ -25,6 +25,216 @@ impl SyncEngine {
 
     fn legacy_pages_dir(&self) -> PathBuf {
         self.root_path.join("client/page")
+    }
+
+    fn components_dir(&self) -> PathBuf {
+        self.root_path.join("client/src/components")
+    }
+
+    /// Ensure a component TSX file exists for the given block type.
+    /// Creates the file with a default template if it doesn't exist.
+    /// Returns the PascalCase component name.
+    pub fn ensure_component_file(
+        &self,
+        block_type: &crate::schema::BlockType,
+    ) -> std::io::Result<String> {
+        let comp_name = Self::block_type_to_component_name(block_type);
+        let comp_dir = self.components_dir();
+        fs::create_dir_all(&comp_dir)?;
+
+        let file_path = comp_dir.join(format!("{}.tsx", comp_name));
+        if !file_path.exists() {
+            let template = Self::component_template(block_type, &comp_name);
+            fs::write(&file_path, template)?;
+        }
+        Ok(comp_name)
+    }
+
+    /// Map BlockType to a PascalCase component file name
+    fn block_type_to_component_name(bt: &crate::schema::BlockType) -> String {
+        use crate::schema::BlockType;
+        match bt {
+            BlockType::Container => "Container".into(),
+            BlockType::Section => "Section".into(),
+            BlockType::Card => "Card".into(),
+            BlockType::Heading => "Heading".into(),
+            BlockType::Text => "Text".into(),
+            BlockType::Paragraph => "Paragraph".into(),
+            BlockType::Button => "Button".into(),
+            BlockType::Image => "Image".into(),
+            BlockType::Input => "Input".into(),
+            BlockType::Link => "Link".into(),
+            BlockType::Form => "Form".into(),
+            BlockType::Flex => "FlexBox".into(),
+            BlockType::Grid => "GridLayout".into(),
+            BlockType::Columns => "Columns".into(),
+            BlockType::Column => "Column".into(),
+            BlockType::Modal => "Modal".into(),
+            BlockType::Tabs => "Tabs".into(),
+            BlockType::Table => "DataTable".into(),
+            BlockType::List => "ListBlock".into(),
+            BlockType::Video => "Video".into(),
+            BlockType::Icon => "Icon".into(),
+            BlockType::TextArea => "TextArea".into(),
+            BlockType::Select => "Select".into(),
+            BlockType::Checkbox => "Checkbox".into(),
+            BlockType::Radio => "Radio".into(),
+            BlockType::Dropdown => "Dropdown".into(),
+            BlockType::Accordion => "Accordion".into(),
+            BlockType::Page => "PageWrapper".into(),
+            BlockType::Instance => "ComponentInstance".into(),
+            BlockType::Custom(s) => pascal_case(s),
+        }
+    }
+
+    /// Generate a React component template for the given block type
+    fn component_template(bt: &crate::schema::BlockType, name: &str) -> String {
+        use crate::schema::BlockType;
+        match bt {
+            BlockType::Container | BlockType::Section | BlockType::Card => format!(
+                r#"import React from 'react';
+// @akasha-component type="{tag}"
+
+interface {name}Props {{
+  children?: React.ReactNode;
+  className?: string;
+}}
+
+export default function {name}({{ children, className = '' }}: {name}Props) {{
+  return (
+    <div className={{`{default_cls} ${{className}}`}}>
+      {{children}}
+    </div>
+  );
+}}
+"#,
+                tag = name.to_lowercase(),
+                name = name,
+                default_cls = match bt {
+                    BlockType::Card => "bg-white rounded-xl shadow-md p-6",
+                    BlockType::Section => "py-12 px-4",
+                    _ => "w-full",
+                }
+            ),
+            BlockType::Heading => format!(
+                r#"import React from 'react';
+// @akasha-component type="heading"
+
+interface {name}Props {{
+  text?: string;
+  level?: 1 | 2 | 3 | 4 | 5 | 6;
+  className?: string;
+}}
+
+export default function {name}({{ text = 'Heading', level = 1, className = '' }}: {name}Props) {{
+  const Tag = `h${{level}}` as keyof JSX.IntrinsicElements;
+  return <Tag className={{`font-bold text-gray-900 ${{className}}`}}>{{text}}</Tag>;
+}}
+"#,
+                name = name
+            ),
+            BlockType::Text | BlockType::Paragraph => format!(
+                r#"import React from 'react';
+// @akasha-component type="text"
+
+interface {name}Props {{
+  text?: string;
+  className?: string;
+}}
+
+export default function {name}({{ text = 'Text content', className = '' }}: {name}Props) {{
+  return <p className={{`text-gray-600 ${{className}}`}}>{{text}}</p>;
+}}
+"#,
+                name = name
+            ),
+            BlockType::Button => format!(
+                r#"import React from 'react';
+// @akasha-component type="button"
+
+interface {name}Props {{
+  text?: string;
+  onClick?: () => void;
+  variant?: 'primary' | 'secondary' | 'outline';
+  className?: string;
+}}
+
+export default function {name}({{ text = 'Button', onClick, variant = 'primary', className = '' }}: {name}Props) {{
+  const base = 'px-6 py-2.5 rounded-lg font-medium transition-all duration-200';
+  const variants = {{
+    primary: 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-md',
+    secondary: 'bg-gray-100 text-gray-800 hover:bg-gray-200',
+    outline: 'border-2 border-indigo-600 text-indigo-600 hover:bg-indigo-50',
+  }};
+  return (
+    <button onClick={{onClick}} className={{`${{base}} ${{variants[variant]}} ${{className}}`}}>
+      {{text}}
+    </button>
+  );
+}}
+"#,
+                name = name
+            ),
+            BlockType::Input | BlockType::TextArea => format!(
+                r#"import React from 'react';
+// @akasha-component type="input"
+
+interface {name}Props {{
+  placeholder?: string;
+  label?: string;
+  type?: string;
+  className?: string;
+}}
+
+export default function {name}({{ placeholder = 'Enter text...', label, type = 'text', className = '' }}: {name}Props) {{
+  return (
+    <div className={{`${{className}}`}}>
+      {{label && <label className="block text-sm font-medium text-gray-700 mb-1">{{label}}</label>}}
+      <input type={{type}} placeholder={{placeholder}} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all" />
+    </div>
+  );
+}}
+"#,
+                name = name
+            ),
+            BlockType::Image => format!(
+                r#"import React from 'react';
+// @akasha-component type="image"
+
+interface {name}Props {{
+  src?: string;
+  alt?: string;
+  className?: string;
+}}
+
+export default function {name}({{ src = 'https://via.placeholder.com/400x300', alt = 'Image', className = '' }}: {name}Props) {{
+  return <img src={{src}} alt={{alt}} className={{`max-w-full rounded-lg ${{className}}`}} />;
+}}
+"#,
+                name = name
+            ),
+            // Fallback: generic wrapper component
+            _ => format!(
+                r#"import React from 'react';
+// @akasha-component type="{tag}"
+
+interface {name}Props {{
+  children?: React.ReactNode;
+  className?: string;
+}}
+
+export default function {name}({{ children, className = '' }}: {name}Props) {{
+  return (
+    <div className={{`${{className}}`}}>
+      {{children || '{name} Component'}}
+    </div>
+  );
+}}
+"#,
+                tag = name.to_lowercase(),
+                name = name
+            ),
+        }
     }
 
     /// Initialize the physical directory structure for a new project
@@ -55,7 +265,7 @@ impl SyncEngine {
         fs::write(config_path, config_json)?;
 
         // --- Client Boilerplate ---
-        
+
         // package.json
         let client_package_json = r#"{
   "name": "akasha-client",
@@ -156,7 +366,8 @@ export default {
         fs::write(client_path.join("postcss.config.js"), postcss_config)?;
 
         // index.html
-        let index_html = format!(r#"<!DOCTYPE html>
+        let index_html = format!(
+            r#"<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -168,7 +379,9 @@ export default {
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-"#, project.name);
+"#,
+            project.name
+        );
         fs::write(client_path.join("index.html"), index_html)?;
 
         // src/main.tsx
@@ -291,19 +504,53 @@ server.listen(port, () => {
         Ok(())
     }
 
-
-
+    /// Sync a page to disk
     /// Sync a page to disk
     pub fn sync_page_to_disk(&self, page_id: &str, project: &ProjectSchema) -> std::io::Result<()> {
-        let page = project.find_page(page_id).ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "Page not found"))?;
-        
+        let page = project
+            .find_page(page_id)
+            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "Page not found"))?;
+
         // Map page to dedicated source pages folder
         let page_dir = self.pages_dir();
         fs::create_dir_all(&page_dir)?;
 
         let mut page_content = String::new();
-        page_content.push_str("import React from 'react';\n\n");
-        page_content.push_str(&format!("export default function {}() {{\n", pascal_case(&page.name)));
+        page_content.push_str("import React from 'react';\n");
+
+        // 1. Collect and import used components
+        let mut used_components = std::collections::HashSet::new();
+        if let Some(root_id) = &page.root_block_id {
+            self.collect_used_components(root_id, project, &mut used_components);
+        }
+
+        // Ensure component files exist and generate imports
+        let mut sorted_components: Vec<_> = used_components.into_iter().collect();
+        sorted_components.sort();
+
+        for comp_name in sorted_components {
+            // Make sure the file exists in client/src/components/
+            // We map the name back to a BlockType if possible, or defaulting to Container if not ideal.
+            // Ideally we should pass the BlockType here, but we only store names in the Set.
+            // Optimization: collect (BlockType, ComponentName) tuples?
+            // For now, let's trust ensure_component_file is called during block creation/update.
+            // BUT: if we pull a fresh repo, files might be missing.
+            // Only way to ensure is to look up a block of that type?
+            // Actually, we called collect_used_components which iterates blocks.
+            // We should ensure files *during* collection or just rely on the API to have done it?
+            // Let's rely on the API for now to avoid looking up BlockType from string name.
+
+            page_content.push_str(&format!(
+                "import {} from '../components/{}';\n",
+                comp_name, comp_name
+            ));
+        }
+        page_content.push('\n');
+
+        page_content.push_str(&format!(
+            "export default function {}() {{\n",
+            pascal_case(&page.name)
+        ));
         page_content.push_str("  return (\n    <div className=\"min-h-screen bg-white\">\n");
 
         if let Some(root_id) = &page.root_block_id {
@@ -315,7 +562,7 @@ server.listen(port, () => {
         }
 
         page_content.push_str("    </div>\n  );\n}");
-        
+
         let file_name = format!("{}.tsx", pascal_case(&page.name));
         let tsx_path = page_dir.join(&file_name);
         fs::write(tsx_path, page_content)?;
@@ -332,21 +579,25 @@ server.listen(port, () => {
     }
 
     /// Delete a page's physical file from disk
-    pub fn delete_page_from_disk(&self, page_name: &str, project: &ProjectSchema) -> std::io::Result<()> {
+    pub fn delete_page_from_disk(
+        &self,
+        page_name: &str,
+        project: &ProjectSchema,
+    ) -> std::io::Result<()> {
         let file_name = format!("{}.tsx", pascal_case(page_name));
         let tsx_path = self.pages_dir().join(&file_name);
         let legacy_path = self.legacy_pages_dir().join(&file_name);
-        
+
         if tsx_path.exists() {
             fs::remove_file(tsx_path)?;
         }
         if legacy_path.exists() {
             fs::remove_file(legacy_path)?;
         }
-        
+
         // Always refresh routes
         self.sync_app_routes_to_disk(project)?;
-        
+
         Ok(())
     }
 
@@ -365,7 +616,11 @@ server.listen(port, () => {
                 component_name, component_name
             ));
 
-            let route_path = if page.path.trim().is_empty() { "/" } else { page.path.as_str() };
+            let route_path = if page.path.trim().is_empty() {
+                "/"
+            } else {
+                page.path.as_str()
+            };
             routes.push_str(&format!(
                 "          <Route path=\"{}\" element={{<{} />}} />\n",
                 route_path, component_name
@@ -400,42 +655,153 @@ export default App;
         Ok(())
     }
 
-    fn append_block_to_content(&self, content: &mut String, block: &crate::schema::BlockSchema, project: &ProjectSchema, indent: usize) {
-        let indent_str = "  ".repeat(indent);
-        let tag = match block.block_type {
-            crate::schema::BlockType::Button => "button",
-            crate::schema::BlockType::Heading => "h1",
-            crate::schema::BlockType::Text | crate::schema::BlockType::Paragraph => "p",
-            _ => "div",
-        };
+    fn collect_used_components(
+        &self,
+        block_id: &str,
+        project: &ProjectSchema,
+        components: &mut std::collections::HashSet<String>,
+    ) {
+        if let Some(block) = project.find_block(block_id) {
+            if !block.archived {
+                let comp_name = Self::block_type_to_component_name(&block.block_type);
 
-        let classes = block.classes.join(" ");
-        let inner_text = block.properties.get("text").and_then(|v| v.as_str()).unwrap_or("");
+                // Ensure the component file exists immediately
+                let _ = self.ensure_component_file(&block.block_type);
 
-        content.push_str(&format!("{indent_str}/* @akasha-block id=\"{}\" */\n", block.id));
-        content.push_str(&format!("{indent_str}<{tag} className=\"{classes}\">{inner_text}", tag = tag, classes = classes, inner_text = inner_text));
-        
-        if !block.children.is_empty() {
-            content.push('\n');
-            for child_id in &block.children {
-                if let Some(child) = project.find_block(child_id) {
-                    self.append_block_to_content(content, child, project, indent + 1);
+                components.insert(comp_name);
+
+                for child_id in &block.children {
+                    self.collect_used_components(child_id, project, components);
                 }
             }
-            content.push_str(&format!("{indent_str}</{tag}>\n", tag = tag));
-        } else {
-            content.push_str(&format!("</{tag}>\n", tag = tag));
         }
-        
+    }
+
+    fn append_block_to_content(
+        &self,
+        content: &mut String,
+        block: &crate::schema::BlockSchema,
+        project: &ProjectSchema,
+        indent: usize,
+    ) {
+        let indent_str = "  ".repeat(indent);
+        let comp_name = Self::block_type_to_component_name(&block.block_type);
+
+        let classes = block.classes.join(" ");
+        let inner_text = block
+            .properties
+            .get("text")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+
+        // Build props string
+        let mut props = String::new();
+        if !classes.is_empty() {
+            props.push_str(&format!(" className=\"{}\"", classes));
+        }
+
+        // Add specific props based on block type
+        match block.block_type {
+            crate::schema::BlockType::Button => {
+                if !inner_text.is_empty() {
+                    props.push_str(&format!(" text=\"{}\"", inner_text));
+                }
+                // Check variant property
+                if let Some(variant) = block.properties.get("variant").and_then(|v| v.as_str()) {
+                    props.push_str(&format!(" variant=\"{}\"", variant));
+                }
+            }
+            crate::schema::BlockType::Heading => {
+                if !inner_text.is_empty() {
+                    props.push_str(&format!(" text=\"{}\"", inner_text));
+                }
+                if let Some(level) = block.properties.get("level").and_then(|v| v.as_u64()) {
+                    props.push_str(&format!(" level={{{}}}", level));
+                }
+            }
+            crate::schema::BlockType::Text | crate::schema::BlockType::Paragraph => {
+                if !inner_text.is_empty() {
+                    props.push_str(&format!(" text=\"{}\"", inner_text));
+                }
+            }
+            crate::schema::BlockType::Image => {
+                if let Some(src) = block.properties.get("src").and_then(|v| v.as_str()) {
+                    props.push_str(&format!(" src=\"{}\"", src));
+                }
+                if let Some(alt) = block.properties.get("alt").and_then(|v| v.as_str()) {
+                    props.push_str(&format!(" alt=\"{}\"", alt));
+                }
+            }
+            crate::schema::BlockType::Input => {
+                if let Some(ph) = block.properties.get("placeholder").and_then(|v| v.as_str()) {
+                    props.push_str(&format!(" placeholder=\"{}\"", ph));
+                }
+                if let Some(lbl) = block.properties.get("label").and_then(|v| v.as_str()) {
+                    props.push_str(&format!(" label=\"{}\"", lbl));
+                }
+            }
+            crate::schema::BlockType::Link => {
+                if let Some(href) = block.properties.get("href").and_then(|v| v.as_str()) {
+                    props.push_str(&format!(" href=\"{}\"", href));
+                }
+                // Links inside might wrap text or children
+            }
+            _ => {}
+        }
+
+        content.push_str(&format!(
+            "{indent_str}/* @akasha-block id=\"{}\" */\n",
+            block.id
+        ));
+
+        // Self-closing or with children?
+        // Text/Heading/Button/Input/Image are usually self-closing in our component design (props drive content)
+        // Container types have children.
+        let is_container = matches!(
+            block.block_type,
+            crate::schema::BlockType::Container
+                | crate::schema::BlockType::Section
+                | crate::schema::BlockType::Card
+                | crate::schema::BlockType::Flex
+                | crate::schema::BlockType::Grid
+                | crate::schema::BlockType::Columns
+                | crate::schema::BlockType::Column
+                | crate::schema::BlockType::Page
+                | crate::schema::BlockType::List
+                | crate::schema::BlockType::Form
+        );
+
+        if is_container {
+            content.push_str(&format!("{indent_str}<{}{}>\n", comp_name, props));
+
+            if !block.children.is_empty() {
+                for child_id in &block.children {
+                    if let Some(child) = project.find_block(child_id) {
+                        self.append_block_to_content(content, child, project, indent + 1);
+                    }
+                }
+            }
+
+            content.push_str(&format!("{indent_str}</{}>\n", comp_name));
+        } else {
+            content.push_str(&format!("{indent_str}<{}{} />\n", comp_name, props));
+        }
+
         content.push_str(&format!("{indent_str}/* @akasha-block-end */\n"));
     }
 
     /// Sync the page containing a specific block to disk
-    pub fn sync_page_to_disk_by_block(&self, block_id: &str, project: &ProjectSchema) -> std::io::Result<()> {
+    pub fn sync_page_to_disk_by_block(
+        &self,
+        block_id: &str,
+        project: &ProjectSchema,
+    ) -> std::io::Result<()> {
         // Find which page contains this block
         for page in &project.pages {
-            if page.archived { continue; }
-            
+            if page.archived {
+                continue;
+            }
+
             // Check if this block is the root or reachable from root
             if let Some(root_id) = &page.root_block_id {
                 if self.is_block_in_tree(block_id, root_id, project) {
@@ -447,7 +813,9 @@ export default App;
     }
 
     fn is_block_in_tree(&self, target_id: &str, current_id: &str, project: &ProjectSchema) -> bool {
-        if target_id == current_id { return true; }
+        if target_id == current_id {
+            return true;
+        }
         if let Some(block) = project.find_block(current_id) {
             for child_id in &block.children {
                 if self.is_block_in_tree(target_id, child_id, project) {
@@ -464,7 +832,9 @@ export default App;
 
         // 1. Collect all updates first (immutable phase)
         for page in &project.pages {
-            if page.archived { continue; }
+            if page.archived {
+                continue;
+            }
 
             let file_name = format!("{}.tsx", pascal_case(&page.name));
             let mut tsx_path = self.pages_dir().join(&file_name);
@@ -496,42 +866,53 @@ export default App;
     /// Parse a TSX file and update the project schema based on markers
     pub fn parse_file_to_blocks(&self, file_content: &str) -> Vec<crate::schema::BlockSchema> {
         let mut blocks = Vec::new();
-        
+
         // Regex for block markers
-        let block_re = regex::Regex::new(r#"(?s)/\* @akasha-block id="([^"]+)" \*/(.*?)/\* @akasha-block-end \*/"#).unwrap();
+        let block_re = regex::Regex::new(
+            r#"(?s)/\* @akasha-block id="([^"]+)" \*/(.*?)/\* @akasha-block-end \*/"#,
+        )
+        .unwrap();
         // Regex for basic prop extraction from the first tag in the block
         // Matches <tag className="...">Content</tag>
-        let prop_re = regex::Regex::new(r#"<([a-z0-9]+)\s+className="([^"]*)"\s*>(.*?)</\1>"#).unwrap();
+        let prop_re =
+            regex::Regex::new(r#"<([a-z0-9]+)\s+className="([^"]*)"\s*>(.*?)</\1>"#).unwrap();
 
         for cap in block_re.captures_iter(file_content) {
             let id = cap[1].to_string();
             let inner_content = &cap[2].trim();
-            
+
             // Default block
-            let mut block = crate::schema::BlockSchema::new(id, crate::schema::BlockType::Container, "Synced Block");
-            
+            let mut block = crate::schema::BlockSchema::new(
+                id,
+                crate::schema::BlockType::Container,
+                "Synced Block",
+            );
+
             // Try to extract metadata from the tag
             if let Some(prop_cap) = prop_re.captures(inner_content) {
                 let tag = &prop_cap[1];
                 let classes = &prop_cap[2];
                 let text = &prop_cap[3];
-                
+
                 block.block_type = match tag {
                     "button" => crate::schema::BlockType::Button,
                     "h1" | "h2" | "h3" => crate::schema::BlockType::Heading,
                     "p" => crate::schema::BlockType::Paragraph,
                     _ => crate::schema::BlockType::Container,
                 };
-                
+
                 block.classes = classes.split_whitespace().map(|s| s.to_string()).collect();
-                if !text.contains('<') { // Only set text if it doesn't contain other tags
-                    block.properties.insert("text".into(), serde_json::Value::String(text.to_string()));
+                if !text.contains('<') {
+                    // Only set text if it doesn't contain other tags
+                    block
+                        .properties
+                        .insert("text".into(), serde_json::Value::String(text.to_string()));
                 }
             }
-            
+
             blocks.push(block);
         }
-        
+
         blocks
     }
 }

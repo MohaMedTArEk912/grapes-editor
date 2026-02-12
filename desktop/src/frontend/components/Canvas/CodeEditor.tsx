@@ -4,7 +4,7 @@ import type { editor as MonacoEditor } from "monaco-editor";
 import { useProjectStore } from "../../hooks/useProjectStore";
 import { useEditorSettings } from "../../hooks/useEditorSettings";
 import { useTheme } from "../../context/ThemeContext";
-import { getPage, getPageContent, getFileContent, saveFileContent } from "../../stores/projectStore";
+import { getPage, getPageContent, getFileContent, saveFileContent, toggleTerminal } from "../../stores/projectStore";
 import * as EditorSettingsStore from "../../stores/editorSettingsStore";
 
 class MonacoErrorBoundary extends React.Component<
@@ -164,7 +164,7 @@ function getEditorLanguage(path: string | null): string {
 }
 
 const CodeEditor: React.FC = () => {
-    const { selectedPageId, selectedFilePath, project } = useProjectStore();
+    const { selectedPageId, selectedFilePath, project, terminalOpen } = useProjectStore();
     const settings = useEditorSettings();
     const { theme: appTheme } = useTheme();
     const [code, setCode] = useState<string>("");
@@ -190,6 +190,15 @@ const CodeEditor: React.FC = () => {
     const effectiveFontSize = useMemo(() => {
         return Math.round(settings.fontSize * (settings.zoomLevel / 100));
     }, [settings.fontSize, settings.zoomLevel]);
+
+    /**
+     * Check whether any line in the given range [startLine, endLine] (1-based) is read-only.
+     */
+    const isRangeReadOnly = useCallback((startLine: number, endLine: number): boolean => {
+        return readOnlyRangesRef.current.some(
+            (r) => startLine <= r.endLine && endLine >= r.startLine
+        );
+    }, []);
 
     /**
      * Scan code for @akasha-block region markers and apply:
@@ -331,6 +340,19 @@ const CodeEditor: React.FC = () => {
         setSaveError(null);
     };
 
+    /**
+     * Flash a brief visual notification on the editor when an edit is blocked.
+     * Uses a transient CSS class to avoid spamming external toast systems.
+     */
+    const flashReadOnlyWarning = useCallback(() => {
+        const el = editorRef.current?.getDomNode();
+        if (!el) return;
+        // Prevent rapid re-triggering
+        if (el.classList.contains("akasha-readonly-flash")) return;
+        el.classList.add("akasha-readonly-flash");
+        setTimeout(() => el.classList.remove("akasha-readonly-flash"), 600);
+    }, []);
+
     const handleEditorMount = (editor: MonacoEditor.IStandaloneCodeEditor) => {
         editorRef.current = editor;
 
@@ -345,13 +367,60 @@ const CodeEditor: React.FC = () => {
             applyBlockRegions(editor);
         });
 
-        // Intercept edits and reject changes inside read-only regions
-        editor.onDidChangeModelContent(() => {
-            // We deliberately don't block edits at this stage —
-            // the decoration + hover message serves as a visual warning.
-            // Full enforcement via `onWillType` is possible but may disrupt DX.
-            // Users can use the unsafe mode toggle (planned Phase 4) to override.
+        // ─── Enforce read-only regions ─────────────────────────────────
+        // Block keyboard input (typing, deletion) when cursor is inside
+        // a protected @akasha-block region.
+        editor.onKeyDown((e) => {
+            const selections = editor.getSelections();
+            if (!selections || readOnlyRangesRef.current.length === 0) return;
+
+            // Check if ANY selection/cursor touches a read-only region
+            const touchesReadOnly = selections.some((sel) =>
+                isRangeReadOnly(
+                    Math.min(sel.startLineNumber, sel.endLineNumber),
+                    Math.max(sel.startLineNumber, sel.endLineNumber)
+                )
+            );
+
+            if (!touchesReadOnly) return;
+
+            // Determine if this key press would mutate editor content
+            const isModifier = e.ctrlKey || e.metaKey || e.altKey;
+            const isPrintable = e.browserEvent.key.length === 1 && !isModifier;
+            const isDeletion =
+                e.keyCode === 1  /* Backspace */ ||
+                e.keyCode === 2  /* Tab (indent) */ ||
+                e.keyCode === 46 /* Delete */ ||
+                e.browserEvent.key === "Backspace" ||
+                e.browserEvent.key === "Delete";
+            const isEnter = e.keyCode === 3 || e.browserEvent.key === "Enter";
+
+            // Allow navigation keys (arrows, Home, End, PgUp/Dn, Escape)
+            // Allow Ctrl+C (copy), Ctrl+A (select all)
+            const isCopy = isModifier && (e.browserEvent.key === "c" || e.browserEvent.key === "C");
+            const isSelectAll = isModifier && (e.browserEvent.key === "a" || e.browserEvent.key === "A");
+            const isFind = isModifier && (e.browserEvent.key === "f" || e.browserEvent.key === "F");
+
+            if (isCopy || isSelectAll || isFind) return; // Allow read-only safe shortcuts
+
+            // Block cut (Ctrl+X)
+            const isCut = isModifier && (e.browserEvent.key === "x" || e.browserEvent.key === "X");
+            // Block paste (Ctrl+V)
+            const isPaste = isModifier && (e.browserEvent.key === "v" || e.browserEvent.key === "V");
+            // Block undo/redo that might affect read-only regions
+            const isUndo = isModifier && (e.browserEvent.key === "z" || e.browserEvent.key === "Z");
+
+            if (isPrintable || isDeletion || isEnter || isCut || isPaste || isUndo) {
+                e.preventDefault();
+                e.stopPropagation();
+                flashReadOnlyWarning();
+            }
         });
+
+        // Also intercept programmatic typing via onWillType
+        // (catches auto-complete insertions, snippets, etc.)
+        // NOTE: onWillType is not available in all Monaco versions;
+        // the onKeyDown handler above covers the primary use cases.
 
         // Add keyboard shortcuts using numeric key codes
         // Ctrl/Cmd + = (zoom in)
@@ -577,11 +646,13 @@ const CodeEditor: React.FC = () => {
                 </MonacoErrorBoundary>
             </div>
 
-            {/* VS Code-style Status Bar */}
-            <div className="h-6 bg-[var(--ide-primary)] px-3 flex items-center justify-between text-[10px] text-white/90 shrink-0 select-none">
+            {/* Unified Status Bar - Matches IDELayout */}
+            <div className="h-6 bg-[var(--ide-statusbar)] px-3 flex items-center justify-between text-[11px] text-white select-none shrink-0">
                 <div className="flex items-center gap-4">
-                    {/* Git Branch - placeholder */}
-                    <div className="flex items-center gap-1">
+                    <span className="font-medium">{project?.name || "No Project"}</span>
+
+                    {/* Git Branch */}
+                    <div className="flex items-center gap-1 opacity-80">
                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                         </svg>
@@ -589,7 +660,7 @@ const CodeEditor: React.FC = () => {
                     </div>
 
                     {/* Sync Status */}
-                    <div className={`flex items-center gap-1 ${saveError ? "text-red-200" : isDirty ? "text-yellow-200" : ""
+                    <div className={`flex items-center gap-1 ${saveError ? "text-red-300" : isDirty ? "text-yellow-300" : "opacity-80"
                         }`}>
                         {isDirty ? (
                             <>
@@ -606,25 +677,28 @@ const CodeEditor: React.FC = () => {
                                 <span>Saving...</span>
                             </>
                         ) : (
-                            <>
-                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-                                </svg>
-                                <span>Synced</span>
-                            </>
+                            null
                         )}
                     </div>
                 </div>
 
                 <div className="flex items-center gap-4">
-                    {/* Line/Column - would need editor ref for real values */}
-                    <span>Ln {cursorPosition.line}, Col {cursorPosition.column}</span>
+                    {/* Line/Column */}
+                    <span className="opacity-80 hover:opacity-100 cursor-pointer">Ln {cursorPosition.line}, Col {cursorPosition.column}</span>
 
                     {/* Encoding */}
-                    <span>UTF-8</span>
+                    <span className="opacity-60">UTF-8</span>
 
                     {/* Language */}
-                    <span className="uppercase font-medium">{editorLanguage}</span>
+                    <span className="uppercase font-medium opacity-80">{editorLanguage}</span>
+
+                    {/* Terminal Toggle */}
+                    <button
+                        onClick={() => toggleTerminal()}
+                        className="hover:bg-white/20 px-2 py-0.5 rounded transition-colors"
+                    >
+                        {terminalOpen ? "Hide Terminal" : "Terminal"}
+                    </button>
                 </div>
             </div>
         </div>

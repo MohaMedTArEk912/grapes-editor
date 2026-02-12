@@ -6,6 +6,8 @@
  */
 
 import React, { useState } from "react";
+import { useProjectStore } from "../../hooks/useProjectStore";
+import { createMasterComponent } from "../../stores/projectStore";
 
 interface ComponentItem {
     type: string;
@@ -53,10 +55,13 @@ const COMPONENT_LIBRARY: ComponentCategory[] = [
 ];
 
 const ComponentPalette: React.FC = () => {
+    const { project } = useProjectStore();
     const [searchQuery, setSearchQuery] = useState("");
     const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
-        new Set()
+        new Set(["Components", "Layout", "Typography", "Forms", "Media"])
     );
+    const [isCreatingComponent, setIsCreatingComponent] = useState(false);
+    const [newComponentName, setNewComponentName] = useState("");
 
     const toggleCategory = (categoryName: string) => {
         const newExpanded = new Set(expandedCategories);
@@ -68,9 +73,11 @@ const ComponentPalette: React.FC = () => {
         setExpandedCategories(newExpanded);
     };
 
-    const handleDragStart = (e: React.DragEvent, componentType: string) => {
+    const handleDragStart = (e: React.DragEvent, componentType: string, componentId?: string) => {
         e.dataTransfer.setData("application/akasha-block", componentType);
-        e.dataTransfer.setData("text/akasha-block", componentType);
+        if (componentId) {
+            e.dataTransfer.setData("application/akasha-component-id", componentId);
+        }
         e.dataTransfer.setData("text/plain", componentType);
         e.dataTransfer.effectAllowed = "copy";
 
@@ -85,13 +92,41 @@ const ComponentPalette: React.FC = () => {
         setTimeout(() => document.body.removeChild(ghost), 0);
     };
 
-    const filteredLibrary = COMPONENT_LIBRARY.map(category => ({
+    const handleCreateComponent = async () => {
+        if (!newComponentName.trim()) return;
+        try {
+            await createMasterComponent(newComponentName);
+            setNewComponentName("");
+            setIsCreatingComponent(false);
+        } catch (err) {
+            console.error("Failed to create component:", err);
+        }
+    };
+
+    // Build dynamic library including components
+    const dynamicLibrary = [
+        {
+            name: "Components",
+            items: [
+                ...(project?.components.filter(c => !c.archived).map(c => ({
+                    type: "instance",
+                    name: c.name,
+                    icon: "🧩",
+                    description: "Reusable component",
+                    id: c.id
+                })) || [])
+            ]
+        },
+        ...COMPONENT_LIBRARY
+    ];
+
+    const filteredLibrary = dynamicLibrary.map(category => ({
         ...category,
         items: category.items.filter(item =>
             item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
             item.description.toLowerCase().includes(searchQuery.toLowerCase())
         )
-    })).filter(category => category.items.length > 0);
+    })).filter(category => category.items.length > 0 || category.name === "Components");
 
     return (
         <div className="w-64 bg-[var(--ide-bg-sidebar)] border-r border-[var(--ide-border)] flex flex-col h-full">
@@ -103,7 +138,7 @@ const ComponentPalette: React.FC = () => {
                 </div>
                 <div className="relative group">
                     <input
-                        type="text"
+                        type="search"
                         placeholder="Quick search..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
@@ -117,20 +152,13 @@ const ComponentPalette: React.FC = () => {
 
             {/* Component List */}
             <div className="flex-1 overflow-y-auto custom-scrollbar px-4 pb-4">
-                {filteredLibrary.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-12 opacity-40">
-                        <svg className="w-10 h-10 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                        </svg>
-                        <span className="text-xs">No matches</span>
-                    </div>
-                ) : (
-                    filteredLibrary.map((category) => (
-                        <div key={category.name} className="mb-6 animate-fade-in">
-                            {/* Category Header */}
+                {filteredLibrary.map((category) => (
+                    <div key={category.name} className="mb-6 animate-fade-in">
+                        {/* Category Header */}
+                        <div className="flex items-center justify-between mb-2">
                             <button
                                 onClick={() => toggleCategory(category.name)}
-                                className="w-full py-2 flex items-center gap-2 group mb-2"
+                                className="flex items-center gap-2 group w-full"
                             >
                                 <svg
                                     className={`w-2.5 h-2.5 text-[var(--ide-text-muted)] group-hover:text-indigo-400 transition-all ${expandedCategories.has(category.name) ? 'rotate-90' : ''}`}
@@ -143,33 +171,88 @@ const ComponentPalette: React.FC = () => {
                                 </span>
                             </button>
 
-                            {/* Category Items: Grid View */}
-                            {expandedCategories.has(category.name) && (
-                                <div className="grid grid-cols-2 gap-2">
-                                    {category.items.map((item) => (
-                                        <div
-                                            key={item.type}
-                                            draggable
-                                            onDragStart={(e) => handleDragStart(e, item.type)}
-                                            className="group relative h-20 bg-[var(--ide-bg-panel)] hover:bg-[var(--ide-bg-elevated)] border border-[var(--ide-border)] hover:border-indigo-500/30 rounded-xl cursor-grab transition-all duration-300 flex flex-col items-center justify-center gap-2 overflow-hidden shadow-sm"
-                                            title={item.description}
-                                        >
-                                            {/* Hover Glow */}
-                                            <div className="absolute inset-0 bg-indigo-500/10 opacity-0 group-hover:opacity-100 blur-xl transition-opacity pointer-events-none" />
-
-                                            <div className="relative transform group-hover:scale-110 transition-transform duration-300">
-                                                <span className="text-xl filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">{item.icon}</span>
-                                            </div>
-                                            <div className="relative text-[10px] text-[var(--ide-text-secondary)] font-bold tracking-tight group-hover:text-[var(--ide-text)] transition-colors">
-                                                {item.name}
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
+                            {/* Create Component Logic */}
+                            {category.name === "Components" && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setIsCreatingComponent(!isCreatingComponent); }}
+                                    className="text-[var(--ide-text-muted)] hover:text-indigo-400 p-1"
+                                    title="Create Component"
+                                >
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                                    </svg>
+                                </button>
                             )}
                         </div>
-                    ))
-                )}
+
+                        {/* Create Component Input */}
+                        {category.name === "Components" && isCreatingComponent && expandedCategories.has("Components") && (
+                            <div className="mb-3 px-1">
+                                <form
+                                    onSubmit={(e) => { e.preventDefault(); handleCreateComponent(); }}
+                                    className="flex items-center gap-2"
+                                >
+                                    <input
+                                        type="text"
+                                        autoFocus
+                                        placeholder="Name..."
+                                        value={newComponentName}
+                                        onChange={e => setNewComponentName(e.target.value)}
+                                        className="w-full text-xs bg-[var(--ide-bg-elevated)] border border-[var(--ide-border)] rounded px-2 py-1 text-[var(--ide-text)]"
+                                    />
+                                    <button type="submit" className="text-xs bg-indigo-600 text-white px-2 py-1 rounded hover:bg-indigo-700">Add</button>
+                                </form>
+                            </div>
+                        )}
+
+                        {/* Category Items: Grid View */}
+                        {expandedCategories.has(category.name) && (
+                            <div className="grid grid-cols-2 gap-2">
+                                {category.items.map((item) => (
+                                    <div
+                                        key={item.name + (item as any).id}
+                                        draggable
+                                        onDragStart={(e) => handleDragStart(e, item.type, (item as any).id)}
+                                        className="group relative h-20 bg-[var(--ide-bg-panel)] hover:bg-[var(--ide-bg-elevated)] border border-[var(--ide-border)] hover:border-indigo-500/30 rounded-xl cursor-grab transition-all duration-300 flex flex-col items-center justify-center gap-2 overflow-hidden shadow-sm"
+                                        title={item.description}
+                                    >
+                                        <div className="absolute inset-0 bg-indigo-500/10 opacity-0 group-hover:opacity-100 blur-xl transition-opacity pointer-events-none" />
+                                        <div className="relative transform group-hover:scale-110 transition-transform duration-300">
+                                            <span className="text-xl filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">{item.icon}</span>
+                                        </div>
+                                        <div className="relative text-[10px] text-[var(--ide-text-secondary)] font-bold tracking-tight group-hover:text-[var(--ide-text)] transition-colors text-center px-1 truncate w-full">
+                                            {item.name}
+                                        </div>
+
+                                        {/* Edit Button for Components */}
+                                        {category.name === "Components" && (
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    // Import dynamically or cast to any to avoid circular deps if needed
+                                                    // But createMasterComponent is imported. selectComponent needs import.
+                                                    const { selectComponent } = require("../../stores/projectStore");
+                                                    selectComponent((item as any).id);
+                                                }}
+                                                className="absolute top-1 right-1 p-1 bg-white/10 hover:bg-white/30 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                                title="Edit Master Component"
+                                            >
+                                                <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                                </svg>
+                                            </button>
+                                        )}
+                                    </div>
+                                ))}
+                                {category.name === "Components" && category.items.length === 0 && !isCreatingComponent && (
+                                    <div className="col-span-2 text-center text-[10px] text-[var(--ide-text-muted)] italic py-2">
+                                        No components created yet
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                ))}
             </div>
 
             {/* Premium Hint */}
