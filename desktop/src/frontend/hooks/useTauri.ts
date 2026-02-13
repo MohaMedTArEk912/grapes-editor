@@ -223,6 +223,19 @@ export interface FileEntry {
     extension?: string;
 }
 
+export interface GitCommitInfo {
+    id: string;
+    message: string;
+    timestamp: number;
+    summary: string;
+}
+
+export interface GitStatus {
+    is_repo: boolean;
+    changed_files: number;
+    total_commits: number;
+}
+
 // ===== API Functions (all via Tauri IPC) =====
 
 /**
@@ -445,6 +458,25 @@ export function useApi() {
             invoke<BlockSchema>('ipc_create_component', { name, description }),
 
         getComponent: (id: string) => invoke<BlockSchema>('ipc_get_component', { id }),
+
+        // ─── Git Version Control ────────────────────────
+        gitHistory: (limit?: number) =>
+            invoke<GitCommitInfo[]>('ipc_git_history', { limit }),
+
+        gitRestore: (commitId: string) =>
+            invoke<GitCommitInfo>('ipc_git_restore', { commitId }),
+
+        gitDiff: (commitId: string) =>
+            invoke<string>('ipc_git_diff', { commitId }),
+
+        gitCommit: (message: string) =>
+            invoke<GitCommitInfo | null>('ipc_git_commit', { message }),
+
+        initGitRepo: () =>
+            invoke<boolean>('ipc_git_init'),
+
+        gitStatus: () =>
+            invoke<GitStatus>('ipc_git_status'),
     };
 }
 

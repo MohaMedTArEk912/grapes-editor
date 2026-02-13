@@ -10,6 +10,53 @@ use crate::backend::error::ApiError;
 use crate::backend::state::AppState;
 use crate::schema::ProjectSchema;
 
+async fn configure_sync_root(
+    state: &AppState,
+    project: &mut ProjectSchema,
+    root_path: &str,
+) -> Result<(), ApiError> {
+    project.root_path = Some(root_path.replace('\\', "/"));
+
+    // Initialize structure
+    let engine = crate::generator::sync_engine::SyncEngine::new(root_path.to_string());
+    engine
+        .init_project_structure(project)
+        .map_err(|e| ApiError::Internal(format!("Sync init error: {}", e)))?;
+
+    // Perform initial sync of all pages
+    for page in &project.pages {
+        if !page.archived {
+            engine
+                .sync_page_to_disk(&page.id, project)
+                .map_err(|e| ApiError::Internal(format!("Initial sync error: {}", e)))?;
+        }
+    }
+
+    // Initialize Git repo (no-op if already exists)
+    if let Err(e) = crate::backend::git::init_repo(std::path::Path::new(root_path)) {
+        log::warn!("Git init failed (non-fatal): {}", e);
+    }
+
+    state.set_project(project.clone()).await;
+
+    // Start file watcher
+    let app_handle_opt = {
+        let app_handle_lock = state.app_handle.lock().await;
+        app_handle_lock.clone()
+    };
+
+    if let Some(app_handle) = app_handle_opt {
+        let mut watcher = state.watcher.lock().await;
+        if let Err(e) = watcher.watch(root_path, app_handle) {
+            log::error!("Failed to start file watcher: {}", e);
+        }
+    } else {
+        log::warn!("App handle not available, skipping watcher start");
+    }
+
+    Ok(())
+}
+
 /// Create project request
 #[derive(Debug, Deserialize)]
 pub struct CreateProjectRequest {
@@ -29,8 +76,15 @@ pub async fn create_project(
     State(state): State<AppState>,
     Json(req): Json<CreateProjectRequest>,
 ) -> Result<Json<ProjectSchema>, ApiError> {
-    let project = ProjectSchema::new(uuid::Uuid::new_v4().to_string(), req.name);
-    state.set_project(project.clone()).await;
+    let mut project = ProjectSchema::new(uuid::Uuid::new_v4().to_string(), req.name);
+
+    if let Some(workspace_path) = state.get_workspace_path().await {
+        let project_path = PathBuf::from(&workspace_path).join(&project.name);
+        let project_path_str = project_path.to_string_lossy().to_string();
+        configure_sync_root(&state, &mut project, &project_path_str).await?;
+    } else {
+        state.set_project(project.clone()).await;
+    }
     Ok(Json(project))
 }
 
@@ -77,39 +131,7 @@ pub async fn set_sync_root(
         .await
         .ok_or_else(|| ApiError::NotFound("No project loaded".into()))?;
 
-    project.root_path = Some(req.path.clone());
-
-    // Initialize structure
-    let engine = crate::generator::sync_engine::SyncEngine::new(req.path.clone());
-    engine
-        .init_project_structure(&project)
-        .map_err(|e| ApiError::Internal(format!("Sync init error: {}", e)))?;
-
-    // Perform initial sync of all pages
-    for page in &project.pages {
-        if !page.archived {
-            engine
-                .sync_page_to_disk(&page.id, &project)
-                .map_err(|e| ApiError::Internal(format!("Initial sync error: {}", e)))?;
-        }
-    }
-
-    state.set_project(project).await;
-
-    // Start file watcher
-    let app_handle_opt = {
-        let app_handle_lock = state.app_handle.lock().await;
-        app_handle_lock.clone()
-    };
-
-    if let Some(app_handle) = app_handle_opt {
-        let mut watcher = state.watcher.lock().await;
-        if let Err(e) = watcher.watch(&req.path, app_handle) {
-            log::error!("Failed to start file watcher: {}", e);
-        }
-    } else {
-        log::warn!("App handle not available, skipping watcher start");
-    }
+    configure_sync_root(&state, &mut project, &req.path).await?;
 
     Ok(Json(true))
 }

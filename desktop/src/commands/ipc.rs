@@ -867,3 +867,115 @@ pub async fn ipc_write_file_content(
     let json = routes::files::write_file(ax, body).await.map_err(map_err)?;
     serde_json::to_value(json.0).map_err(|e| e.to_string())
 }
+
+// ============================================================================
+// GIT VERSION CONTROL
+// ============================================================================
+
+#[tauri::command]
+pub async fn ipc_git_history(
+    state: State<'_, BackendAppState>,
+    limit: Option<usize>,
+) -> Result<serde_json::Value, String> {
+    let project = state
+        .get_project()
+        .await
+        .ok_or_else(|| "No project loaded".to_string())?;
+    let root = project
+        .root_path
+        .as_ref()
+        .ok_or_else(|| "No project root path set".to_string())?;
+
+    let commits = crate::backend::git::get_history(
+        std::path::Path::new(root),
+        limit.unwrap_or(50),
+    )?;
+    serde_json::to_value(commits).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn ipc_git_restore(
+    state: State<'_, BackendAppState>,
+    commit_id: String,
+) -> Result<serde_json::Value, String> {
+    let project = state
+        .get_project()
+        .await
+        .ok_or_else(|| "No project loaded".to_string())?;
+    let root = project
+        .root_path
+        .as_ref()
+        .ok_or_else(|| "No project root path set".to_string())?;
+
+    let info = crate::backend::git::restore_commit(std::path::Path::new(root), &commit_id)?;
+    serde_json::to_value(info).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn ipc_git_diff(
+    state: State<'_, BackendAppState>,
+    commit_id: String,
+) -> Result<String, String> {
+    let project = state
+        .get_project()
+        .await
+        .ok_or_else(|| "No project loaded".to_string())?;
+    let root = project
+        .root_path
+        .as_ref()
+        .ok_or_else(|| "No project root path set".to_string())?;
+
+    crate::backend::git::get_diff(std::path::Path::new(root), &commit_id)
+}
+
+#[tauri::command]
+pub async fn ipc_git_commit(
+    state: State<'_, BackendAppState>,
+    message: String,
+) -> Result<serde_json::Value, String> {
+    let project = state
+        .get_project()
+        .await
+        .ok_or_else(|| "No project loaded".to_string())?;
+    let root = project
+        .root_path
+        .as_ref()
+        .ok_or_else(|| "No project root path set".to_string())?;
+
+    let info = crate::backend::git::manual_commit(std::path::Path::new(root), &message)?;
+    serde_json::to_value(info).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn ipc_git_init(
+    state: State<'_, BackendAppState>,
+) -> Result<bool, String> {
+    let project = state
+        .get_project()
+        .await
+        .ok_or_else(|| "No project loaded".to_string())?;
+    let root = project
+        .root_path
+        .as_ref()
+        .ok_or_else(|| "No project root path set".to_string())?;
+
+    crate::backend::git::init_repo(std::path::Path::new(root))?;
+    Ok(true)
+}
+
+#[tauri::command]
+pub async fn ipc_git_status(
+    state: State<'_, BackendAppState>,
+) -> Result<serde_json::Value, String> {
+    let project = state
+        .get_project()
+        .await
+        .ok_or_else(|| "No project loaded".to_string())?;
+    let root = project
+        .root_path
+        .as_ref()
+        .ok_or_else(|| "No project root path set".to_string())?;
+
+    let status = crate::backend::git::get_git_status(std::path::Path::new(root))?;
+    serde_json::to_value(status).map_err(|e| e.to_string())
+}

@@ -60,10 +60,22 @@ impl AppState {
         })
     }
 
-    /// Set current project (save to DB)
+    /// Set current project (save to DB + auto-commit to Git)
     pub async fn set_project(&self, project: ProjectSchema) {
         if let Err(e) = self.db.save_project(&project) {
             log::error!("Failed to save project '{}': {}", project.name, e);
+        }
+
+        // Auto-commit to Git in the background (non-blocking)
+        if let Some(ref root_path) = project.root_path {
+            let root = std::path::PathBuf::from(root_path);
+            if root.join(".git").exists() {
+                tokio::spawn(async move {
+                    if let Err(e) = crate::backend::git::auto_commit(&root, "Auto-save") {
+                        log::warn!("Git auto-commit failed: {}", e);
+                    }
+                });
+            }
         }
     }
 

@@ -164,6 +164,13 @@ pub fn run() {
             commands::ipc::ipc_delete_file,
             commands::ipc::ipc_read_file_content,
             commands::ipc::ipc_write_file_content,
+            // ─── Git Version Control ────────────────────────
+            commands::ipc::ipc_git_history,
+            commands::ipc::ipc_git_restore,
+            commands::ipc::ipc_git_diff,
+            commands::ipc::ipc_git_commit,
+            commands::ipc::ipc_git_init,
+            commands::ipc::ipc_git_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

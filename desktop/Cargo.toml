@@ -49,6 +49,9 @@ env_logger = "0.11"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+# Git
+git2 = { version = "0.19", features = ["vendored-libgit2"] }
+
 # Utilities
 zip = "0.6"
 regex = "1"

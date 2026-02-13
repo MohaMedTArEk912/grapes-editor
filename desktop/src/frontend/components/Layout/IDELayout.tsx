@@ -16,12 +16,14 @@ import { useEditorSettings } from "../../hooks/useEditorSettings";
 import * as EditorSettingsStore from "../../stores/editorSettingsStore";
 
 import CodeEditor from "../Canvas/CodeEditor";
+import DiffViewer from "../Canvas/DiffViewer";
 import ProjectSettingsModal from "../Modals/ProjectSettingsModal";
 import ComponentPalette from "../Visual/ComponentPalette";
 import Inspector from "../Visual/Inspector";
 import WindowControls from "../UI/WindowControls";
 import EditorTabs from "./EditorTabs";
 import { SidebarSection, PagesList, AddPageButton } from "./SidebarComponents";
+import SourceControlPanel from "./SourceControlPanel";
 
 interface IDELayoutProps {
     toolbar: React.ReactNode;
@@ -39,13 +41,13 @@ const IDELayout: React.FC<IDELayoutProps> = ({
     canvas,
     terminal
 }) => {
-    const { project, activeTab, editMode, inspectorOpen, loading, loadingMessage, installLog, installError, terminalOpen } = useProjectStore();
+    const { project, activeTab, editMode, inspectorOpen, loading, loadingMessage, installLog, installError, terminalOpen, diffView } = useProjectStore();
     const editorSettings = useEditorSettings();
 
 
     // Sidebar state
-    type SidebarType = "explorer" | "components" | "logic" | "api" | "erd";
-    const [sidebarOpen, setSidebarOpen] = useState(!inspectorOpen);
+    type SidebarType = "explorer" | "components" | "logic" | "api" | "erd" | "git";
+    const [sidebarOpen, setSidebarOpen] = useState(false);
     const [activeSidebar, setActiveSidebar] = useState<SidebarType>(editMode === "visual" ? "components" : "explorer");
     const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -198,6 +200,13 @@ const IDELayout: React.FC<IDELayoutProps> = ({
                         onClick={() => handleActivityClick("erd")}
                     />
 
+                    <ActivityIcon
+                        icon="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"
+                        label="Source Control"
+                        active={sidebarOpen && activeSidebar === "git"}
+                        onClick={() => handleActivityClick("git")}
+                    />
+
                     {/* Spacer pushes bottom icons */}
                     <div className="flex-1" />
 
@@ -273,6 +282,7 @@ const IDELayout: React.FC<IDELayoutProps> = ({
                                     </button>
                                 </div>
                             )}
+                            {activeSidebar === "git" && <SourceControlPanel />}
                             {activeSidebar === "erd" && (
                                 <div className="py-2 space-y-1">
                                     <button
@@ -317,7 +327,7 @@ const IDELayout: React.FC<IDELayoutProps> = ({
                                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--ide-primary)]"></div>
                                 </div>
                             )}
-                            {activeTab === "canvas" && (editMode === "visual" ? canvas : <CodeEditor />)}
+                            {activeTab === "canvas" && (editMode === "visual" ? canvas : (diffView ? <DiffViewer /> : <CodeEditor />))}
                             {activeTab !== "canvas" && canvas}
                         </div>
 

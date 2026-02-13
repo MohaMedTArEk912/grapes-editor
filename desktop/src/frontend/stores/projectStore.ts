@@ -24,6 +24,14 @@ interface ProjectState {
     selectedFilePath: string | null;
     terminalOpen: boolean;
 
+    /** Diff viewer state — when set, the editor area shows a diff view */
+    diffView: {
+        filename: string;
+        lines: { text: string; type: "add" | "del" | "context" | "hunk" }[];
+        commitId: string;
+        commitMessage: string;
+    } | null;
+
     /** Page IDs that are open as tabs (VS Code-style). */
     openPageIds: string[];
 
@@ -54,6 +62,7 @@ const initialState: ProjectState = {
     selectedFilePath: null,
     terminalOpen: false,
     openPageIds: [],
+    diffView: null,
 };
 
 // Internal state
@@ -280,7 +289,7 @@ export async function createProject(name: string): Promise<void> {
 
         // If workspace is set, we automatically configure the sync root 
         // as a subfolder within the workspace
-        if (state.workspacePath) {
+        if (state.workspacePath && !project.root_path) {
             const projectPath = `${state.workspacePath}/${name}`.replace(/\\/g, '/');
             await api.setProjectRoot(projectPath);
             // Reload the specific project by ID to get updated root_path
@@ -1051,8 +1060,35 @@ export function selectFile(path: string | null): void {
         selectedFilePath: path,
         selectedPageId: null,
         selectedBlockId: null,
+        diffView: null,
         editMode: path ? "code" : state.editMode
     }));
+}
+
+/**
+ * Open the diff viewer for a specific file from a commit
+ */
+export function openDiffView(data: {
+    filename: string;
+    lines: { text: string; type: "add" | "del" | "context" | "hunk" }[];
+    commitId: string;
+    commitMessage: string;
+}): void {
+    updateState(() => ({
+        diffView: data,
+        editMode: "code",
+        activeTab: "canvas" as const,
+        selectedFilePath: null,
+        selectedPageId: null,
+        selectedBlockId: null,
+    }));
+}
+
+/**
+ * Close the diff viewer
+ */
+export function closeDiffView(): void {
+    updateState(() => ({ diffView: null }));
 }
 
 /**
