@@ -163,7 +163,7 @@ fn collect_backend_files(project: &ProjectSchema, wiring: &FlowWiring) -> Vec<Ge
     files
 }
 
-fn build_zip_buffer(project: &ProjectSchema) -> Result<Vec<u8>, ApiError> {
+pub fn build_zip_buffer(project: &ProjectSchema) -> Result<Vec<u8>, ApiError> {
     let wiring = resolve_wiring(project)?;
 
     let frontend_files = collect_frontend_files(project, &wiring);

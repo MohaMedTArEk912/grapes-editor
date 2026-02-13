@@ -5,9 +5,10 @@
  * Provides drag-and-drop components for building UIs.
  */
 
-import React, { useState } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { useProjectStore } from "../../hooks/useProjectStore";
-import { createMasterComponent } from "../../stores/projectStore";
+import { createMasterComponent, addBlockAtPosition } from "../../stores/projectStore";
+import { useDragDrop } from "../../context/DragDropContext";
 
 interface ComponentItem {
     type: string;
@@ -55,13 +56,15 @@ const COMPONENT_LIBRARY: ComponentCategory[] = [
 ];
 
 const ComponentPalette: React.FC = () => {
-    const { project } = useProjectStore();
+    const { project, selectedBlockId } = useProjectStore();
+    const { prepareDrag } = useDragDrop();
     const [searchQuery, setSearchQuery] = useState("");
     const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
         new Set(["Components", "Layout", "Typography", "Forms", "Media"])
     );
     const [isCreatingComponent, setIsCreatingComponent] = useState(false);
     const [newComponentName, setNewComponentName] = useState("");
+    const [lastAdded, setLastAdded] = useState<string | null>(null);
 
     const toggleCategory = (categoryName: string) => {
         const newExpanded = new Set(expandedCategories);
@@ -73,6 +76,43 @@ const ComponentPalette: React.FC = () => {
         setExpandedCategories(newExpanded);
     };
 
+    /** Click to instantly add a component to the canvas */
+    const handleClick = useCallback(async (componentType: string, componentId?: string) => {
+        const name = componentType.charAt(0).toUpperCase() + componentType.slice(1);
+        try {
+            await addBlockAtPosition(componentType, name, 0, 0, componentId);
+            setLastAdded(componentType);
+            setTimeout(() => setLastAdded(null), 600);
+        } catch (err) {
+            console.error("[Palette] click-to-add failed:", err);
+        }
+    }, []);
+
+    // Listen for palette-click events from DragDropContext (mousedown+mouseup without move)
+    useEffect(() => {
+        const handler = (e: Event) => {
+            const detail = (e as CustomEvent).detail;
+            if (detail?.payload?.type && !detail?.payload?.moveId) {
+                handleClick(detail.payload.type, detail.payload.componentId);
+            }
+        };
+        document.addEventListener("akasha-palette-click", handler);
+        return () => document.removeEventListener("akasha-palette-click", handler);
+    }, [handleClick]);
+
+    /** Pointer-based drag start (works in Tauri WebView) */
+    const handlePointerDragStart = useCallback((e: React.MouseEvent, componentType: string, componentId?: string) => {
+        prepareDrag(
+            {
+                type: componentType,
+                componentId,
+                label: componentType.toUpperCase(),
+            },
+            e,
+        );
+    }, [prepareDrag]);
+
+    /** Legacy HTML5 DnD start (kept as backup for browser mode) */
     const handleDragStart = (e: React.DragEvent, componentType: string, componentId?: string) => {
         e.dataTransfer.setData("application/akasha-block", componentType);
         if (componentId) {
@@ -80,6 +120,9 @@ const ComponentPalette: React.FC = () => {
         }
         e.dataTransfer.setData("text/plain", componentType);
         e.dataTransfer.effectAllowed = "copy";
+
+        // Store in global for WebView fallback (Tauri doesn't preserve DataTransfer)
+        (window as any).__akashaDragData = { type: componentType, componentId };
 
         // Add a ghost image or styling if needed
         const ghost = document.createElement('div');
@@ -213,8 +256,16 @@ const ComponentPalette: React.FC = () => {
                                         key={item.name + (item as any).id}
                                         draggable
                                         onDragStart={(e) => handleDragStart(e, item.type, (item as any).id)}
-                                        className="group relative h-20 bg-[var(--ide-bg-panel)] hover:bg-[var(--ide-bg-elevated)] border border-[var(--ide-border)] hover:border-indigo-500/30 rounded-xl cursor-grab transition-all duration-300 flex flex-col items-center justify-center gap-2 overflow-hidden shadow-sm"
-                                        title={item.description}
+                                        onMouseDown={(e) => {
+                                            // Only start pointer drag on left button and if not a child button click
+                                            if (e.button === 0 && (e.target as HTMLElement).closest('[data-palette-edit]') === null) {
+                                                handlePointerDragStart(e, item.type, (item as any).id);
+                                            }
+                                        }}
+                                        className={`group relative h-20 bg-[var(--ide-bg-panel)] hover:bg-[var(--ide-bg-elevated)] border border-[var(--ide-border)] hover:border-indigo-500/30 rounded-xl cursor-pointer transition-all duration-300 flex flex-col items-center justify-center gap-2 overflow-hidden shadow-sm ${
+                                            lastAdded === item.type ? 'ring-2 ring-green-400 scale-95' : ''
+                                        }`}
+                                        title={`${item.description} — Click to add, or drag to canvas`}
                                     >
                                         <div className="absolute inset-0 bg-indigo-500/10 opacity-0 group-hover:opacity-100 blur-xl transition-opacity pointer-events-none" />
                                         <div className="relative transform group-hover:scale-110 transition-transform duration-300">
@@ -227,10 +278,9 @@ const ComponentPalette: React.FC = () => {
                                         {/* Edit Button for Components */}
                                         {category.name === "Components" && (
                                             <button
+                                                data-palette-edit
                                                 onClick={(e) => {
                                                     e.stopPropagation();
-                                                    // Import dynamically or cast to any to avoid circular deps if needed
-                                                    // But createMasterComponent is imported. selectComponent needs import.
                                                     const { selectComponent } = require("../../stores/projectStore");
                                                     selectComponent((item as any).id);
                                                 }}
@@ -260,7 +310,7 @@ const ComponentPalette: React.FC = () => {
                 <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-500/5 border border-indigo-500/20">
                     <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
                     <p className="text-[9px] text-indigo-500/70 font-medium uppercase tracking-tighter">
-                        Drag to create blocks
+                        Click or drag to add blocks
                     </p>
                 </div>
             </div>

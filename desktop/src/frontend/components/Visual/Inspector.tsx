@@ -10,10 +10,12 @@ import { useProjectStore } from "../../hooks/useProjectStore";
 import {
     getBlock,
     getRootBlocks,
+    getBlockChildren,
     updateBlockProperty,
     updateBlockStyle,
     updateBlockBinding,
     updateBlockEvent,
+    moveBlock,
     archivePage,
     archiveBlock,
     listDirectory,
@@ -216,6 +218,62 @@ const Inspector: React.FC = () => {
 const LayersPanel: React.FC<{ onDeleteRequest: (id: string) => void }> = ({ onDeleteRequest }) => {
     const { selectedBlockId } = useProjectStore();
     const rootBlocks = getRootBlocks();
+    const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+    const [draggingId, setDraggingId] = useState<string | null>(null);
+    const [dropTarget, setDropTarget] = useState<{ parentId: string; index: number } | null>(null);
+
+    const toggleExpanded = (id: string) => {
+        setExpandedIds((prev) => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
+
+    useEffect(() => {
+        setExpandedIds((prev) => {
+            if (prev.size > 0) return prev;
+            return new Set(rootBlocks.map((block) => block.id));
+        });
+    }, [rootBlocks]);
+
+    const isDescendant = (ancestorId: string, nodeId: string): boolean => {
+        const children = getBlockChildren(ancestorId);
+        for (const child of children) {
+            if (child.id === nodeId) return true;
+            if (isDescendant(child.id, nodeId)) return true;
+        }
+        return false;
+    };
+
+    const canDrop = (targetParentId: string, sourceId: string): boolean => {
+        if (targetParentId === sourceId) return false;
+        return !isDescendant(sourceId, targetParentId);
+    };
+
+    const handleDrop = async () => {
+        if (!draggingId || !dropTarget) {
+            setDraggingId(null);
+            setDropTarget(null);
+            return;
+        }
+        if (!canDrop(dropTarget.parentId, draggingId)) {
+            setDraggingId(null);
+            setDropTarget(null);
+            return;
+        }
+
+        try {
+            await moveBlock(draggingId, dropTarget.parentId, dropTarget.index);
+            selectBlock(draggingId);
+        } catch (error) {
+            console.error("Failed to reorder layer:", error);
+        } finally {
+            setDraggingId(null);
+            setDropTarget(null);
+        }
+    };
 
     return (
         <div className="p-3">
@@ -236,29 +294,174 @@ const LayersPanel: React.FC<{ onDeleteRequest: (id: string) => void }> = ({ onDe
             ) : (
                 <div className="space-y-1">
                     {rootBlocks.map((block) => (
-                        <div
+                        <LayerTreeNode
                             key={block.id}
-                            onClick={() => selectBlock(block.id)}
-                            className={`group px-3 py-2.5 rounded-xl border transition-all flex items-center gap-3 cursor-pointer ${block.id === selectedBlockId
-                                ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/30 shadow-sm"
-                                : "text-[var(--ide-text-secondary)] hover:text-[var(--ide-text)] bg-[var(--ide-bg-elevated)] border-[var(--ide-border)] hover:border-[var(--ide-border-strong)]"
-                                }`}
-                        >
-                            <svg className={`w-4 h-4 shrink-0 ${block.id === selectedBlockId ? "text-indigo-400" : "text-[var(--ide-text-muted)]"}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                            </svg>
-                            <span className="truncate flex-1 font-bold text-[11px] tracking-tight">{block.name}</span>
-
-                            <button
-                                onClick={(e) => { e.stopPropagation(); onDeleteRequest(block.id); }}
-                                className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-red-500/10 rounded-lg text-red-500/60 hover:text-red-500 transition-all"
-                            >
-                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
-                            </button>
-                        </div>
+                            blockId={block.id}
+                            depth={0}
+                            parentId={null}
+                            indexInParent={0}
+                            selectedBlockId={selectedBlockId}
+                            expandedIds={expandedIds}
+                            toggleExpanded={toggleExpanded}
+                            onDeleteRequest={onDeleteRequest}
+                            draggingId={draggingId}
+                            setDraggingId={setDraggingId}
+                            dropTarget={dropTarget}
+                            setDropTarget={setDropTarget}
+                            handleDrop={handleDrop}
+                            canDrop={canDrop}
+                        />
                     ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
+interface LayerTreeNodeProps {
+    blockId: string;
+    depth: number;
+    parentId: string | null;
+    indexInParent: number;
+    selectedBlockId: string | null;
+    expandedIds: Set<string>;
+    toggleExpanded: (id: string) => void;
+    onDeleteRequest: (id: string) => void;
+    draggingId: string | null;
+    setDraggingId: (id: string | null) => void;
+    dropTarget: { parentId: string; index: number } | null;
+    setDropTarget: (target: { parentId: string; index: number } | null) => void;
+    handleDrop: () => Promise<void>;
+    canDrop: (targetParentId: string, sourceId: string) => boolean;
+}
+
+const LayerTreeNode: React.FC<LayerTreeNodeProps> = ({
+    blockId,
+    depth,
+    parentId,
+    indexInParent,
+    selectedBlockId,
+    expandedIds,
+    toggleExpanded,
+    onDeleteRequest,
+    draggingId,
+    setDraggingId,
+    dropTarget,
+    setDropTarget,
+    handleDrop,
+    canDrop,
+}) => {
+    const block = getBlock(blockId);
+    if (!block) return null;
+
+    const children = getBlockChildren(block.id);
+    const hasChildren = children.length > 0;
+    const isExpanded = expandedIds.has(block.id);
+    const isSelected = selectedBlockId === block.id;
+
+    const onRowDragOver = (e: React.DragEvent) => {
+        if (!parentId || !draggingId) return;
+        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        const insertAfter = e.clientY > rect.top + rect.height / 2;
+        const targetIndex = insertAfter ? indexInParent + 1 : indexInParent;
+        if (!canDrop(parentId, draggingId)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        setDropTarget({ parentId, index: targetIndex });
+    };
+
+    const onContainerDragOver = (e: React.DragEvent) => {
+        if (!draggingId || !canDrop(block.id, draggingId)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        setDropTarget({ parentId: block.id, index: children.length });
+    };
+
+    return (
+        <div className="space-y-1">
+            {parentId && dropTarget?.parentId === parentId && dropTarget.index === indexInParent && (
+                <div className="h-0.5 rounded-full bg-indigo-500/90 mx-2" />
+            )}
+            <div
+                draggable
+                onDragStart={(e) => {
+                    e.stopPropagation();
+                    setDraggingId(block.id);
+                }}
+                onDragEnd={() => {
+                    setDraggingId(null);
+                    setDropTarget(null);
+                }}
+                onDragOver={onRowDragOver}
+                onDrop={async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    await handleDrop();
+                }}
+                onClick={() => selectBlock(block.id)}
+                className={`group px-3 py-2 rounded-xl border transition-all flex items-center gap-2 cursor-pointer ${isSelected
+                    ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/30 shadow-sm"
+                    : "text-[var(--ide-text-secondary)] hover:text-[var(--ide-text)] bg-[var(--ide-bg-elevated)] border-[var(--ide-border)] hover:border-[var(--ide-border-strong)]"
+                    } ${draggingId === block.id ? "opacity-60" : ""}`}
+                style={{ marginLeft: `${depth * 12}px` }}
+            >
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        if (hasChildren) toggleExpanded(block.id);
+                    }}
+                    className={`w-4 h-4 shrink-0 flex items-center justify-center rounded ${hasChildren ? "text-[var(--ide-text-muted)] hover:bg-[var(--ide-bg-panel)]" : "opacity-0 pointer-events-none"}`}
+                >
+                    <svg
+                        className={`w-3 h-3 transition-transform ${isExpanded ? "rotate-90" : ""}`}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                    >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                    </svg>
+                </button>
+
+                <svg className={`w-3.5 h-3.5 shrink-0 ${isSelected ? "text-indigo-400" : "text-[var(--ide-text-muted)]"}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                </svg>
+
+                <span className="truncate flex-1 font-bold text-[11px] tracking-tight">{block.name}</span>
+
+                <button
+                    onClick={(e) => { e.stopPropagation(); onDeleteRequest(block.id); }}
+                    className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-500/10 rounded-lg text-red-500/60 hover:text-red-500 transition-all"
+                >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                </button>
+            </div>
+
+            {hasChildren && isExpanded && (
+                <div onDragOver={onContainerDragOver} onDrop={async (e) => { e.preventDefault(); e.stopPropagation(); await handleDrop(); }}>
+                    {children.map((child, childIndex) => (
+                        <LayerTreeNode
+                            key={child.id}
+                            blockId={child.id}
+                            depth={depth + 1}
+                            parentId={block.id}
+                            indexInParent={childIndex}
+                            selectedBlockId={selectedBlockId}
+                            expandedIds={expandedIds}
+                            toggleExpanded={toggleExpanded}
+                            onDeleteRequest={onDeleteRequest}
+                            draggingId={draggingId}
+                            setDraggingId={setDraggingId}
+                            dropTarget={dropTarget}
+                            setDropTarget={setDropTarget}
+                            handleDrop={handleDrop}
+                            canDrop={canDrop}
+                        />
+                    ))}
+                    {dropTarget?.parentId === block.id && dropTarget.index === children.length && (
+                        <div className="h-0.5 rounded-full bg-indigo-500/90 ml-6 mr-2" />
+                    )}
                 </div>
             )}
         </div>

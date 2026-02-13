@@ -8,7 +8,7 @@ use serde::Deserialize;
 
 use crate::backend::error::ApiError;
 use crate::backend::state::AppState;
-use crate::schema::{BlockSchema, BlockType};
+use crate::schema::{BlockSchema, BlockType, ProjectSchema};
 
 /// Add block request
 #[derive(Debug, Deserialize)]
@@ -34,6 +34,19 @@ pub struct MoveBlockRequest {
     pub new_parent_id: Option<String>,
     /// Index within the new parent's children list
     pub index: usize,
+}
+
+fn sync_parent_children_order(project: &mut ProjectSchema, parent_id: &str) {
+    let child_ids = match project.find_block(parent_id) {
+        Some(parent) => parent.children.clone(),
+        None => return,
+    };
+
+    for (idx, child_id) in child_ids.iter().enumerate() {
+        if let Some(child_block) = project.find_block_mut(child_id) {
+            child_block.order = idx as i32;
+        }
+    }
 }
 
 /// Add a new block
@@ -95,11 +108,19 @@ pub async fn add_block(
 
     // 2. Link to parent if provided
     if let Some(parent_id) = &req.parent_id {
+        let mut assigned_order: Option<i32> = None;
         if let Some(parent) = project.find_block_mut(parent_id) {
             if !parent.children.contains(&block_id) {
                 parent.children.push(block_id.clone());
             }
+            assigned_order = Some((parent.children.len().saturating_sub(1)) as i32);
         }
+        if let Some(order) = assigned_order {
+            if let Some(new_block) = project.find_block_mut(&block_id) {
+                new_block.order = order;
+            }
+        }
+        sync_parent_children_order(&mut project, parent_id);
     }
     // 3. Link to page root if no parent but page_id provided
     else if let Some(page_id) = &req.page_id {
@@ -125,8 +146,10 @@ pub async fn add_block(
                 }
 
                 if let Some(new_block) = project.find_block_mut(&block_id) {
-                    new_block.parent_id = Some(root_id);
+                    new_block.parent_id = Some(root_id.clone());
                 }
+
+                sync_parent_children_order(&mut project, &root_id);
             }
         }
     }
@@ -349,6 +372,7 @@ pub async fn move_block(
         if let Some(parent) = project.find_block_mut(old_pid) {
             parent.children.retain(|cid| cid != &id);
         }
+        sync_parent_children_order(&mut project, old_pid);
     }
 
     // 2. Insert into new parent's children at the requested index
@@ -363,11 +387,15 @@ pub async fn move_block(
                 new_pid
             )));
         }
+        sync_parent_children_order(&mut project, new_pid);
     }
 
     // 3. Update the block's parent_id
     if let Some(block) = project.find_block_mut(&id) {
         block.parent_id = req.new_parent_id.clone();
+        if req.new_parent_id.is_none() {
+            block.order = 0;
+        }
     }
 
     // 4. Auto-sync affected pages

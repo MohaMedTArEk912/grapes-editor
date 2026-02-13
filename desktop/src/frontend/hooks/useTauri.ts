@@ -1,14 +1,11 @@
 /**
- * API Client - HTTP API for the Akasha backend
- * 
- * This replaces the Tauri IPC layer for web deployment.
- * When running as a desktop app (Tauri), this can be swapped for the IPC bridge.
+ * API Client — Tauri IPC bridge
+ *
+ * Every method calls a `#[tauri::command]` in the Rust backend via `invoke`.
+ * No HTTP requests are made.
  */
 
 import { invoke } from '@tauri-apps/api/core';
-
-// Helper to detect Tauri environment
-const isTauri = () => "isTauri" in window || !!(window as any).__TAURI_INTERNALS__;
 
 // ===== Types =====
 
@@ -60,7 +57,7 @@ export interface BlockSchema {
     event_handlers: EventHandler[];
     archived: boolean;
     component_id?: string;
-    children?: string[]; // Add children? It was missing in original View but BlockSchema usually has it? 
+    children?: string[];
 }
 
 export type StyleValue = string | number | boolean;
@@ -226,194 +223,150 @@ export interface FileEntry {
     extension?: string;
 }
 
-// ===== API Configuration =====
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-
-// ===== API Client =====
-
-async function apiCall<T>(
-    method: string,
-    endpoint: string,
-    body?: unknown
-): Promise<T> {
-    const url = `${API_BASE_URL}${endpoint}`;
-
-    const options: RequestInit = {
-        method,
-        headers: {
-            'Content-Type': 'application/json',
-        },
-    };
-
-    if (body) {
-        options.body = JSON.stringify(body);
-    }
-
-    const response = await fetch(url, options);
-
-    if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(error.error || `HTTP ${response.status}`);
-    }
-
-    return response.json();
-}
-
-// ===== API Functions =====
+// ===== API Functions (all via Tauri IPC) =====
 
 /**
- * API client hook - compatible interface with useTauri
+ * API client hook — every call is a Tauri `invoke`.
  */
 export function useApi() {
     return {
-        // Workspace operations
-        getWorkspaceStatus: () => apiCall<{ workspace_path: string | null; projects: ProjectSchema[] }>('GET', '/api/workspace'),
+        // ─── Workspace ──────────────────────────────────
+        getWorkspaceStatus: () =>
+            invoke<{ workspace_path: string | null; projects: ProjectSchema[] }>('ipc_get_workspace'),
 
-        setWorkspacePath: (path: string) => apiCall<boolean>('POST', '/api/workspace', { path }),
+        setWorkspacePath: (path: string) =>
+            invoke<boolean>('ipc_set_workspace', { path }),
 
-        pickFolder: () => apiCall<string | null>('GET', '/api/workspace/pick-folder'),
+        pickFolder: () =>
+            invoke<string | null>('ipc_pick_folder'),
 
-        loadProjectById: (id: string) => apiCall<ProjectSchema>('GET', `/api/workspace/projects/${id}`),
+        loadProjectById: (id: string) =>
+            invoke<ProjectSchema>('ipc_load_project_by_id', { id }),
 
         deleteProjectById: (id: string, deleteFromDisk?: boolean) =>
-            apiCall<boolean>('DELETE', `/api/workspace/projects/${id}`, deleteFromDisk ? { delete_from_disk: true } : undefined),
+            invoke<boolean>('ipc_delete_project', { id, deleteFromDisk }),
 
-
-        // Project operations
-        getProject: async () => {
-            if (isTauri()) return await invoke<ProjectSchema | null>('get_project');
-            return apiCall<ProjectSchema | null>('GET', '/api/project');
-        },
+        // ─── Project ────────────────────────────────────
+        getProject: () =>
+            invoke<ProjectSchema | null>('ipc_get_project'),
 
         createProject: (name: string) =>
-            apiCall<ProjectSchema>('POST', '/api/project', { name }),
+            invoke<ProjectSchema>('ipc_create_project', { name }),
 
         renameProject: (name: string) =>
-            apiCall<ProjectSchema>('PATCH', '/api/project', { name }),
+            invoke<ProjectSchema>('ipc_rename_project', { name }),
 
         updateSettings: (settings: Partial<ProjectSettings>) =>
-            apiCall<ProjectSchema>('PUT', '/api/project/settings', { settings }),
+            invoke<ProjectSchema>('ipc_update_settings', { settings }),
 
         resetProject: (clearDiskFiles?: boolean) =>
-            apiCall<ProjectSchema>('POST', '/api/project/reset', clearDiskFiles ? { clear_disk_files: true } : undefined),
-
+            invoke<ProjectSchema>('ipc_reset_project', { clearDiskFiles }),
 
         importProjectJson: (json: string) =>
-            apiCall<ProjectSchema>('POST', '/api/project/import', { json }),
+            invoke<ProjectSchema>('ipc_import_project', { jsonStr: json }),
 
         exportProjectJson: () =>
-            apiCall<string>('GET', '/api/project/export'),
+            invoke<string>('ipc_export_project'),
 
         setProjectRoot: (path: string) =>
-            apiCall<boolean>('POST', '/api/project/sync/root', { path }),
+            invoke<boolean>('ipc_set_sync_root', { path }),
 
-        syncToDisk: async () => {
-            if (isTauri()) return await invoke('sync_to_disk');
-            return apiCall<boolean>('POST', '/api/project/sync/now');
-        },
+        syncToDisk: () =>
+            invoke<boolean>('ipc_trigger_sync'),
 
-        syncDiskToProject: async () => {
-            if (isTauri()) return await invoke('sync_disk_to_project');
-            return apiCall<boolean>('POST', '/api/project/sync/from_disk');
-        },
+        syncDiskToProject: () =>
+            invoke<boolean>('ipc_sync_from_disk'),
 
-        // Block operations
+        // ─── Blocks ─────────────────────────────────────
         addBlock: (blockType: string, name: string, parentId?: string, pageId?: string, componentId?: string) =>
-            apiCall<BlockSchema>('POST', '/api/blocks', {
-                block_type: blockType,
+            invoke<BlockSchema>('ipc_add_block', {
+                blockType,
                 name,
-                parent_id: parentId,
-                page_id: pageId,
-                component_id: componentId,
+                parentId,
+                pageId,
+                componentId,
             }),
 
         updateBlockProperty: (blockId: string, property: string, value: unknown) =>
-            apiCall<BlockSchema>('PUT', `/api/blocks/${blockId}`, { property, value }),
+            invoke<BlockSchema>('ipc_update_block', { id: blockId, property, value }),
 
         updateBlockStyle: (blockId: string, style: string, value: string) =>
-            apiCall<BlockSchema>('PUT', `/api/blocks/${blockId}`, {
+            invoke<BlockSchema>('ipc_update_block', {
+                id: blockId,
                 property: `styles.${style}`,
                 value,
             }),
 
         archiveBlock: (blockId: string) =>
-            apiCall<boolean>('DELETE', `/api/blocks/${blockId}`),
+            invoke<boolean>('ipc_delete_block', { id: blockId }),
 
         moveBlock: (blockId: string, newParentId: string | null, index: number) =>
-            apiCall<boolean>('PUT', `/api/blocks/${blockId}/move`, {
-                new_parent_id: newParentId,
+            invoke<boolean>('ipc_move_block', {
+                id: blockId,
+                newParentId,
                 index,
             }),
 
-        // Page operations
+        // ─── Pages ──────────────────────────────────────
         addPage: (name: string, path: string) =>
-            apiCall<PageSchema>('POST', '/api/pages', { name, path }),
+            invoke<PageSchema>('ipc_add_page', { name, path }),
 
         updatePage: (id: string, name?: string, path?: string) =>
-            apiCall<PageSchema>('PUT', `/api/pages/${id}`, { name, path }),
+            invoke<PageSchema>('ipc_update_page', { id, name, path }),
 
         archivePage: (id: string) =>
-            apiCall<boolean>('DELETE', `/api/pages/${id}`),
+            invoke<boolean>('ipc_delete_page', { id }),
 
         getPageContent: (id: string) =>
-            apiCall<{ content: string }>('GET', `/api/pages/${id}/content`),
+            invoke<{ content: string }>('ipc_get_page_content', { id }),
 
-        // Logic flow operations
+        // ─── Logic flows ────────────────────────────────
         getLogicFlows: () =>
-            apiCall<LogicFlowSchema[]>('GET', '/api/logic'),
+            invoke<LogicFlowSchema[]>('ipc_get_logic_flows'),
 
         createLogicFlow: (name: string, context: 'frontend' | 'backend') =>
-            apiCall<LogicFlowSchema>('POST', '/api/logic', { name, context }),
+            invoke<LogicFlowSchema>('ipc_create_logic_flow', { name, context }),
 
         deleteLogicFlow: (id: string) =>
-            apiCall<boolean>('DELETE', `/api/logic/${id}`),
+            invoke<boolean>('ipc_delete_logic_flow', { id }),
 
         updateLogicFlow: (id: string, updates: { name?: string; nodes?: LogicNode[]; entry_node_id?: string | null; description?: string; trigger?: TriggerType }) =>
-            apiCall<LogicFlowSchema>('PUT', `/api/logic/${id}`, updates),
+            invoke<LogicFlowSchema>('ipc_update_logic_flow', { id, ...updates }),
 
-        // Data model operations
+        // ─── Data Models ────────────────────────────────
         getModels: () =>
-            apiCall<DataModelSchema[]>('GET', '/api/models'),
+            invoke<DataModelSchema[]>('ipc_get_models'),
 
         addDataModel: (name: string) =>
-            apiCall<DataModelSchema>('POST', '/api/models', { name }),
+            invoke<DataModelSchema>('ipc_add_model', { name }),
 
         updateModel: (id: string, updates: { name?: string; description?: string }) =>
-            apiCall<DataModelSchema>('PUT', `/api/models/${id}`, updates),
+            invoke<DataModelSchema>('ipc_update_model', { modelId: id, ...updates }),
 
         addFieldToModel: (modelId: string, name: string, fieldType: string, required: boolean) =>
-            apiCall<DataModelSchema>('POST', `/api/models/${modelId}/fields`, {
-                name,
-                field_type: fieldType,
-                required,
-            }),
+            invoke<DataModelSchema>('ipc_add_field', { modelId, name, fieldType, required }),
 
         updateField: (modelId: string, fieldId: string, updates: { name?: string; field_type?: string; required?: boolean; unique?: boolean; description?: string }) =>
-            apiCall<DataModelSchema>('PUT', `/api/models/${modelId}/fields/${fieldId}`, updates),
+            invoke<DataModelSchema>('ipc_update_field', { modelId, fieldId, ...updates }),
 
         archiveDataModel: (id: string) =>
-            apiCall<boolean>('DELETE', `/api/models/${id}`),
+            invoke<boolean>('ipc_delete_model', { modelId: id }),
 
         deleteField: (modelId: string, fieldId: string) =>
-            apiCall<DataModelSchema>('DELETE', `/api/models/${modelId}/fields/${fieldId}`),
+            invoke<DataModelSchema>('ipc_delete_field', { modelId, fieldId }),
 
         addRelation: (modelId: string, name: string, targetModelId: string, relationType: string) =>
-            apiCall<DataModelSchema>('POST', `/api/models/${modelId}/relations`, {
-                name,
-                target_model_id: targetModelId,
-                relation_type: relationType,
-            }),
+            invoke<DataModelSchema>('ipc_add_relation', { modelId, name, targetModelId, relationType }),
 
         deleteRelation: (modelId: string, relationId: string) =>
-            apiCall<DataModelSchema>('DELETE', `/api/models/${modelId}/relations/${relationId}`),
+            invoke<DataModelSchema>('ipc_delete_relation', { modelId, relationId }),
 
-        // API endpoint operations
+        // ─── API Endpoints ──────────────────────────────
         getEndpoints: () =>
-            apiCall<ApiSchema[]>('GET', '/api/endpoints'),
+            invoke<ApiSchema[]>('ipc_get_endpoints'),
 
         addApi: (method: string, path: string, name: string) =>
-            apiCall<ApiSchema>('POST', '/api/endpoints', { method, path, name }),
+            invoke<ApiSchema>('ipc_add_endpoint', { method, path, name }),
 
         updateEndpoint: (id: string, updates: {
             method?: string;
@@ -426,75 +379,72 @@ export function useApi() {
             permissions?: string[];
             logic_flow_id?: string | null;
         }) =>
-            apiCall<ApiSchema>('PUT', `/api/endpoints/${id}`, updates),
+            invoke<ApiSchema>('ipc_update_endpoint', { id, ...updates }),
 
         archiveApi: (id: string) =>
-            apiCall<boolean>('DELETE', `/api/endpoints/${id}`),
+            invoke<boolean>('ipc_delete_endpoint', { id }),
 
-        // Variable operations
+        // ─── Variables ──────────────────────────────────
         getVariables: () =>
-            apiCall<VariableSchema[]>('GET', '/api/variables'),
+            invoke<VariableSchema[]>('ipc_get_variables'),
 
         createVariable: (data: { name: string; var_type: string; default_value?: unknown; scope?: string; page_id?: string; description?: string; persist?: boolean }) =>
-            apiCall<VariableSchema>('POST', '/api/variables', data),
+            invoke<VariableSchema>('ipc_create_variable', data),
 
         updateVariable: (id: string, updates: { name?: string; var_type?: string; default_value?: unknown; scope?: string; page_id?: string; description?: string; persist?: boolean }) =>
-            apiCall<VariableSchema>('PUT', `/api/variables/${id}`, updates),
+            invoke<VariableSchema>('ipc_update_variable', { id, ...updates }),
 
         deleteVariable: (id: string) =>
-            apiCall<boolean>('DELETE', `/api/variables/${id}`),
+            invoke<boolean>('ipc_delete_variable', { id }),
 
-        // Code generation
+        // ─── Code Generation ────────────────────────────
         generateFrontend: () =>
-            apiCall<{ files: { path: string; content: string }[] }>('POST', '/api/generate/frontend'),
+            invoke<{ files: { path: string; content: string }[] }>('ipc_generate_frontend'),
 
         generateBackend: () =>
-            apiCall<{ files: { path: string; content: string }[] }>('POST', '/api/generate/backend'),
+            invoke<{ files: { path: string; content: string }[] }>('ipc_generate_backend'),
 
         generateDatabase: () =>
-            apiCall<{ files: { path: string; content: string }[] }>('POST', '/api/generate/database'),
+            invoke<{ files: { path: string; content: string }[] }>('ipc_generate_database'),
 
         downloadZip: async () => {
-            const response = await fetch(`${API_BASE_URL}/api/generate/zip`, {
-                method: 'GET',
-            });
-            if (!response.ok) throw new Error("Failed to generate ZIP");
-            return response.blob();
+            // ZIP is returned as byte array from IPC; convert to Blob on the frontend.
+            const bytes = await invoke<number[]>('ipc_generate_zip');
+            return new Blob([new Uint8Array(bytes)], { type: 'application/zip' });
         },
 
-        // File system operations
+        // ─── File System ────────────────────────────────
         listDirectory: (path?: string) =>
-            apiCall<{ path: string; entries: FileEntry[] }>('GET', `/api/files${path ? `?path=${encodeURIComponent(path)}` : ''}`),
+            invoke<{ path: string; entries: FileEntry[] }>('ipc_list_directory', { path }),
 
         createFile: (path: string, content?: string) =>
-            apiCall<FileEntry>('POST', '/api/files', { path, content }),
+            invoke<FileEntry>('ipc_create_file', { path, content }),
 
         createFolder: (path: string) =>
-            apiCall<FileEntry>('POST', '/api/files/folder', { path }),
+            invoke<FileEntry>('ipc_create_folder', { path }),
 
         renameFile: (oldPath: string, newPath: string) =>
-            apiCall<FileEntry>('PUT', '/api/files/rename', { old_path: oldPath, new_path: newPath }),
+            invoke<FileEntry>('ipc_rename_file', { oldPath, newPath }),
 
         deleteFile: (path: string) =>
-            apiCall<boolean>('DELETE', '/api/files/delete', { path }),
+            invoke<boolean>('ipc_delete_file', { path }),
 
         readFileContent: (path: string) =>
-            apiCall<{ content: string; path: string }>('GET', `/api/files/content?path=${encodeURIComponent(path)}`),
+            invoke<{ content: string; path: string }>('ipc_read_file_content', { path }),
 
         writeFileContent: (path: string, content: string) =>
-            apiCall<{ content: string; path: string }>('PUT', '/api/files/content', { path, content }),
+            invoke<{ content: string; path: string }>('ipc_write_file_content', { path, content }),
 
-        installDependencies: async () => {
-            return apiCall<InstallResult>('POST', '/api/project/install');
-        },
+        installDependencies: () =>
+            invoke<InstallResult>('ipc_install_dependencies'),
 
-        // Component operations
-        getComponents: () => apiCall<BlockSchema[]>('GET', '/api/components'),
+        // ─── Components ─────────────────────────────────
+        getComponents: () => invoke<BlockSchema[]>('ipc_list_components'),
 
         createComponent: (name: string, description?: string) =>
-            apiCall<BlockSchema>('POST', '/api/components', { name, description }),
+            invoke<BlockSchema>('ipc_create_component', { name, description }),
 
-        getComponent: (id: string) => apiCall<BlockSchema>('GET', `/api/components/${id}`),
+        getComponent: (id: string) => invoke<BlockSchema>('ipc_get_component', { id }),
     };
 }
 

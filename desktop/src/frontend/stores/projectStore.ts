@@ -24,6 +24,9 @@ interface ProjectState {
     selectedFilePath: string | null;
     terminalOpen: boolean;
 
+    /** Page IDs that are open as tabs (VS Code-style). */
+    openPageIds: string[];
+
     // Workspace state
     workspacePath: string | null;
     projects: ProjectSchema[];
@@ -50,6 +53,7 @@ const initialState: ProjectState = {
     isDashboardActive: true,
     selectedFilePath: null,
     terminalOpen: false,
+    openPageIds: [],
 };
 
 // Internal state
@@ -95,6 +99,11 @@ function formatInstallResult(result: InstallResult): string {
 
 function getFirstActivePageId(project: ProjectSchema | null | undefined): string | null {
     return project?.pages.find((page) => !page.archived)?.id ?? null;
+}
+
+/** All active (non-archived) page IDs. Used to seed openPageIds on project load. */
+function allActivePageIds(project: ProjectSchema | null | undefined): string[] {
+    return project?.pages.filter(p => !p.archived).map(p => p.id) ?? [];
 }
 
 function resolveSelectedPageId(project: ProjectSchema, preferredPageId: string | null): string | null {
@@ -248,7 +257,8 @@ export async function resetProject(clearDiskFiles?: boolean): Promise<void> {
         updateState(() => ({
             project,
             selectedPageId: getFirstActivePageId(project),
-            selectedBlockId: null
+            selectedBlockId: null,
+            openPageIds: allActivePageIds(project),
         }));
     } catch (err) {
         updateState(() => ({ error: String(err) }));
@@ -287,7 +297,8 @@ export async function createProject(name: string): Promise<void> {
             project,
             selectedPageId: getFirstActivePageId(project),
             isDashboardActive: false,
-            loadingMessage: null
+            loadingMessage: null,
+            openPageIds: allActivePageIds(project),
         }));
         await initWorkspace(); // Refresh projects list
     } catch (err) {
@@ -324,16 +335,16 @@ export async function openProject(id: string): Promise<void> {
         updateState(() => ({
             project,
             selectedPageId: getFirstActivePageId(project),
-            isDashboardActive: false
+            isDashboardActive: false,
+            openPageIds: allActivePageIds(project),
         }));
 
         // CHECK IF node_modules EXISTS (non-blocking, runs in background)
         if (project.root_path) {
-            const rootPath = project.root_path;
             // Fire-and-forget: check client/node_modules (npm installs into client/ and server/)
             (async () => {
                 try {
-                    const listing = await api.listDirectory(`${rootPath}/client`);
+                    const listing = await api.listDirectory("client");
                     const hasNodeModules = listing.entries.some(
                         e => e.name === 'node_modules' && e.is_directory
                     );
@@ -387,9 +398,12 @@ export async function refreshCurrentProject(): Promise<void> {
     try {
         const project = await api.getProject();
         if (project) {
+            const activeIds = new Set(allActivePageIds(project));
+            const open = state.openPageIds.filter(id => activeIds.has(id));
             updateState(() => ({
                 project,
-                selectedPageId: resolveSelectedPageId(project, state.selectedPageId)
+                selectedPageId: resolveSelectedPageId(project, state.selectedPageId),
+                openPageIds: open.length > 0 ? open : allActivePageIds(project),
             }));
         }
     } catch (err) {
@@ -407,10 +421,13 @@ export async function loadProject(): Promise<void> {
     try {
         const project = await api.getProject();
         if (project) {
+            const activeIds = new Set(allActivePageIds(project));
+            const open = state.openPageIds.filter(id => activeIds.has(id));
             updateState(() => ({
                 project,
                 selectedPageId: resolveSelectedPageId(project, state.selectedPageId),
-                isDashboardActive: false
+                isDashboardActive: false,
+                openPageIds: open.length > 0 ? open : allActivePageIds(project),
             }));
         } else {
             await initWorkspace();
@@ -432,7 +449,8 @@ export async function importProject(json: string): Promise<void> {
         const project = await api.importProjectJson(json);
         updateState(() => ({
             project,
-            selectedPageId: getFirstActivePageId(project)
+            selectedPageId: getFirstActivePageId(project),
+            openPageIds: allActivePageIds(project),
         }));
     } catch (err) {
         updateState(() => ({ error: String(err) }));
@@ -639,11 +657,14 @@ export async function addBlockAtPosition(
     name: string,
     x: number,
     y: number,
-    componentId?: string
+    componentId?: string,
+    options?: { parentId?: string; index?: number }
 ): Promise<BlockSchema> {
     let parentId: string | undefined;
 
-    if (state.selectedComponentId) {
+    if (options?.parentId) {
+        parentId = options.parentId;
+    } else if (state.selectedComponentId) {
         parentId = state.selectedComponentId;
     } else if (state.selectedPageId) {
         const page = state.project?.pages.find(p => p.id === state.selectedPageId);
@@ -651,6 +672,9 @@ export async function addBlockAtPosition(
     }
 
     const block = await api.addBlock(blockType, name, parentId, undefined, componentId);
+    if (typeof options?.index === "number" && parentId) {
+        await api.moveBlock(block.id, parentId, options.index);
+    }
     await api.updateBlockProperty(block.id, "x", x);
     await api.updateBlockProperty(block.id, "y", y);
     await loadProject();
@@ -666,11 +690,15 @@ export async function addPage(name: string, path: string): Promise<PageSchema> {
     const normalizedPath = normalizePagePath(path);
     const page = await api.addPage(normalizedName, normalizedPath);
     await loadProject();
+    const open = state.openPageIds.includes(page.id)
+        ? state.openPageIds
+        : [...state.openPageIds, page.id];
     updateState(() => ({
         selectedPageId: page.id,
         selectedBlockId: null,
         selectedFilePath: null,
         activeTab: "canvas",
+        openPageIds: open,
     }));
     isDirtyValue = true;
 
@@ -970,7 +998,49 @@ export function selectBlock(blockId: string | null): void {
  * Select a page
  */
 export function selectPage(pageId: string): void {
-    updateState(() => ({ selectedPageId: pageId, selectedBlockId: null, selectedFilePath: null }));
+    const open = state.openPageIds.includes(pageId)
+        ? state.openPageIds
+        : [...state.openPageIds, pageId];
+    updateState(() => ({ selectedPageId: pageId, selectedBlockId: null, selectedFilePath: null, openPageIds: open }));
+}
+
+/**
+ * Open a page tab without selecting it.
+ */
+export function openPageTab(pageId: string): void {
+    if (!state.openPageIds.includes(pageId)) {
+        updateState(() => ({ openPageIds: [...state.openPageIds, pageId] }));
+    }
+}
+
+/**
+ * Close a page tab (VS Code-style). Selects a neighbour if it was active.
+ */
+export function closePageTab(pageId: string): void {
+    const open = state.openPageIds.filter(id => id !== pageId);
+    if (state.selectedPageId === pageId) {
+        // Pick the previous tab, or the next one, or null
+        const idx = state.openPageIds.indexOf(pageId);
+        const next = state.openPageIds[idx - 1] ?? state.openPageIds[idx + 1] ?? null;
+        updateState(() => ({
+            openPageIds: open,
+            selectedPageId: next,
+            selectedBlockId: null,
+        }));
+    } else {
+        updateState(() => ({ openPageIds: open }));
+    }
+}
+
+/**
+ * Close all page tabs except the given one.
+ */
+export function closeOtherPageTabs(keepPageId: string): void {
+    updateState(() => ({
+        openPageIds: state.openPageIds.includes(keepPageId) ? [keepPageId] : [],
+        selectedPageId: keepPageId,
+        selectedBlockId: null,
+    }));
 }
 
 /**
@@ -1207,17 +1277,28 @@ export function getRootBlocks(): BlockSchema[] {
 export function getBlockChildren(parentId: string): BlockSchema[] {
     if (!state.project) return [];
 
-    // Search in regular blocks
-    const childrenRequest = state.project.blocks.filter(
-        b => b.parent_id === parentId && !b.archived
-    );
+    const parent = getBlock(parentId);
+    if (!parent) return [];
 
-    // Also search in components list (for component editing)
-    const componentChildren = state.project.components.filter(
-        b => b.parent_id === parentId && !b.archived
-    );
+    const allChildren = [
+        ...state.project.blocks.filter(
+            b => b.parent_id === parentId && !b.archived
+        ),
+        ...state.project.components.filter(
+            b => b.parent_id === parentId && !b.archived
+        ),
+    ];
 
-    return [...childrenRequest, ...componentChildren];
+    const childById = new Map(allChildren.map(child => [child.id, child]));
+    const orderedFromParent = (parent.children || [])
+        .map(childId => childById.get(childId))
+        .filter((child): child is BlockSchema => Boolean(child));
+
+    const missingChildren = allChildren
+        .filter(child => !parent.children.includes(child.id))
+        .sort((a, b) => a.order - b.order || a.name.localeCompare(b.name));
+
+    return [...orderedFromParent, ...missingChildren];
 }
 
 /**

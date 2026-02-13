@@ -5,6 +5,7 @@
 pub mod api_commands;
 pub mod block_commands;
 pub mod command_log;
+pub mod ipc;
 
 use thiserror::Error;
 

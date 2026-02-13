@@ -307,10 +307,9 @@ export const AddPageButton: React.FC = () => {
     };
 
     return (
-        <button
+        <span
             onClick={handleCreate}
-            disabled={isCreating}
-            className="p-0.5 hover:bg-indigo-500/20 rounded text-indigo-400 transition-colors"
+            className="p-0.5 hover:bg-indigo-500/20 rounded text-indigo-400 transition-colors cursor-pointer inline-flex items-center"
             title="Add new page"
             aria-label="Add new page"
         >
@@ -322,6 +321,6 @@ export const AddPageButton: React.FC = () => {
             >
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" />
             </svg>
-        </button>
+        </span>
     );
 };

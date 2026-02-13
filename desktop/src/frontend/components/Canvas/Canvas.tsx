@@ -1,8 +1,9 @@
 /**
- * Canvas Component
+ * Canvas – GrapesJS-style visual page editor
  *
- * Freeform visual editing surface. Root blocks are absolutely positioned
- * inside a viewport-sized artboard. Children inside containers use flow layout.
+ * All blocks live in normal document flow (no absolute positioning).
+ * Drag from the ComponentPalette to insert; drag existing blocks to reorder.
+ * Click to select; double-click text to edit inline.
  */
 
 import React, { useState, useCallback, useRef, useEffect } from "react";
@@ -11,401 +12,428 @@ import {
     getBlockChildren,
     getRootBlocks,
     addBlockAtPosition,
-    updateBlockPosition,
+    moveBlock,
     setViewport,
     closeComponentEditor,
+    updateBlockProperty,
 } from "../../stores/projectStore";
 import { useProjectStore } from "../../hooks/useProjectStore";
 import { BlockSchema } from "../../hooks/useTauri";
+import { useDragDrop, DragPayload } from "../../context/DragDropContext";
 
-// ─── Constants ───────────────────────────────────────
+/* ═══════════════════  Constants  ═══════════════════ */
 
-const MIME_BLOCK = "application/akasha-block";
-const MIME_BLOCK_FALLBACK = "text/akasha-block";
-const MIME_PLAIN = "text/plain";
-const BLOCK_TYPE_RE = /^[a-z][a-z0-9_-]*$/i;
-
-const ARTBOARD_MARGIN = 12;
-const BLOCK_BOUNDARY_PADDING = 12;
-
-const ARTBOARD_SIZES: Record<string, { width: number; minHeight: number; label: string }> = {
-    desktop: { width: 1280, minHeight: 900, label: "Desktop" },
-    tablet: { width: 768, minHeight: 1024, label: "Tablet" },
-    mobile: { width: 375, minHeight: 812, label: "Mobile" },
-};
+const MIME = "application/akasha-block";
+const MIME_FALLBACK = "text/akasha-block";
+const MIME_MOVE = "application/akasha-move"; // existing block reorder
+const MIME_COMPONENT = "application/akasha-component-id";
+const BLOCK_RE = /^[a-z][a-z0-9_-]*$/i;
 
 const CONTAINER_TYPES = new Set([
     "container", "section", "form", "card", "columns", "column", "flex", "grid",
 ]);
 
-// ─── Drag State ──────────────────────────────────────
+const ARTBOARD_SIZES: Record<string, { w: number; h: number; label: string }> = {
+    desktop: { w: 1440, h: 900, label: "Desktop" },
+    tablet:  { w: 768,  h: 1024, label: "Tablet" },
+    mobile:  { w: 375,  h: 812, label: "Mobile" },
+};
 
-interface DragState {
-    blockId: string;
-    offsetX: number;
-    offsetY: number;
-    element: HTMLElement;
-    hasMoved: boolean;
-    startX: number;
-    startY: number;
+/* ═══════════════════  Types  ═══════════════════════ */
+
+/** Where a new / moved block will land. */
+interface InsertionPoint {
+    parentId: string | null;
+    index: number;
 }
 
-// ─── Helpers ─────────────────────────────────────────
+/* ═══════════════════  Helpers  ═════════════════════ */
 
-/** Read the actual block type string (only works during drop). */
+// Global drag data storage for WebView compatibility
+(window as any).__akashaDragData = null;
+
 function readBlockType(dt: DataTransfer): string | null {
-    const v = dt.getData(MIME_BLOCK).trim()
-        || dt.getData(MIME_BLOCK_FALLBACK).trim();
+    const v = dt.getData(MIME).trim() || dt.getData(MIME_FALLBACK).trim();
     if (v) return v;
-    const plain = dt.getData(MIME_PLAIN).trim();
-    return BLOCK_TYPE_RE.test(plain) ? plain.toLowerCase() : null;
+    const plain = dt.getData("text/plain").trim();
+    return BLOCK_RE.test(plain) ? plain.toLowerCase() : null;
 }
 
-function blockPosition(block: BlockSchema, idx: number): { x: number; y: number } {
-    const x = typeof block.properties.x === "number" ? block.properties.x : 40 + (idx % 4) * 280;
-    const y = typeof block.properties.y === "number" ? block.properties.y : 40 + Math.floor(idx / 4) * 180;
-    return { x, y };
+function isContainerType(type: string): boolean {
+    return CONTAINER_TYPES.has(type);
 }
 
-function blockWidth(type: string): number {
-    switch (type) {
-        case "container": case "section": case "form": case "grid": return 420;
-        case "card": return 320;
-        case "columns": case "flex": return 520;
-        case "heading": return 320;
-        case "text": case "paragraph": return 260;
-        case "image": return 240;
-        case "input": case "textarea": case "select": return 260;
-        case "button": return 160;
-        default: return 220;
+function hasDragType(dt: DataTransfer, type: string): boolean {
+    return Array.from(dt.types || []).includes(type);
+}
+
+/** Convert block.styles + width/height props into React inline styles. */
+function toInlineStyle(block: BlockSchema): React.CSSProperties {
+    const css: Record<string, string | number> = {};
+    if (block.styles) {
+        for (const [k, v] of Object.entries(block.styles)) {
+            if (k === "pointer-events" || k === "pointerEvents") continue;
+            if (typeof v === "string" || typeof v === "number") css[k] = v;
+        }
     }
+    const w = block.properties?.width;
+    if ((typeof w === "string" || typeof w === "number") && css.width === undefined) css.width = w;
+    const h = block.properties?.height;
+    if ((typeof h === "string" || typeof h === "number") && css.height === undefined) css.height = h;
+    // Ensure the editor can always receive pointer events for selection/drag.
+    (css as React.CSSProperties).pointerEvents = "auto";
+    return css as React.CSSProperties;
 }
 
-function blockMinHeight(type: string): number {
-    switch (type) {
-        case "container": case "section": case "form": case "card":
-        case "columns": case "column": case "flex": case "grid":
-            return 80;
-        case "image": case "video":
-            return 100;
-        case "textarea":
-            return 60;
-        default:
-            return 36;
-    }
-}
-
-function clamp(value: number, min: number, max: number): number {
-    if (max < min) return min;
-    return Math.min(Math.max(value, min), max);
-}
-
-function blockClasses(type: string): string {
-    switch (type) {
-        case "container":
-            return "p-4 bg-white rounded-xl border border-slate-300 min-h-[80px] hover:border-indigo-300 transition-colors";
-        case "section":
-            return "p-6 bg-gradient-to-b from-slate-50 to-white rounded-xl border border-slate-200/80";
-        case "text": case "paragraph":
-            return "p-3 bg-white rounded-lg border border-slate-200/60";
-        case "heading":
-            return "p-3 bg-white rounded-lg border border-slate-200/60";
-        case "button":
-            return "px-5 py-2.5 bg-gradient-to-b from-indigo-500 to-indigo-600 text-white rounded-lg text-center shadow-sm shadow-indigo-500/25 font-medium";
-        case "image":
-            return "bg-slate-50 rounded-xl border border-dashed border-slate-300/60 min-h-[100px] flex items-center justify-center";
-        case "input":
-            return "border border-slate-300 rounded-lg px-3 py-2.5 bg-white shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)]";
-        case "textarea":
-            return "border border-slate-300 rounded-lg px-3 py-2.5 bg-white shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)] min-h-[60px]";
-        case "select":
-            return "border border-slate-300 rounded-lg px-3 py-2.5 bg-white shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)]";
-        case "form":
-            return "p-5 bg-white rounded-xl border border-slate-200/80 shadow-sm";
-        case "card":
-            return "p-5 bg-white rounded-xl shadow-lg shadow-slate-200/50 border border-slate-100";
-        case "columns": case "flex":
-            return "p-4 bg-white rounded-xl border border-blue-200/50 min-h-[80px]";
-        case "grid":
-            return "p-4 bg-white rounded-xl border border-purple-200/50 min-h-[80px]";
-        case "instance":
-            return "p-0 border-2 border-dashed border-indigo-400/60 rounded-xl overflow-hidden bg-indigo-50/10 hover:bg-indigo-50/30 transition-colors";
-        default:
-            return "p-3 bg-white rounded-lg border border-slate-200/80 min-h-[40px]";
-    }
-}
-
-// ─── Main Canvas ─────────────────────────────────────
+/* ═══════════════════  Main Canvas  ═════════════════ */
 
 const Canvas: React.FC = () => {
     const { project, selectedPageId, selectedComponentId, viewport } = useProjectStore();
-    const [isDragOver, setIsDragOver] = useState(false);
-    const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
-    const dragRef = useRef<DragState | null>(null);
-    const artboardRef = useRef<HTMLDivElement>(null);
+    const { isDragging: isPointerDragging, mouseX, mouseY } = useDragDrop();
+
+    // Drop insertion indicator state
+    const [insertion, setInsertion] = useState<InsertionPoint | null>(null);
+    const [isDragActive, setDragActive] = useState(false);
+
+    // Viewport measurement
+    const [vpSize, setVpSize] = useState({ w: 0, h: 0 });
     const scrollRef = useRef<HTMLDivElement>(null);
 
     const rootBlocks = getRootBlocks();
+    const componentRoot = selectedComponentId ? rootBlocks[0] ?? null : null;
+    const pageRoot = !selectedComponentId && rootBlocks.length === 1 ? rootBlocks[0] : null;
+    const pageRootId = !selectedComponentId && selectedPageId
+        ? (project?.pages.find((p) => p.id === selectedPageId && !p.archived)?.root_block_id ?? null)
+        : null;
+    const effectiveRootId = componentRoot?.id ?? pageRoot?.id ?? pageRootId ?? null;
+
+    const topBlocks = componentRoot
+        ? getBlockChildren(componentRoot.id)
+        : pageRoot
+            ? getBlockChildren(pageRoot.id)
+            : (effectiveRootId
+                ? (project?.blocks.filter((b) => b.parent_id === effectiveRootId && !b.archived) ?? [])
+                : rootBlocks);
+
+    const topParentId = effectiveRootId;
+
+    // ── Refs for use inside useEffects (avoids dependency-loop re-renders) ──
+    const projectRef = useRef(project);
+    const topParentIdRef = useRef(topParentId);
+    const topBlocksRef = useRef(topBlocks);
+    const insertionRef = useRef(insertion);
+    
+    // Sync refs on every render (so effects read latest values)
+    useEffect(() => {
+        projectRef.current = project;
+        topParentIdRef.current = topParentId;
+        topBlocksRef.current = topBlocks;
+        insertionRef.current = insertion;
+    });
 
     const ab = ARTBOARD_SIZES[viewport] || ARTBOARD_SIZES.desktop;
-    const artboardWidth = viewport === "desktop"
-        ? Math.max(ab.width, viewportSize.width - ARTBOARD_MARGIN * 2)
-        : ab.width;
-    const artboardMinHeight = viewport === "desktop"
-        ? Math.max(ab.minHeight, viewportSize.height - ARTBOARD_MARGIN * 2)
-        : ab.minHeight;
-    const surfaceW = Math.max(artboardWidth + ARTBOARD_MARGIN * 2, viewportSize.width);
-    const surfaceH = Math.max(artboardMinHeight + ARTBOARD_MARGIN * 2, viewportSize.height);
+    const artW = viewport === "desktop" ? Math.max(ab.w, vpSize.w - 24) : ab.w;
+    const artH = viewport === "desktop" ? Math.max(ab.h, vpSize.h - 24) : ab.h;
 
-    // Track available editor viewport so canvas can expand/shrink with side panels.
+    // ── Viewport size tracking ──
     useEffect(() => {
         const el = scrollRef.current;
         if (!el) return;
-
-        const update = () => {
-            setViewportSize({
-                width: el.clientWidth,
-                height: el.clientHeight,
-            });
-        };
-
-        update();
-
-        const observer = new ResizeObserver(() => update());
-        observer.observe(el);
-        return () => observer.disconnect();
+        const sync = () => setVpSize({ w: el.clientWidth, h: el.clientHeight });
+        sync();
+        const ro = new ResizeObserver(sync);
+        ro.observe(el);
+        return () => ro.disconnect();
     }, []);
 
-    // Center artboard on mount / page change
+    // ── Scroll to top on page change ──
     useEffect(() => {
-        if (scrollRef.current && selectedPageId) {
-            const el = scrollRef.current;
-            const artboardLeft = Math.max(ARTBOARD_MARGIN, (surfaceW - artboardWidth) / 2);
-            const fitOffset = Math.max(0, (el.clientWidth - artboardWidth) / 2);
-            el.scrollLeft = Math.max(0, artboardLeft - fitOffset);
-            el.scrollTop = 0;
+        if (!scrollRef.current || !selectedPageId) return;
+        scrollRef.current.scrollTop = 0;
+    }, [selectedPageId]);
+
+    // ── Pointer-based drag: compute insertion point on mouse move ──
+    const artboardRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!isPointerDragging || !artboardRef.current) return;
+        setDragActive(true);
+
+        // Find the block element under the pointer
+        const els = document.elementsFromPoint(mouseX, mouseY);
+        const blockEl = els.find(el => el.hasAttribute('data-block-id')) as HTMLElement | undefined;
+
+        if (blockEl) {
+            const blockId = blockEl.getAttribute('data-block-id')!;
+            const block = projectRef.current?.blocks.find(b => b.id === blockId);
+            const rect = blockEl.getBoundingClientRect();
+            const yRatio = (mouseY - rect.top) / rect.height;
+            const isContainer = block && CONTAINER_TYPES.has(block.block_type);
+
+            if (isContainer && yRatio > 0.25 && yRatio < 0.75) {
+                const children = getBlockChildren(blockId);
+                setInsertion(prev => {
+                    if (prev?.parentId === blockId && prev?.index === children.length) return prev;
+                    return { parentId: blockId, index: children.length };
+                });
+            } else {
+                const parentId = block?.parent_id ?? topParentIdRef.current;
+                const siblings = parentId
+                    ? (projectRef.current?.blocks.filter(b => b.parent_id === parentId && !b.archived) ?? [])
+                    : topBlocksRef.current;
+                const idx = siblings.findIndex(b => b.id === blockId);
+                if (idx >= 0) {
+                    const newIdx = yRatio <= 0.5 ? idx : idx + 1;
+                    setInsertion(prev => {
+                        if (prev?.parentId === parentId && prev?.index === newIdx) return prev;
+                        return { parentId, index: newIdx };
+                    });
+                } else if (topParentIdRef.current) {
+                    const tpId = topParentIdRef.current;
+                    const tLen = topBlocksRef.current.length;
+                    setInsertion(prev => {
+                        if (prev?.parentId === tpId && prev?.index === tLen) return prev;
+                        return { parentId: tpId, index: tLen };
+                    });
+                }
+            }
+        } else if (artboardRef.current?.contains(els[0] as Node) || artboardRef.current === els[0]) {
+            // Over empty artboard area
+            const tpId = topParentIdRef.current;
+            if (tpId) {
+                const tLen = topBlocksRef.current.length;
+                setInsertion(prev => {
+                    if (prev?.parentId === tpId && prev?.index === tLen) return prev;
+                    return { parentId: tpId, index: tLen };
+                });
+            }
         }
-    }, [selectedPageId, surfaceW, artboardWidth]);
+    }, [isPointerDragging, mouseX, mouseY]);
 
-    // ── Free-position drag via global listeners ──
+    // Clear pointer drag state when pointer drag ends
     useEffect(() => {
-        const onMove = (e: MouseEvent) => {
-            const d = dragRef.current;
-            if (!d || !artboardRef.current) return;
-            const dx = e.clientX - d.startX;
-            const dy = e.clientY - d.startY;
-            if (!d.hasMoved && Math.abs(dx) < 3 && Math.abs(dy) < 3) return;
-            d.hasMoved = true;
+        if (!isPointerDragging && isDragActive) {
+            // Small delay to let the drop event fire first
+            const t = setTimeout(() => {
+                setInsertion(null);
+                setDragActive(false);
+            }, 50);
+            return () => clearTimeout(t);
+        }
+    }, [isPointerDragging]);
 
-            const r = artboardRef.current.getBoundingClientRect();
-            const maxLeft = Math.max(BLOCK_BOUNDARY_PADDING, r.width - d.element.offsetWidth - BLOCK_BOUNDARY_PADDING);
-            const maxTop = Math.max(BLOCK_BOUNDARY_PADDING, r.height - d.element.offsetHeight - BLOCK_BOUNDARY_PADDING);
-            const nextLeft = clamp(e.clientX - r.left - d.offsetX, BLOCK_BOUNDARY_PADDING, maxLeft);
-            const nextTop = clamp(e.clientY - r.top - d.offsetY, BLOCK_BOUNDARY_PADDING, maxTop);
-            d.element.style.left = `${nextLeft}px`;
-            d.element.style.top = `${nextTop}px`;
-        };
+    // ── Listen for custom pointer-drop event ──
+    useEffect(() => {
+        const handler = async (e: Event) => {
+            const detail = (e as CustomEvent).detail as {
+                payload: DragPayload;
+                x: number;
+                y: number;
+            };
+            if (!detail?.payload) return;
 
-        const onUp = async () => {
-            const d = dragRef.current;
-            if (!d) return;
-            dragRef.current = null;
-            document.body.style.cursor = "";
-            document.body.style.userSelect = "";
-
-            if (!d.hasMoved) {
-                selectBlock(d.blockId);
+            // Check if the drop landed on our artboard
+            const els = document.elementsFromPoint(detail.x, detail.y);
+            if (!artboardRef.current) return;
+            const isOverArtboard = els.some(
+                el => artboardRef.current!.contains(el) || el === artboardRef.current
+            );
+            if (!isOverArtboard) {
+                setInsertion(null);
+                setDragActive(false);
                 return;
             }
-            const fx = parseFloat(d.element.style.left) || 0;
-            const fy = parseFloat(d.element.style.top) || 0;
-            await updateBlockPosition(d.blockId, Math.round(fx), Math.round(fy));
+
+            const target = insertionRef.current
+                ?? (topParentIdRef.current
+                    ? { parentId: topParentIdRef.current, index: topBlocksRef.current.length }
+                    : null);
+
+            if (!target) {
+                setInsertion(null);
+                setDragActive(false);
+                return;
+            }
+
+            const { payload } = detail;
+
+            // Case A: reorder existing block
+            if (payload.moveId) {
+                try {
+                    await moveBlock(payload.moveId, target.parentId, target.index);
+                } catch (err) {
+                    console.error("[Canvas] pointer-drop move failed:", err);
+                } finally {
+                    setInsertion(null);
+                    setDragActive(false);
+                }
+                return;
+            }
+
+            // Case B: new block from palette
+            if (payload.type) {
+                const name = payload.type.charAt(0).toUpperCase() + payload.type.slice(1);
+                try {
+                    await addBlockAtPosition(payload.type, name, 0, 0, payload.componentId, {
+                        parentId: target.parentId ?? undefined,
+                        index: target.index,
+                    });
+                } catch (err) {
+                    console.error("[Canvas] pointer-drop failed:", err);
+                } finally {
+                    setInsertion(null);
+                    setDragActive(false);
+                }
+            }
         };
 
-        window.addEventListener("mousemove", onMove);
-        window.addEventListener("mouseup", onUp);
-        return () => {
-            window.removeEventListener("mousemove", onMove);
-            window.removeEventListener("mouseup", onUp);
-        };
+        document.addEventListener("akasha-pointer-drop", handler);
+        return () => document.removeEventListener("akasha-pointer-drop", handler);
     }, []);
 
-    const startDrag = useCallback((e: React.MouseEvent, block: BlockSchema) => {
-        if (e.button !== 0) return;
-        e.preventDefault();
-        e.stopPropagation();
-        const el = e.currentTarget as HTMLElement;
-        const r = el.getBoundingClientRect();
-        dragRef.current = {
-            blockId: block.id,
-            offsetX: e.clientX - r.left,
-            offsetY: e.clientY - r.top,
-            element: el,
-            hasMoved: false,
-            startX: e.clientX,
-            startY: e.clientY,
-        };
-        document.body.style.cursor = "grabbing";
-        document.body.style.userSelect = "none";
+    /* ────────────────  Drop handlers  ──────────────── */
+
+    const clearDrop = useCallback(() => {
+        setInsertion(null);
+        setDragActive(false);
     }, []);
 
-    // ── Palette drop handlers ──
-    const onDragOver = useCallback((e: React.DragEvent) => {
+    /** Artboard-level dragover: if nothing else caught it, drop at end of root. */
+    const onFrameDragOver = useCallback((e: React.DragEvent) => {
         e.preventDefault();
         e.stopPropagation();
-        e.dataTransfer.dropEffect = "copy";
-        setIsDragOver(true);
-    }, []);
+        e.dataTransfer.dropEffect = hasDragType(e.dataTransfer, MIME_MOVE) ? "move" : "copy";
+        setDragActive(true);
+        if (topParentId) {
+            setInsertion({ parentId: topParentId, index: topBlocks.length });
+        }
+    }, [topParentId, topBlocks.length]);
 
-    const onDrop = useCallback(async (e: React.DragEvent) => {
+    /** Final drop handler – creates or moves block. */
+    const onFrameDrop = useCallback(async (e: React.DragEvent) => {
         e.preventDefault();
         e.stopPropagation();
-        setIsDragOver(false);
 
-        const type = readBlockType(e.dataTransfer);
-        const componentId = e.dataTransfer.getData("application/akasha-component-id");
+        const target = insertion ?? (topParentId ? { parentId: topParentId, index: topBlocks.length } : null);
+        clearDrop();
 
-        if (!type || !artboardRef.current) {
+        if (!target) {
+            (window as any).__akashaDragData = null;
             return;
         }
 
-        try {
-            const r = artboardRef.current.getBoundingClientRect();
-            const boundedWidth = Math.min(blockWidth(type), Math.max(120, r.width - BLOCK_BOUNDARY_PADDING * 2));
-            const boundedHeight = blockMinHeight(type);
-            const maxX = Math.max(BLOCK_BOUNDARY_PADDING, r.width - boundedWidth - BLOCK_BOUNDARY_PADDING);
-            const maxY = Math.max(BLOCK_BOUNDARY_PADDING, r.height - boundedHeight - BLOCK_BOUNDARY_PADDING);
-            const x = Math.round(clamp(e.clientX - r.left, BLOCK_BOUNDARY_PADDING, maxX));
-            const y = Math.round(clamp(e.clientY - r.top, BLOCK_BOUNDARY_PADDING, maxY));
-
-            // Auto-generate name based on component type
-            const name = `${type.charAt(0).toUpperCase() + type.slice(1)}`;
-            await addBlockAtPosition(type, name, x, y, componentId || undefined);
-
-        } catch (err) {
-            console.error("[Canvas DnD] Failed to add block at drop position:", err);
+        // Case A: reordering an existing block
+        let moveId = e.dataTransfer.getData(MIME_MOVE);
+        // Fallback for WebView: use global storage if DataTransfer is empty
+        if (!moveId && (window as any).__akashaDragData?.moveId) {
+            moveId = (window as any).__akashaDragData.moveId;
         }
-    }, []);
+        if (moveId) {
+            await moveBlock(moveId, target.parentId, target.index);
+            (window as any).__akashaDragData = null;
+            return;
+        }
 
-    const onDragLeave = useCallback((e: React.DragEvent) => {
+        // Case B: new block from palette
+        let type = readBlockType(e.dataTransfer);
+        let compId = e.dataTransfer.getData(MIME_COMPONENT) || undefined;
+        // Fallback for WebView
+        if (!type && (window as any).__akashaDragData?.type) {
+            type = (window as any).__akashaDragData.type;
+            compId = (window as any).__akashaDragData.componentId;
+        }
+        (window as any).__akashaDragData = null;
+        if (!type) return;
+
+        const name = type.charAt(0).toUpperCase() + type.slice(1);
+        try {
+            await addBlockAtPosition(type, name, 0, 0, compId, {
+                parentId: target.parentId ?? undefined,
+                index: target.index,
+            });
+        } catch (err) {
+            console.error("[Canvas] drop failed:", err);
+        }
+    }, [insertion, clearDrop, topParentId, topBlocks.length]);
+
+    const onFrameDragLeave = useCallback((e: React.DragEvent) => {
         const next = e.relatedTarget as Node | null;
-        if (!next || !e.currentTarget.contains(next)) setIsDragOver(false);
-    }, []);
+        if (!next || !e.currentTarget.contains(next)) clearDrop();
+    }, [clearDrop]);
 
-    // ── Early returns ──
-    if (!project) return <WelcomeScreen />;
+    /* ────────────────  Early returns  ──────────────── */
+
+    if (!project) {
+        return (
+            <div className="h-full flex items-center justify-center bg-[var(--ide-bg)]">
+                <p className="text-sm text-[var(--ide-text-secondary)]">Open or create a project to get started.</p>
+            </div>
+        );
+    }
+
+    /* ────────────────  Render  ──────────────────────── */
 
     return (
-        <div className="h-full bg-[var(--ide-canvas-bg)] flex flex-col relative overflow-hidden">
-            {/* Viewport Switcher Bar */}
-            <div className="h-8 bg-[var(--ide-chrome)] border-b border-[var(--ide-border)] px-4 flex items-center justify-center gap-1 shrink-0 select-none">
-                {(Object.entries(ARTBOARD_SIZES) as [string, { width: number; minHeight: number; label: string }][]).map(([key, val]) => (
-                    <button
-                        key={key}
-                        onClick={() => setViewport(key as "desktop" | "tablet" | "mobile")}
-                        className={`h-6 px-3 text-[10px] font-semibold rounded transition-colors ${viewport === key
-                            ? "bg-[var(--ide-primary)] text-white"
-                            : "text-[var(--ide-text-muted)] hover:text-[var(--ide-text)] hover:bg-[var(--ide-text)]/10"
-                            }`}
-                        title={`${val.label} (${val.width}px)`}
-                    >
-                        {key === "desktop" && (
-                            <svg className="w-3.5 h-3.5 inline mr-1 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                            </svg>
-                        )}
-                        {key === "tablet" && (
-                            <svg className="w-3.5 h-3.5 inline mr-1 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 18h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                            </svg>
-                        )}
-                        {key === "mobile" && (
-                            <svg className="w-3.5 h-3.5 inline mr-1 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                            </svg>
-                        )}
-                        {val.label}
-                    </button>
-                ))}
-                <span className="ml-2 text-[9px] font-mono text-[var(--ide-text-muted)] tabular-nums">
-                    {artboardWidth} &times; {artboardMinHeight}
-                </span>
-            </div>
+        <div className="h-full bg-[var(--ide-canvas-bg)] flex flex-col overflow-hidden">
+            {/* ── Viewport Switcher ── */}
+            <ViewportBar viewport={viewport} artW={artW} artH={artH} />
 
-            <div ref={scrollRef} className="flex-1 overflow-auto relative">
-                {/* Surface */}
+            {/* ── Scroll container ── */}
+            <div ref={scrollRef} className="flex-1 overflow-auto">
+                {/* Gray surface */}
                 <div
-                    className="relative canvas-bg select-none"
-                    style={{ width: surfaceW, height: surfaceH }}
+                    className="min-h-full flex justify-center py-3 canvas-bg"
                     onClick={() => selectBlock(null)}
                 >
-                    {/* ── Artboard ── */}
+                    {/* Artboard (white page) */}
                     <div
-                        className="absolute bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08),0_0_0_1px_rgba(0,0,0,0.04)] flex flex-col transition-[width,min-height] duration-500 ease-[cubic-bezier(0.2,0,0,1)]"
-                        style={{
-                            left: Math.max(ARTBOARD_MARGIN, (surfaceW - artboardWidth) / 2),
-                            top: ARTBOARD_MARGIN,
-                            width: artboardWidth,
-                            minHeight: artboardMinHeight,
-                        }}
+                        ref={artboardRef}
+                        className="bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08),0_0_0_1px_rgba(0,0,0,0.04)] transition-[width] duration-300"
+                        style={{ width: artW, minHeight: artH }}
                         onClick={(e) => e.stopPropagation()}
+                        onDragOver={onFrameDragOver}
+                        onDrop={onFrameDrop}
+                        onDragLeave={onFrameDragLeave}
                     >
-                        {/* ── Content Area (clean white page) ── */}
-                        <div
-                            ref={artboardRef}
-                            className={`flex-1 relative bg-white overflow-hidden transition-colors duration-200 ${isDragOver ? "bg-indigo-50/30" : ""}`}
-                            style={{ minHeight: artboardMinHeight }}
-                            onClick={() => selectBlock(null)}
-                            onDragOver={onDragOver}
-                            onDrop={onDrop}
-                            onDragLeave={onDragLeave}
-                        >
-                            {/* Component Editing Banner */}
-                            {project && selectedComponentId && (
-                                <div className="absolute top-0 left-0 right-0 z-40 bg-indigo-600/95 backdrop-blur-sm text-white px-4 py-2 flex items-center justify-between shadow-lg border-b border-indigo-500/50">
-                                    <div className="flex items-center gap-2">
-                                        <div className="bg-white/20 p-1.5 rounded-lg">
-                                            <span className="text-sm">🧩</span>
-                                        </div>
-                                        <div>
-                                            <p className="text-[10px] text-indigo-100 font-bold uppercase tracking-wider leading-none">Editing Master Component</p>
-                                            <h3 className="text-xs font-bold truncate max-w-[150px]">
-                                                {project.components.find(c => c.id === selectedComponentId)?.name || "Unknown Component"}
-                                            </h3>
-                                        </div>
-                                    </div>
-                                    <button
-                                        onClick={(e) => { e.stopPropagation(); closeComponentEditor(); }}
-                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-[10px] font-bold transition-all border border-white/10 active:scale-95"
-                                    >
-                                        Exit Editor
-                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
-                                        </svg>
-                                    </button>
+                        {/* Component editing banner */}
+                        {selectedComponentId && (
+                            <ComponentBanner
+                                name={project.components?.find((c: BlockSchema) => c.id === selectedComponentId)?.name}
+                            />
+                        )}
+
+                        {/* Frame body */}
+                        <div className="relative p-4 min-h-[200px]">
+                            {/* Page root label */}
+                            {pageRoot && (
+                                <div className="text-[9px] font-bold uppercase tracking-widest text-slate-300 mb-3 select-none">
+                                    {pageRoot.name || "Page Root"}
                                 </div>
                             )}
 
-                            <div className="pointer-events-none absolute inset-3 rounded-lg border border-slate-200/90 shadow-[inset_0_0_0_1px_rgba(148,163,184,0.08)]" />
-
-                            {/* Drop feedback */}
-                            {isDragOver && (
-                                <div className="pointer-events-none absolute inset-0 z-30">
-                                    <div className="absolute inset-4 border-2 border-dashed border-indigo-400/40 bg-indigo-500/[0.02]" />
-                                </div>
-                            )}
-
-                            {/* Blocks */}
-                            {rootBlocks.map((block, idx) => (
-                                <CanvasBlock
-                                    key={block.id}
-                                    block={block}
-                                    index={idx}
-                                    artboardWidth={artboardWidth}
-                                    artboardHeight={artboardMinHeight}
-                                    onMouseDown={(e) => startDrag(e, block)}
+                            {topBlocks.length === 0 ? (
+                                <EmptyDropZone
+                                    parentId={topParentId}
+                                    active={isDragActive}
+                                    onDragOver={(parentId, e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        e.dataTransfer.dropEffect = hasDragType(e.dataTransfer, MIME_MOVE) ? "move" : "copy";
+                                        setDragActive(true);
+                                        if (parentId) setInsertion({ parentId, index: 0 });
+                                    }}
+                                    onDrop={onFrameDrop}
                                 />
-                            ))}
+                            ) : (
+                                <BlockList
+                                    blocks={topBlocks}
+                                    parentId={topParentId!}
+                                    insertion={insertion}
+                                    setInsertion={setInsertion}
+                                    setDragActive={setDragActive}
+                                    onDrop={onFrameDrop}
+                                />
+                            )}
                         </div>
                     </div>
                 </div>
@@ -414,77 +442,264 @@ const Canvas: React.FC = () => {
     );
 };
 
-// ─── Canvas Block ────────────────────────────────────
+/* ═══════════════════  Block List  ══════════════════ */
 
-interface CanvasBlockProps {
-    block: BlockSchema;
-    index: number;
-    artboardWidth: number;
-    artboardHeight: number;
-    onMouseDown: (e: React.MouseEvent) => void;
+interface BlockListProps {
+    blocks: BlockSchema[];
+    parentId: string;
+    insertion: InsertionPoint | null;
+    setInsertion: (ip: InsertionPoint | null) => void;
+    setDragActive: (v: boolean) => void;
+    onDrop: (e: React.DragEvent) => void;
 }
 
-const CanvasBlock: React.FC<CanvasBlockProps> = ({ block, index, artboardWidth, artboardHeight, onMouseDown }) => {
+/** Renders a list of sibling blocks with insertion indicators. */
+const BlockList: React.FC<BlockListProps> = ({
+    blocks, parentId, insertion, setInsertion, setDragActive, onDrop,
+}) => (
+    <div className="flex flex-col gap-1">
+        {blocks.map((block, i) => (
+            <React.Fragment key={block.id}>
+                {/* Insertion line BEFORE this block */}
+                {insertion?.parentId === parentId && insertion.index === i && (
+                    <InsertionLine />
+                )}
+
+                <BlockNode
+                    block={block}
+                    parentId={parentId}
+                    index={i}
+                    insertion={insertion}
+                    setInsertion={setInsertion}
+                    setDragActive={setDragActive}
+                    onDrop={onDrop}
+                />
+            </React.Fragment>
+        ))}
+
+        {/* Insertion line AFTER last block */}
+        {insertion?.parentId === parentId && insertion.index === blocks.length && (
+            <InsertionLine />
+        )}
+    </div>
+);
+
+/* ═══════════════════  Block Node  ══════════════════ */
+
+interface BlockNodeProps {
+    block: BlockSchema;
+    parentId: string;
+    index: number;
+    insertion: InsertionPoint | null;
+    setInsertion: (ip: InsertionPoint | null) => void;
+    setDragActive: (v: boolean) => void;
+    onDrop: (e: React.DragEvent) => void;
+}
+
+const BlockNode: React.FC<BlockNodeProps> = ({
+    block, parentId, index, insertion, setInsertion, setDragActive, onDrop,
+}) => {
     const { selectedBlockId } = useProjectStore();
+    const { prepareDrag: preparePointerDrag } = useDragDrop();
     const selected = selectedBlockId === block.id;
+    const [hovered, setHovered] = useState(false);
+    const [editing, setEditing] = useState(false);
     const children = getBlockChildren(block.id);
-    const isContainer = CONTAINER_TYPES.has(block.block_type);
-    const rawPos = blockPosition(block, index);
-    const w = Math.min(blockWidth(block.block_type), Math.max(120, artboardWidth - BLOCK_BOUNDARY_PADDING * 2));
-    const minH = blockMinHeight(block.block_type);
-    const maxX = Math.max(BLOCK_BOUNDARY_PADDING, artboardWidth - w - BLOCK_BOUNDARY_PADDING);
-    const maxY = Math.max(BLOCK_BOUNDARY_PADDING, artboardHeight - minH - BLOCK_BOUNDARY_PADDING);
-    const pos = {
-        x: clamp(rawPos.x, BLOCK_BOUNDARY_PADDING, maxX),
-        y: clamp(rawPos.y, BLOCK_BOUNDARY_PADDING, maxY),
-    };
+    const container = isContainerType(block.block_type);
+
+    /* ── Pointer-based drag for reorder (Tauri WebView compatible) ── */
+    const onPointerDragStart = useCallback((e: React.MouseEvent) => {
+        if (editing || e.button !== 0) return;
+        // Don't start drag if clicking on content-editable or child buttons
+        const target = e.target as HTMLElement;
+        if (target.isContentEditable || target.closest("button")) return;
+
+        e.stopPropagation();
+        preparePointerDrag(
+            {
+                type: block.block_type,
+                moveId: block.id,
+                label: block.name || block.block_type,
+            },
+            e,
+        );
+    }, [block, editing, preparePointerDrag]);
+
+    /* ── HTML5 Drag existing block for reorder (browser fallback) ── */
+    const onDragStart = useCallback((e: React.DragEvent) => {
+        e.stopPropagation();
+        e.dataTransfer.setData(MIME_MOVE, block.id);
+        e.dataTransfer.setData(MIME, block.block_type);
+        e.dataTransfer.setData("text/plain", block.block_type);
+        e.dataTransfer.effectAllowed = "move";
+
+        // Store in global for WebView fallback
+        (window as any).__akashaDragData = { type: block.block_type, moveId: block.id };
+
+        // Ghost label
+        const ghost = document.createElement("div");
+        ghost.className = "px-2 py-1 rounded text-xs font-bold shadow-xl";
+        ghost.style.background = "#6366f1";
+        ghost.style.color = "#fff";
+        ghost.innerText = block.name || block.block_type;
+        ghost.style.position = "absolute";
+        ghost.style.top = "-1000px";
+        document.body.appendChild(ghost);
+        e.dataTransfer.setDragImage(ghost, 0, 0);
+        requestAnimationFrame(() => document.body.removeChild(ghost));
+    }, [block]);
+
+    /* ── Drag over this block → compute insertion point ── */
+    const onBlockDragOver = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = hasDragType(e.dataTransfer, MIME_MOVE) ? "move" : "copy";
+        setDragActive(true);
+
+        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        const yRatio = (e.clientY - rect.top) / rect.height;
+
+        if (container && yRatio > 0.25 && yRatio < 0.75) {
+            // Drop INSIDE this container (at end of its children)
+            setInsertion({ parentId: block.id, index: children.length });
+        } else if (yRatio <= 0.5) {
+            // Drop BEFORE this block in parent
+            setInsertion({ parentId, index });
+        } else {
+            // Drop AFTER this block in parent
+            setInsertion({ parentId, index: index + 1 });
+        }
+    }, [block.id, parentId, index, container, children.length, setInsertion, setDragActive]);
+
+    /* ── Click / double-click ── */
+    const onClick = useCallback((e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!editing) selectBlock(block.id);
+    }, [block.id, editing]);
+
+    const onDoubleClick = useCallback((e: React.MouseEvent) => {
+        e.stopPropagation();
+        const textTypes = ["text", "paragraph", "heading", "button", "link"];
+        if (textTypes.includes(block.block_type)) {
+            setEditing(true);
+            selectBlock(block.id);
+        }
+    }, [block.block_type, block.id]);
+
+    /* ── Inline text edit ── */
+    const onBlur = useCallback((e: React.FocusEvent) => {
+        setEditing(false);
+        const newText = (e.currentTarget as HTMLElement).innerText.trim();
+        const oldText = (block.properties?.text as string) ?? "";
+        if (newText !== oldText) {
+            updateBlockProperty(block.id, "text", newText);
+        }
+    }, [block.id, block.properties?.text]);
+
+    const onKeyDown = useCallback((e: React.KeyboardEvent) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            (e.currentTarget as HTMLElement).blur();
+        }
+        if (e.key === "Escape") {
+            setEditing(false);
+            (e.currentTarget as HTMLElement).blur();
+        }
+    }, []);
+
+    /* ── Outline class ── */
+    const outlineClass = selected
+        ? "ring-2 ring-indigo-500 ring-offset-1"
+        : hovered && !editing
+            ? "ring-1 ring-indigo-300/50"
+            : "";
+
+    const baseClasses = blockAppearance(block.block_type);
 
     return (
         <div
-            className={[
-                "absolute group cursor-grab active:cursor-grabbing transition-shadow duration-150",
-                selected
-                    ? "ring-2 ring-indigo-500 ring-offset-1 ring-offset-white shadow-[0_8px_30px_rgba(99,102,241,0.25)] z-20"
-                    : "hover:shadow-lg hover:ring-1 hover:ring-slate-300/50 z-10",
-            ].join(" ")}
-            style={{ left: pos.x, top: pos.y, width: w, minHeight: minH }}
-            onMouseDown={onMouseDown}
+            className={`relative group ${outlineClass} rounded-lg transition-shadow duration-100`}
+            style={toInlineStyle(block)}
+            draggable={!editing}
+            onDragStart={onDragStart}
+            onDragOver={onBlockDragOver}
+            onDrop={onDrop}
+            onMouseDown={onPointerDragStart}
+            onClick={onClick}
+            onDoubleClick={onDoubleClick}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
             data-block-id={block.id}
-            // Allow palette drag-over events to bubble through to the artboard
-            onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }}
         >
-            {/* Hover label for structure visibility */}
-            {!selected && isContainer && (
-                <div className="absolute -top-5 left-0 text-[9px] text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none uppercase tracking-wider font-semibold z-20 bg-white/80 px-1 rounded shadow-sm border border-slate-100">
+            {/* ── Selection / hover label ── */}
+            {(selected || hovered) && !editing && (
+                <div
+                    className={`absolute -top-5 left-0 z-20 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-t pointer-events-none whitespace-nowrap ${
+                        selected
+                            ? "bg-indigo-500 text-white"
+                            : "bg-slate-100 text-slate-400 border border-slate-200/60"
+                    }`}
+                >
                     {block.name || block.block_type}
                 </div>
             )}
-            {/* Selection chrome */}
-            {selected && (
-                <>
-                    <div className="absolute -top-6 left-0 bg-indigo-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-t-md z-10 pointer-events-none uppercase tracking-wider flex items-center gap-1.5 whitespace-nowrap">
-                        <svg className="w-2.5 h-2.5 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M4 6h16M4 12h16M4 18h16" />
-                        </svg>
-                        {block.name || block.block_type}
-                    </div>
-                    <div className="absolute -top-[3px] -left-[3px] w-[7px] h-[7px] bg-white border-2 border-indigo-500 rounded-full z-30" />
-                    <div className="absolute -top-[3px] -right-[3px] w-[7px] h-[7px] bg-white border-2 border-indigo-500 rounded-full z-30" />
-                    <div className="absolute -bottom-[3px] -left-[3px] w-[7px] h-[7px] bg-white border-2 border-indigo-500 rounded-full z-30" />
-                    <div className="absolute -bottom-[3px] -right-[3px] w-[7px] h-[7px] bg-white border-2 border-indigo-500 rounded-full z-30" />
-                </>
-            )}
 
-            <div className={blockClasses(block.block_type)}>
-                <BlockContent block={block} />
-                {isContainer && children.length > 0 && (
-                    <div className="mt-2 space-y-1.5">
-                        {children.map((c) => <ChildBlock key={c.id} block={c} />)}
+            {/* ── Resize handles (selected only) ── */}
+            {selected && !editing && <ResizeHandles />}
+
+            {/* ── Block visual ── */}
+            <div className={baseClasses}>
+                {editing ? (
+                    <div
+                        contentEditable
+                        suppressContentEditableWarning
+                        className="outline-none min-h-[1em] cursor-text"
+                        onBlur={onBlur}
+                        onKeyDown={onKeyDown}
+                        ref={(el) => {
+                            if (el) {
+                                const txt = (block.properties?.text as string) || "";
+                                if (el.innerText.trim() !== txt) el.innerText = txt;
+                                el.focus();
+                            }
+                        }}
+                    />
+                ) : (
+                    <BlockVisual block={block} />
+                )}
+
+                {/* ── Children (container blocks) ── */}
+                {container && children.length > 0 && (
+                    <div className="mt-2">
+                        <BlockList
+                            blocks={children}
+                            parentId={block.id}
+                            insertion={insertion}
+                            setInsertion={setInsertion}
+                            setDragActive={setDragActive}
+                            onDrop={onDrop}
+                        />
                     </div>
                 )}
-                {isContainer && children.length === 0 && (
-                    <div className="min-h-[48px] border border-dashed border-slate-200/80 rounded-lg flex items-center justify-center text-slate-300 text-xs mt-2">
-                        Drop children here
+
+                {/* ── Empty container placeholder ── */}
+                {container && children.length === 0 && (
+                    <div
+                        className={`min-h-[48px] mt-2 border border-dashed rounded-lg flex items-center justify-center text-xs transition-colors cursor-default ${
+                            insertion?.parentId === block.id
+                                ? "border-indigo-400 bg-indigo-50/40 text-indigo-400"
+                                : "border-slate-200 text-slate-300"
+                        }`}
+                        onDragOver={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            e.dataTransfer.dropEffect = hasDragType(e.dataTransfer, MIME_MOVE) ? "move" : "copy";
+                            setDragActive(true);
+                            setInsertion({ parentId: block.id, index: 0 });
+                        }}
+                        onDrop={onDrop}
+                    >
+                        Drop here
                     </div>
                 )}
             </div>
@@ -492,78 +707,61 @@ const CanvasBlock: React.FC<CanvasBlockProps> = ({ block, index, artboardWidth, 
     );
 };
 
-// ─── Child Block ─────────────────────────────────────
+/* ═══════════════════  Block Visual  ════════════════ */
 
-const ChildBlock: React.FC<{ block: BlockSchema }> = ({ block }) => {
-    const { selectedBlockId } = useProjectStore();
-    const selected = selectedBlockId === block.id;
-    const children = getBlockChildren(block.id);
-    const isContainer = CONTAINER_TYPES.has(block.block_type);
-
-    return (
-        <div
-            className={[
-                "relative transition-all cursor-pointer",
-                selected ? "outline outline-2 outline-indigo-500 outline-offset-1 rounded-lg" : "",
-                blockClasses(block.block_type),
-            ].filter(Boolean).join(" ")}
-            onClick={(e) => { e.stopPropagation(); selectBlock(block.id); }}
-            onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }}
-        >
-            {selected && (
-                <div className="absolute -top-5 left-0 bg-indigo-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-sm z-10 pointer-events-none whitespace-nowrap">
-                    {block.name || block.block_type}
-                </div>
-            )}
-            <BlockContent block={block} />
-            {isContainer && children.length > 0 && (
-                <div className="mt-1 space-y-1">
-                    {children.map((c) => <ChildBlock key={c.id} block={c} />)}
-                </div>
-            )}
-        </div>
-    );
-};
-
-// ─── Block Content ───────────────────────────────────
-
-const BlockContent: React.FC<{ block: BlockSchema }> = ({ block }) => {
+const BlockVisual: React.FC<{ block: BlockSchema }> = ({ block }) => {
     const { project } = useProjectStore();
-    const text = block.properties.text as string | undefined;
+    const text = block.properties?.text as string | undefined;
 
     switch (block.block_type) {
         case "instance": {
-            const master = project?.components.find(c => c.id === block.component_id);
+            const master = project?.components?.find((c: BlockSchema) => c.id === block.component_id);
             return (
-                <div className="flex flex-col items-center justify-center p-4 min-h-[80px]">
-                    <span className="text-2xl mb-1">🧩</span>
-                    <span className="text-xs font-bold text-indigo-600 uppercase tracking-widest text-center">
-                        {master ? master.name : "Unknown Component"}
+                <div className="flex flex-col items-center justify-center p-4 min-h-[60px]">
+                    <span className="text-xl mb-1">🧩</span>
+                    <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider">
+                        {master?.name || "Component"}
                     </span>
-                    <span className="text-[9px] text-indigo-400 mt-0.5">Instance</span>
                 </div>
             );
         }
-        case "text": case "paragraph":
-            return <p className="text-slate-600 text-sm leading-relaxed">{text || "Text content..."}</p>;
         case "heading":
-            return <h2 className="text-slate-800 text-lg font-bold leading-tight">{text || "Heading"}</h2>;
+            return <h2 className="text-lg font-bold text-slate-800 leading-tight">{text || "Heading"}</h2>;
+        case "text":
+        case "paragraph":
+            return <p className="text-sm text-slate-600 leading-relaxed">{text || "Text content..."}</p>;
         case "button":
-            return <span className="text-sm">{text || "Button"}</span>;
+            return <span className="text-sm font-medium">{text || "Button"}</span>;
+        case "link":
+            return <span className="text-sm text-indigo-500 underline underline-offset-2">{text || "Link"}</span>;
         case "image":
             return (
-                <div className="text-slate-300 text-center py-6">
-                    <svg className="w-10 h-10 mx-auto mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                <div className="flex flex-col items-center justify-center py-6 text-slate-300">
+                    <svg className="w-8 h-8 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                     </svg>
-                    <span className="text-[11px] text-slate-400">Image</span>
+                    <span className="text-[10px]">Image</span>
+                </div>
+            );
+        case "video":
+            return (
+                <div className="flex flex-col items-center justify-center py-6 text-slate-300">
+                    <svg className="w-8 h-8 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span className="text-[10px]">Video</span>
                 </div>
             );
         case "input":
             return (
-                <div className="flex items-center gap-2">
-                    <input type="text" placeholder={text || "Input field..."} className="w-full outline-none bg-transparent text-sm text-slate-500" disabled />
-                </div>
+                <input
+                    type="text"
+                    placeholder={text || "Input field..."}
+                    className="w-full outline-none bg-transparent text-sm text-slate-500 pointer-events-none"
+                    disabled
+                    tabIndex={-1}
+                />
             );
         case "textarea":
             return <div className="text-sm text-slate-400 italic">Multi-line input...</div>;
@@ -571,53 +769,174 @@ const BlockContent: React.FC<{ block: BlockSchema }> = ({ block }) => {
             return (
                 <div className="flex items-center justify-between">
                     <span className="text-sm text-slate-400">{text || "Select..."}</span>
-                    <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                     </svg>
                 </div>
             );
-        case "link":
-            return <span className="text-sm text-indigo-500 underline underline-offset-2">{text || "Link text"}</span>;
         case "checkbox":
             return (
                 <div className="flex items-center gap-2">
                     <div className="w-4 h-4 rounded border-2 border-slate-300 shrink-0" />
-                    <span className="text-sm text-slate-600">{text || "Checkbox label"}</span>
-                </div>
-            );
-        case "video":
-            return (
-                <div className="text-slate-300 text-center py-6">
-                    <svg className="w-10 h-10 mx-auto mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span className="text-[11px] text-slate-400">Video</span>
+                    <span className="text-sm text-slate-600">{text || "Checkbox"}</span>
                 </div>
             );
         default:
             return (
-                <span className="text-slate-400 text-xs font-medium">
-                    {block.name || block.block_type}
-                </span>
+                <span className="text-xs text-slate-400 font-medium">{block.name || block.block_type}</span>
             );
     }
 };
 
-// ─── No Page ─────────────────────────────────────────
-// (No page selected is now handled by showing an empty artboard —
-//  auto-select logic in projectStore ensures a page is always selected)
+/* ═══════════════════  Appearance  ══════════════════ */
 
-// ─── Welcome Screen ──────────────────────────────────
+function blockAppearance(type: string): string {
+    switch (type) {
+        case "container":
+            return "p-4 bg-white rounded-xl border border-slate-200 min-h-[60px]";
+        case "section":
+            return "p-6 bg-gradient-to-b from-slate-50 to-white rounded-xl border border-slate-200/80 min-h-[60px]";
+        case "card":
+            return "p-5 bg-white rounded-xl shadow-sm border border-slate-100";
+        case "columns":
+        case "flex":
+            return "p-4 bg-white rounded-xl border border-blue-100 min-h-[60px] flex gap-3";
+        case "grid":
+            return "p-4 bg-white rounded-xl border border-purple-100 min-h-[60px]";
+        case "form":
+            return "p-5 bg-white rounded-xl border border-slate-200 min-h-[60px]";
+        case "heading":
+            return "p-3";
+        case "text":
+        case "paragraph":
+            return "p-3";
+        case "button":
+            return "px-5 py-2.5 bg-indigo-500 text-white rounded-lg text-center font-medium shadow-sm inline-block";
+        case "image":
+            return "bg-slate-50 rounded-xl border border-dashed border-slate-200 min-h-[80px]";
+        case "input":
+            return "border border-slate-300 rounded-lg px-3 py-2.5 bg-white";
+        case "textarea":
+            return "border border-slate-300 rounded-lg px-3 py-2.5 bg-white min-h-[60px]";
+        case "select":
+            return "border border-slate-300 rounded-lg px-3 py-2.5 bg-white";
+        case "link":
+            return "p-2";
+        case "instance":
+            return "border-2 border-dashed border-indigo-400/50 rounded-xl bg-indigo-50/10 min-h-[60px]";
+        default:
+            return "p-3 bg-white rounded-lg border border-slate-200 min-h-[36px]";
+    }
+}
 
-const WelcomeScreen: React.FC = () => (
-    <div className="h-full flex items-center justify-center p-12 bg-[var(--ide-bg)]">
-        <div className="text-center animate-fade-in">
-            <p className="text-sm text-[var(--ide-text-secondary)]">
-                Open or create a project to get started.
-            </p>
-        </div>
+/* ═══════════════════  Sub-components  ══════════════ */
+
+/** Blue insertion indicator line. */
+const InsertionLine: React.FC = () => (
+    <div className="relative h-[3px] my-[-1px] z-30 pointer-events-none">
+        <div className="absolute inset-x-0 top-0 h-[3px] bg-indigo-500 rounded-full shadow-[0_0_6px_rgba(99,102,241,0.5)]" />
+        <div className="absolute -left-[3px] -top-[3px] w-[9px] h-[9px] rounded-full bg-indigo-500" />
     </div>
 );
+
+/** Corner resize handles for selected block. */
+const ResizeHandles: React.FC = () => (
+    <>
+        <div className="absolute -top-[3px] -left-[3px] w-[7px] h-[7px] bg-white border-2 border-indigo-500 rounded-full z-30 cursor-nw-resize" />
+        <div className="absolute -top-[3px] -right-[3px] w-[7px] h-[7px] bg-white border-2 border-indigo-500 rounded-full z-30 cursor-ne-resize" />
+        <div className="absolute -bottom-[3px] -left-[3px] w-[7px] h-[7px] bg-white border-2 border-indigo-500 rounded-full z-30 cursor-sw-resize" />
+        <div className="absolute -bottom-[3px] -right-[3px] w-[7px] h-[7px] bg-white border-2 border-indigo-500 rounded-full z-30 cursor-se-resize" />
+    </>
+);
+
+/** Empty canvas drop zone. */
+const EmptyDropZone: React.FC<{
+    parentId: string | null;
+    active: boolean;
+    onDragOver: (parentId: string | null, e: React.DragEvent) => void;
+    onDrop: (e: React.DragEvent) => void;
+}> = ({ parentId, active, onDragOver, onDrop }) => (
+    <div
+        className={`min-h-[180px] border-2 border-dashed rounded-xl flex flex-col items-center justify-center gap-3 transition-colors ${
+            active
+                ? "border-indigo-400 bg-indigo-50/30 text-indigo-400"
+                : "border-slate-200 text-slate-300"
+        }`}
+        onDragOver={(e) => onDragOver(parentId, e)}
+        onDrop={onDrop}
+    >
+        <svg className="w-8 h-8 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 4v16m8-8H4" />
+        </svg>
+        <span className="text-xs font-medium">Click or drag components here</span>
+    </div>
+);
+
+/** Component editing banner at top of artboard. */
+const ComponentBanner: React.FC<{ name?: string }> = ({ name }) => (
+    <div className="bg-indigo-600 text-white px-4 py-2 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+            <span className="text-sm">🧩</span>
+            <div>
+                <p className="text-[9px] text-indigo-200 font-bold uppercase tracking-wider leading-none">Editing Component</p>
+                <p className="text-xs font-bold truncate max-w-[200px]">{name || "Unknown"}</p>
+            </div>
+        </div>
+        <button
+            onClick={(e) => { e.stopPropagation(); closeComponentEditor(); }}
+            className="px-3 py-1 text-[10px] font-bold bg-white/20 hover:bg-white/30 rounded-lg transition-colors"
+        >
+            Exit
+        </button>
+    </div>
+);
+
+/** Viewport size switcher bar. */
+const ViewportBar: React.FC<{
+    viewport: string;
+    artW: number;
+    artH: number;
+}> = ({ viewport, artW, artH }) => {
+    const icons: Record<string, React.ReactNode> = {
+        desktop: (
+            <svg className="w-3.5 h-3.5 inline mr-1 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+        ),
+        tablet: (
+            <svg className="w-3.5 h-3.5 inline mr-1 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 18h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+            </svg>
+        ),
+        mobile: (
+            <svg className="w-3.5 h-3.5 inline mr-1 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+            </svg>
+        ),
+    };
+
+    return (
+        <div className="h-8 bg-[var(--ide-chrome)] border-b border-[var(--ide-border)] px-4 flex items-center justify-center gap-1 shrink-0 select-none">
+            {Object.entries(ARTBOARD_SIZES).map(([key, val]) => (
+                <button
+                    key={key}
+                    onClick={() => setViewport(key as "desktop" | "tablet" | "mobile")}
+                    className={`h-6 px-3 text-[10px] font-semibold rounded transition-colors ${
+                        viewport === key
+                            ? "bg-[var(--ide-primary)] text-white"
+                            : "text-[var(--ide-text-muted)] hover:text-[var(--ide-text)] hover:bg-[var(--ide-text)]/10"
+                    }`}
+                    title={`${val.label} (${val.w}px)`}
+                >
+                    {icons[key]}
+                    {val.label}
+                </button>
+            ))}
+            <span className="ml-2 text-[9px] font-mono text-[var(--ide-text-muted)] tabular-nums">
+                {artW} &times; {artH}
+            </span>
+        </div>
+    );
+};
 
 export default Canvas;

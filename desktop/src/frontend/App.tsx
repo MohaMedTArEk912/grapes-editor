@@ -29,6 +29,7 @@ import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 // Context
 import { ToastProvider } from "./context/ToastContext";
 import { ThemeProvider } from "./context/ThemeContext";
+import { DragDropProvider } from "./context/DragDropContext";
 
 const App: React.FC = () => {
   const { activeTab, project, workspacePath, isDashboardActive } = useProjectStore();
@@ -93,12 +94,14 @@ const App: React.FC = () => {
     <ErrorBoundary>
     <ThemeProvider>
       <ToastProvider>
-        <IDELayout
-          toolbar={<Toolbar />}
-          fileTree={<FileTree />}
-          canvas={renderCanvas()}
-          terminal={<Terminal />}
-        />
+        <DragDropProvider>
+          <IDELayout
+            toolbar={<Toolbar />}
+            fileTree={<FileTree />}
+            canvas={renderCanvas()}
+            terminal={<Terminal />}
+          />
+        </DragDropProvider>
       </ToastProvider>
     </ThemeProvider>
     </ErrorBoundary>

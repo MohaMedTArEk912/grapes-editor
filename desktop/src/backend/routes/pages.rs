@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::backend::error::ApiError;
 use crate::backend::state::AppState;
-use crate::schema::PageSchema;
+use crate::schema::{BlockSchema, BlockType, PageSchema};
 
 /// Update page request
 #[derive(Debug, Deserialize)]
@@ -40,9 +40,18 @@ pub async fn add_page(
         .await
         .ok_or_else(|| ApiError::NotFound("No project loaded".into()))?;
 
-    let page = PageSchema::new(uuid::Uuid::new_v4().to_string(), &req.name, &req.path);
+    let mut page = PageSchema::new(uuid::Uuid::new_v4().to_string(), &req.name, &req.path);
+    let root_block_id = uuid::Uuid::new_v4().to_string();
+    page.root_block_id = Some(root_block_id.clone());
+
+    let mut root_block = BlockSchema::new(root_block_id, BlockType::Container, "Page Root");
+    root_block.order = 0;
+    root_block
+        .classes
+        .extend(["min-h-screen", "w-full"].iter().map(|c| c.to_string()));
 
     let result = page.clone();
+    project.add_block(root_block);
     project.add_page(page);
 
     // Auto-sync

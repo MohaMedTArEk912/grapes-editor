@@ -151,6 +151,8 @@ const BlockPalette: React.FC = () => {
                                             e.dataTransfer.setData("text/akasha-block", block.type);
                                             e.dataTransfer.setData("text/plain", block.type);
                                             e.dataTransfer.effectAllowed = "copy";
+                                            // Store in global for WebView fallback (Tauri)
+                                            (window as any).__akashaDragData = { type: block.type };
                                         }}
                                     >
                                         <div className="w-10 h-10 rounded-lg bg-ide-accent/10 group-hover:bg-ide-accent/20 flex items-center justify-center transition-colors">
