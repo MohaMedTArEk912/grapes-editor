@@ -226,13 +226,19 @@ export interface FileEntry {
 export interface GitCommitInfo {
     id: string;
     message: string;
+    author: string;
     timestamp: number;
     summary: string;
 }
 
+export interface GitFileStatus {
+    path: string;
+    status: string; // "M", "A", "D", "R", etc.
+}
+
 export interface GitStatus {
     is_repo: boolean;
-    changed_files: number;
+    changed_files: GitFileStatus[];
     total_commits: number;
 }
 
@@ -469,6 +475,9 @@ export function useApi() {
         gitDiff: (commitId: string) =>
             invoke<string>('ipc_git_diff', { commitId }),
 
+        gitDiscard: (filePath: string) =>
+            invoke<void>('ipc_git_discard_changes', { filePath }),
+
         gitCommit: (message: string) =>
             invoke<GitCommitInfo | null>('ipc_git_commit', { message }),
 
@@ -477,6 +486,9 @@ export function useApi() {
 
         gitStatus: () =>
             invoke<GitStatus>('ipc_git_status'),
+
+        gitGetFileContent: (filePath: string, revision: string) =>
+            invoke<string>("ipc_git_get_file_content", { filePath, revision }),
     };
 }
 

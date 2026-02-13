@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { useProjectStore } from "../../hooks/useProjectStore";
-import { useApi, FileEntry } from "../../hooks/useTauri";
+import { useApi, FileEntry, GitStatus } from "../../hooks/useTauri";
 import { refreshCurrentProject, selectFile, setEditMode, setActiveTab } from "../../stores/projectStore";
 import ConfirmModal from "../Modals/ConfirmModal";
 import { useToast } from "../../context/ToastContext";
@@ -123,6 +123,8 @@ interface FileTreeItemProps {
     selectedPath: string | null;
     refreshVersion: number;
     searchFilter?: string;
+    gitStatus: GitStatus | null;
+    projectRoot: string | null;
 }
 
 const FileTreeItem: React.FC<FileTreeItemProps> = ({
@@ -133,11 +135,33 @@ const FileTreeItem: React.FC<FileTreeItemProps> = ({
     selectedPath,
     refreshVersion,
     searchFilter = "",
+    gitStatus,
+    projectRoot,
 }) => {
     const [expanded, setExpanded] = useState(false);
     const [children, setChildren] = useState<FileEntry[]>([]);
     const [filteredChildren, setFilteredChildren] = useState<FileEntry[]>([]);
     const [loading, setLoading] = useState(false);
+
+    // Git status check
+    const getGitStatus = () => {
+        if (!gitStatus || !projectRoot) return null;
+
+        let relativePath = entry.path.replace(projectRoot, "");
+        if (relativePath.startsWith("\\") || relativePath.startsWith("/")) {
+            relativePath = relativePath.substring(1);
+        }
+        relativePath = relativePath.replace(/\\/g, "/");
+
+        return gitStatus.changed_files.find(f => f.path.replace(/\\/g, "/") === relativePath);
+    };
+
+    const gitFile = getGitStatus();
+    const gitColor = gitFile?.status === "M" ? "text-amber-400" :
+        gitFile?.status === "A" ? "text-green-400" :
+            gitFile?.status === "D" ? "text-red-400" : "";
+
+
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
@@ -312,7 +336,13 @@ const FileTreeItem: React.FC<FileTreeItemProps> = ({
                         onClick={(e) => e.stopPropagation()}
                     />
                 ) : (
-                    <span className="text-[12px] truncate font-medium">{entry.name}</span>
+                    <span className={`text-[12px] truncate font-medium ${gitColor || ""}`}>{entry.name}</span>
+                )}
+
+                {gitFile && (
+                    <span className={`ml-2 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-[var(--ide-bg-input)] ${gitColor}`}>
+                        {gitFile.status}
+                    </span>
                 )}
 
                 {/* File size (for files) */}
@@ -351,6 +381,8 @@ const FileTreeItem: React.FC<FileTreeItemProps> = ({
                                 selectedPath={selectedPath}
                                 refreshVersion={refreshVersion}
                                 searchFilter={searchFilter}
+                                gitStatus={gitStatus}
+                                projectRoot={projectRoot}
                             />
                         ))
                     )}
@@ -435,8 +467,19 @@ const FileTree: React.FC = () => {
     const [refreshVersion, setRefreshVersion] = useState(0);
     const [searchFilter, setSearchFilter] = useState("");
     const [showHiddenFiles, setShowHiddenFiles] = useState(false);
+    const [gitStatus, setGitStatus] = useState<GitStatus | null>(null);
 
     const api = useApi();
+
+    const fetchGitStatus = useCallback(async () => {
+        if (!project?.root_path) return;
+        try {
+            const status = await api.gitStatus();
+            setGitStatus(status);
+        } catch {
+            setGitStatus(null);
+        }
+    }, [api, project?.root_path]);
 
     const loadRootDirectory = useCallback(async () => {
         if (!project?.root_path) return;
@@ -449,13 +492,14 @@ const FileTree: React.FC = () => {
             const filtered = showHiddenFiles ? result.entries : result.entries.filter((e) => !e.name.startsWith("."));
             setEntries(filtered);
             setRefreshVersion((prev) => prev + 1);
+            fetchGitStatus();
         } catch (err) {
             console.error("Failed to load file tree:", err);
             setError(String(err));
         } finally {
             setLoading(false);
         }
-    }, [project?.root_path, api, showHiddenFiles]);
+    }, [project?.root_path, api, showHiddenFiles, fetchGitStatus]);
 
     // Listen for real-time file system changes from Rust
     useEffect(() => {
@@ -484,7 +528,11 @@ const FileTree: React.FC = () => {
 
     useEffect(() => {
         loadRootDirectory();
-    }, [loadRootDirectory]);
+    }, [loadRootDirectory, refreshVersion]); // Re-load when refreshVersion changes
+
+    useEffect(() => {
+        fetchGitStatus();
+    }, [refreshVersion, fetchGitStatus]);
 
     const handleFileSelect = (path: string) => {
         selectFile(path);
@@ -634,6 +682,8 @@ const FileTree: React.FC = () => {
                                 selectedPath={selectedFilePath}
                                 refreshVersion={refreshVersion}
                                 searchFilter={searchFilter}
+                                gitStatus={gitStatus}
+                                projectRoot={project?.root_path || null}
                             />
                         ))}
                     </div>

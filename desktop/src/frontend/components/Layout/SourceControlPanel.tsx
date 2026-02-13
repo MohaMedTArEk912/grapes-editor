@@ -8,7 +8,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useApi, GitCommitInfo, GitStatus } from "../../hooks/useTauri";
 import { openDiffView } from "../../stores/projectStore";
 
-/* ─── Relative time helper ───────────────────────────────────────────── */
+
 function timeAgo(ts: number): string {
     const seconds = Math.floor(Date.now() / 1000 - ts);
     if (seconds < 60) return "just now";
@@ -74,7 +74,7 @@ function parseDiffToFiles(raw: string): DiffFile[] {
 }
 
 /* ─── Status badge colors ─────────────────────────────────────────────── */
-const statusColors: Record<DiffFile["status"], { bg: string; text: string; label: string }> = {
+const statusColors: Record<string, { bg: string; text: string; label: string }> = {
     M: { bg: "bg-amber-500/20", text: "text-amber-400", label: "M" },
     A: { bg: "bg-green-500/20", text: "text-green-400", label: "A" },
     D: { bg: "bg-red-500/20", text: "text-red-400", label: "D" },
@@ -98,8 +98,10 @@ const SourceControlPanel: React.FC = () => {
     const apiRef = useRef(api);
     apiRef.current = api;
 
+
     const [status, setStatus] = useState<GitStatus | null>(null);
     const [commits, setCommits] = useState<GitCommitInfo[]>([]);
+    const [searchQuery, setSearchQuery] = useState("");
     const [commitMsg, setCommitMsg] = useState("");
     const [loading, setLoading] = useState(false);
     const [committing, setCommitting] = useState(false);
@@ -227,6 +229,23 @@ const SourceControlPanel: React.FC = () => {
         );
     }
 
+    const handleDiscard = async (path: string) => {
+        if (!confirm(`Discard changes to ${path}? This cannot be undone.`)) return;
+        try {
+            await apiRef.current.gitDiscard(path);
+            await refresh();
+        } catch (err) {
+            console.error("Failed to discard changes:", err);
+            alert("Failed to discard changes: " + String(err));
+        }
+    };
+
+    const filteredCommits = commits.filter(c =>
+        c.message.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        c.id.includes(searchQuery) ||
+        c.author.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
     /* ─── Main UI ─────────────────────────────────────────────────── */
     return (
         <div className="flex flex-col h-full">
@@ -266,64 +285,102 @@ const SourceControlPanel: React.FC = () => {
             </div>
 
             {/* ── Changes section ─────────────────────────────────── */}
-            {status && status.changed_files > 0 && (
-                <div className="flex-shrink-0 border-b border-[var(--ide-border)]">
-                    <div className="px-3 py-2 flex items-center justify-between">
+            {status && status.changed_files.length > 0 && (
+                <div className="flex-shrink-0 border-b border-[var(--ide-border)] max-h-[30vh] overflow-y-auto">
+                    <div className="px-3 py-2 flex items-center justify-between sticky top-0 bg-[var(--ide-bg-panel)] z-10 border-b border-[var(--ide-border)]/50">
                         <div className="flex items-center gap-2">
                             <span className="text-[10px] font-bold text-[var(--ide-text-secondary)] uppercase tracking-wider">Changes</span>
                             <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-[var(--ide-primary)] text-[10px] font-bold text-white">
-                                {status.changed_files}
+                                {status.changed_files.length}
                             </span>
                         </div>
                     </div>
-                    <div className="px-3 pb-2">
-                        <div className="flex items-center gap-2 px-2 py-1.5 rounded bg-amber-500/10 border border-amber-500/20">
-                            <svg className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                            <span className="text-[11px] text-amber-300">
-                                {status.changed_files} modified file{status.changed_files !== 1 ? "s" : ""} (auto-committed on save)
-                            </span>
-                        </div>
+                    <div>
+                        {status.changed_files.map((file) => {
+                            const sc = statusColors[file.status] || statusColors["?"];
+                            const basename = file.path.split(/[/\\]/).pop() || file.path;
+                            return (
+                                <div key={file.path} className="group flex items-center justify-between px-3 py-1.5 hover:bg-[var(--ide-bg-hover)] transition-colors">
+                                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                                        <span className={`text-[10px] font-mono font-bold w-3.5 text-center ${sc.text}`}>{sc.label}</span>
+                                        <span className={`text-[11px] truncate ${sc.text}`}>{basename}</span>
+                                        <span className="text-[9px] text-[var(--ide-text-muted)] truncate flex-shrink-0 opacity-60">
+                                            {file.path.substring(0, file.path.length - basename.length)}
+                                        </span>
+                                    </div>
+                                    <button
+                                        onClick={() => handleDiscard(file.path)}
+                                        className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-500/20 hover:text-red-400 text-[var(--ide-text-secondary)] rounded transition-all"
+                                        title="Discard changes"
+                                    >
+                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
             )}
 
             {/* ── Commit history ──────────────────────────────────── */}
             <div className="flex-1 min-h-0 flex flex-col">
-                <div className="px-3 py-2 flex items-center justify-between flex-shrink-0">
-                    <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-bold text-[var(--ide-text-secondary)] uppercase tracking-wider">History</span>
-                        {status && (
-                            <span className="text-[10px] text-[var(--ide-text-secondary)]">
-                                {status.total_commits} commit{status.total_commits !== 1 ? "s" : ""}
-                            </span>
+                <div className="px-3 py-2 flex flex-col gap-2 flex-shrink-0 border-b border-[var(--ide-border)]">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold text-[var(--ide-text-secondary)] uppercase tracking-wider">History</span>
+                            {status && (
+                                <span className="text-[10px] text-[var(--ide-text-secondary)]">
+                                    {status.total_commits} commit{status.total_commits !== 1 ? "s" : ""}
+                                </span>
+                            )}
+                        </div>
+                        <button
+                            onClick={refresh}
+                            disabled={loading}
+                            className="p-1 rounded hover:bg-[var(--ide-bg-hover)] transition-colors text-[var(--ide-text-secondary)] hover:text-[var(--ide-text)] disabled:opacity-40"
+                            title="Refresh"
+                        >
+                            <svg className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                        </button>
+                    </div>
+                    {/* Search Input */}
+                    <div className="relative">
+                        <input
+                            type="text"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder="Filter commits..."
+                            className="w-full bg-[var(--ide-input-bg)] border border-[var(--ide-border)] rounded px-2 py-1 text-[11px] focus:outline-none focus:border-[var(--ide-primary)] placeholder-[var(--ide-text-muted)]"
+                        />
+                        {searchQuery && (
+                            <button
+                                onClick={() => setSearchQuery("")}
+                                className="absolute right-1 top-1/2 -translate-y-1/2 text-[var(--ide-text-muted)] hover:text-[var(--ide-text)]"
+                            >
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
                         )}
                     </div>
-                    <button
-                        onClick={refresh}
-                        disabled={loading}
-                        className="p-1 rounded hover:bg-[var(--ide-bg-hover)] transition-colors text-[var(--ide-text-secondary)] hover:text-[var(--ide-text)] disabled:opacity-40"
-                        title="Refresh"
-                    >
-                        <svg className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                        </svg>
-                    </button>
                 </div>
 
-                <div className="flex-1 min-h-0 overflow-y-auto">
+                <div className="flex-1 overflow-y-auto">
                     {loading && commits.length === 0 ? (
                         <div className="flex items-center justify-center py-8">
                             <div className="w-5 h-5 border-2 border-[var(--ide-primary)]/30 border-t-[var(--ide-primary)] rounded-full animate-spin" />
                         </div>
-                    ) : commits.length === 0 ? (
+                    ) : filteredCommits.length === 0 ? (
                         <div className="flex items-center justify-center py-8">
-                            <p className="text-xs text-[var(--ide-text-secondary)]">No commits yet</p>
+                            <p className="text-xs text-[var(--ide-text-secondary)]">No commits found</p>
                         </div>
                     ) : (
-                        <div className="pb-2">
-                            {commits.map((c, i) => (
+                        <div className="divide-y divide-[var(--ide-border)]/50">
+                            {filteredCommits.map((c, i) => (
                                 <div key={c.id} className="group">
                                     {/* Commit row */}
                                     <button

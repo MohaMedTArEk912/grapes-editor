@@ -171,6 +171,8 @@ pub fn run() {
             commands::ipc::ipc_git_commit,
             commands::ipc::ipc_git_init,
             commands::ipc::ipc_git_status,
+            commands::ipc::ipc_git_discard_changes,
+            commands::ipc::ipc_git_get_file_content,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

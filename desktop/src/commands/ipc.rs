@@ -979,3 +979,38 @@ pub async fn ipc_git_status(
     let status = crate::backend::git::get_git_status(std::path::Path::new(root))?;
     serde_json::to_value(status).map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+pub async fn ipc_git_discard_changes(
+    state: State<'_, BackendAppState>,
+    file_path: String,
+) -> Result<(), String> {
+    let project = state
+        .get_project()
+        .await
+        .ok_or_else(|| "No project loaded".to_string())?;
+    let root = project
+        .root_path
+        .as_ref()
+        .ok_or_else(|| "No project root path set".to_string())?;
+
+    crate::backend::git::discard_changes(std::path::Path::new(root), &file_path)
+}
+
+#[tauri::command]
+pub async fn ipc_git_get_file_content(
+    state: State<'_, BackendAppState>,
+    file_path: String,
+    revision: String,
+) -> Result<String, String> {
+    let project = state
+        .get_project()
+        .await
+        .ok_or_else(|| "No project loaded".to_string())?;
+    let root = project
+        .root_path
+        .as_ref()
+        .ok_or_else(|| "No project root path set".to_string())?;
+
+    crate::backend::git::get_file_content(std::path::Path::new(root), &file_path, &revision)
+}
