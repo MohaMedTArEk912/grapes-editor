@@ -15,15 +15,15 @@ import { setActiveTab, setEditMode, closeProject, installProjectDependencies, cl
 import { useEditorSettings } from "../../hooks/useEditorSettings";
 import * as EditorSettingsStore from "../../stores/editorSettingsStore";
 
-import CodeEditor from "../Canvas/CodeEditor";
-import DiffViewer from "../Canvas/DiffViewer";
+import CodeEditor from "../Canvas/CodeEditor/CodeEditor";
+import DiffViewer from "../Canvas/CodeEditor/DiffViewer";
 import ProjectSettingsModal from "../Modals/ProjectSettingsModal";
 import ComponentPalette from "../Visual/ComponentPalette";
 import Inspector from "../Visual/Inspector";
 import WindowControls from "../UI/WindowControls";
 import EditorTabs from "./EditorTabs";
 import { SidebarSection, PagesList, AddPageButton } from "./SidebarComponents";
-import SourceControlPanel from "./SourceControlPanel";
+import SourceControlPanel from "../SourceControl/SourceControlPanel";
 
 interface IDELayoutProps {
     toolbar: React.ReactNode;

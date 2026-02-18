@@ -11,10 +11,10 @@ import "./index.css";
 import IDELayout from "./components/Layout/IDELayout";
 import Toolbar from "./components/Toolbar/Toolbar";
 import FileTree from "./components/FileTree/FileTree";
-import Canvas from "./components/Canvas/Canvas";
-import LogicCanvas from "./components/Canvas/LogicCanvas";
-import ERDCanvas from "./components/Canvas/ERDCanvas";
-import ApiList from "./components/Canvas/ApiList";
+import Canvas from "./components/Canvas/VisualCanvas/Canvas";
+import LogicCanvas from "./components/Canvas/LogicCanvas/LogicCanvas";
+import ERDCanvas from "./components/Canvas/DataCanvas/ERDCanvas";
+import ApiList from "./components/Canvas/DataCanvas/ApiList";
 import VariablesPanel from "./components/Editors/VariablesPanel";
 import Terminal from "./components/Terminal/Terminal";
 import DashboardView from "./components/Dashboard/DashboardView";
@@ -52,11 +52,11 @@ const App: React.FC = () => {
   if (!workspacePath) {
     return (
       <ErrorBoundary>
-      <ThemeProvider>
-        <ToastProvider>
-          <WorkspaceSetup />
-        </ToastProvider>
-      </ThemeProvider>
+        <ThemeProvider>
+          <ToastProvider>
+            <WorkspaceSetup />
+          </ToastProvider>
+        </ThemeProvider>
       </ErrorBoundary>
     );
   }
@@ -64,11 +64,11 @@ const App: React.FC = () => {
   if (isDashboardActive || !project) {
     return (
       <ErrorBoundary>
-      <ThemeProvider>
-        <ToastProvider>
-          <DashboardView />
-        </ToastProvider>
-      </ThemeProvider>
+        <ThemeProvider>
+          <ToastProvider>
+            <DashboardView />
+          </ToastProvider>
+        </ThemeProvider>
       </ErrorBoundary>
     );
   }
@@ -92,18 +92,18 @@ const App: React.FC = () => {
 
   return (
     <ErrorBoundary>
-    <ThemeProvider>
-      <ToastProvider>
-        <DragDropProvider>
-          <IDELayout
-            toolbar={<Toolbar />}
-            fileTree={<FileTree />}
-            canvas={renderCanvas()}
-            terminal={<Terminal />}
-          />
-        </DragDropProvider>
-      </ToastProvider>
-    </ThemeProvider>
+      <ThemeProvider>
+        <ToastProvider>
+          <DragDropProvider>
+            <IDELayout
+              toolbar={<Toolbar />}
+              fileTree={<FileTree />}
+              canvas={renderCanvas()}
+              terminal={<Terminal />}
+            />
+          </DragDropProvider>
+        </ToastProvider>
+      </ThemeProvider>
     </ErrorBoundary>
   );
 };
