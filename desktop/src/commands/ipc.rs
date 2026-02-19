@@ -276,6 +276,26 @@ pub async fn ipc_move_block(
     Ok(json.0)
 }
 
+#[tauri::command]
+pub async fn ipc_bulk_sync_page_blocks(
+    state: State<'_, BackendAppState>,
+    page_id: String,
+    blocks: Vec<serde_json::Value>,
+) -> Result<bool, String> {
+    let ax = axum::extract::State(state.inner().clone());
+    let body = axum::Json(routes::blocks::BulkSyncRequest {
+        page_id,
+        blocks: blocks
+            .into_iter()
+            .filter_map(|v| serde_json::from_value(v).ok())
+            .collect(),
+    });
+    let json = routes::blocks::bulk_sync_page_blocks(ax, body)
+        .await
+        .map_err(map_err)?;
+    Ok(json.0)
+}
+
 // ============================================================================
 // COMPONENTS
 // ============================================================================

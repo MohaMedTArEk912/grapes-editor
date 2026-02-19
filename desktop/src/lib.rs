@@ -117,6 +117,7 @@ pub fn run() {
             commands::ipc::ipc_update_block,
             commands::ipc::ipc_delete_block,
             commands::ipc::ipc_move_block,
+            commands::ipc::ipc_bulk_sync_page_blocks,
             // ─── Components ─────────────────────────────────
             commands::ipc::ipc_list_components,
             commands::ipc::ipc_create_component,

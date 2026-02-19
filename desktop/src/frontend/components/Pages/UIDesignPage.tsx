@@ -1,22 +1,29 @@
 /**
  * UI Design Page
  *
- * Full-page view for visual UI building:
+ * Full-page view for visual UI building, powered by craft.js:
  * - Left sidebar: Pages list + Component palette
- * - Center: Visual Canvas (drag-drop block editor)
- * - Right: Inspector panel (properties, styles, events)
+ * - Center: craft.js canvas (CraftFrame with ToolboxDropZone)
+ * - Right: Inspector panel (properties, styles, events via craft.js)
  */
 
 import React from "react";
 import { useProjectStore } from "../../hooks/useProjectStore";
 import { setInspectorOpen } from "../../stores/projectStore";
-import Canvas from "../Canvas/VisualCanvas/Canvas";
+import { CraftEditor } from "../Canvas/craft/CraftEditor";
+import { CraftFrame } from "../Canvas/craft/CraftFrame";
+import { ToolboxDropZone } from "../Canvas/craft/ToolboxDropZone";
+import { useCraftSync } from "../Canvas/craft/useCraftSync";
 import ComponentPalette from "../Visual/ComponentPalette";
 import Inspector from "../Visual/Inspector";
 import { SidebarSection, PagesList, AddPageButton } from "../Layout/SidebarComponents";
 
-const UIDesignPage: React.FC = () => {
+/** Inner component that has access to craft.js context for sync */
+const CraftContent: React.FC = () => {
     const { inspectorOpen } = useProjectStore();
+
+    // Enable debounced backend sync
+    useCraftSync();
 
     return (
         <div className="flex flex-1 overflow-hidden h-full">
@@ -30,12 +37,14 @@ const UIDesignPage: React.FC = () => {
                 </SidebarSection>
             </aside>
 
-            {/* Center: Visual Canvas */}
+            {/* Center: craft.js Canvas */}
             <main className="flex-1 overflow-hidden relative">
-                <Canvas />
+                <ToolboxDropZone>
+                    <CraftFrame />
+                </ToolboxDropZone>
             </main>
 
-            {/* Right: Inspector */}
+            {/* Right: Inspector (now reads from craft.js) */}
             {inspectorOpen && <Inspector />}
 
             {/* Inspector toggle button (floating) */}
@@ -49,6 +58,14 @@ const UIDesignPage: React.FC = () => {
                 </button>
             )}
         </div>
+    );
+};
+
+const UIDesignPage: React.FC = () => {
+    return (
+        <CraftEditor>
+            <CraftContent />
+        </CraftEditor>
     );
 };
 

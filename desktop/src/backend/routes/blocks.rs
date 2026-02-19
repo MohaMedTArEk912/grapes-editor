@@ -5,9 +5,12 @@ use axum::{
     Json,
 };
 use serde::Deserialize;
+use serde_json::Value;
+use std::collections::HashMap;
 
 use crate::backend::error::ApiError;
 use crate::backend::state::AppState;
+use crate::schema::block::{Breakpoint, DataBinding, StyleValue};
 use crate::schema::{BlockSchema, BlockType, ProjectSchema};
 
 /// Add block request
@@ -412,4 +415,194 @@ pub async fn move_block(
 
     state.set_project(project).await;
     Ok(Json(true))
+}
+
+// ============================================================================
+// BULK SYNC (craft.js canvas → backend)
+// ============================================================================
+
+/// Single block input matching the frontend BlockSchema TS shape.
+#[derive(Debug, Deserialize)]
+pub struct BulkBlockInput {
+    pub id: String,
+    pub block_type: String,
+    pub name: String,
+    #[serde(default)]
+    pub parent_id: Option<String>,
+    #[serde(default)]
+    pub order: i32,
+    #[serde(default)]
+    pub properties: HashMap<String, Value>,
+    #[serde(default)]
+    pub styles: HashMap<String, StyleValue>,
+    #[serde(default)]
+    pub responsive_styles: HashMap<String, HashMap<String, StyleValue>>,
+    #[serde(default)]
+    pub bindings: HashMap<String, DataBinding>,
+    #[serde(default)]
+    pub event_handlers: Vec<EventHandlerInput>,
+    #[serde(default)]
+    pub archived: bool,
+    #[serde(default)]
+    pub component_id: Option<String>,
+    #[serde(default)]
+    pub children: Vec<String>,
+    // Fields accepted from TS but not stored on Rust BlockSchema:
+    #[serde(default)]
+    pub page_id: Option<String>,
+    #[serde(default)]
+    pub slot: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct EventHandlerInput {
+    pub event: String,
+    pub logic_flow_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BulkSyncRequest {
+    pub page_id: String,
+    pub blocks: Vec<BulkBlockInput>,
+}
+
+/// Bulk sync: replace ALL blocks for a page with the incoming set.
+///
+/// 1. Archive every existing block belonging to the page (root + descendants).
+/// 2. Insert the new blocks from the frontend.
+/// 3. Auto-sync to disk if a root_path exists.
+pub async fn bulk_sync_page_blocks(
+    State(state): State<AppState>,
+    Json(req): Json<BulkSyncRequest>,
+) -> Result<Json<bool>, ApiError> {
+    let mut project = state
+        .get_project()
+        .await
+        .ok_or_else(|| ApiError::NotFound("No project loaded".into()))?;
+
+    // 1. Archive all existing blocks for this page
+    let page_root_id = project
+        .find_page(&req.page_id)
+        .and_then(|p| p.root_block_id.clone());
+
+    if let Some(root_id) = &page_root_id {
+        let page_block_ids = collect_descendant_ids(&project, root_id);
+        for block_id in &page_block_ids {
+            project.archive_block(block_id);
+        }
+    }
+
+    // 2. Insert new blocks from the frontend
+    for input in req.blocks {
+        let block_type = parse_block_type(&input.block_type);
+
+        // Convert event_handlers array → events HashMap
+        let mut events = HashMap::new();
+        for eh in &input.event_handlers {
+            events.insert(eh.event.clone(), eh.logic_flow_id.clone());
+        }
+
+        // Convert responsive_styles string keys → Breakpoint enum
+        let mut responsive_styles = HashMap::new();
+        for (key, val) in input.responsive_styles {
+            if let Some(bp) = parse_breakpoint(&key) {
+                responsive_styles.insert(bp, val);
+            }
+        }
+
+        let block = BlockSchema {
+            id: input.id,
+            block_type,
+            name: input.name,
+            properties: input.properties,
+            children: input.children,
+            parent_id: input.parent_id,
+            styles: input.styles,
+            responsive_styles,
+            classes: Vec::new(),
+            events,
+            bindings: input.bindings,
+            archived: false,
+            order: input.order,
+            physical_path: None,
+            version_hash: None,
+            component_id: input.component_id,
+        };
+
+        project.add_block(block);
+    }
+
+    // 3. Auto-sync page to disk
+    if let Some(root) = &project.root_path {
+        let engine = crate::generator::sync_engine::SyncEngine::new(root);
+        if let Err(e) = engine.sync_page_to_disk(&req.page_id, &project) {
+            log::error!("Auto-sync failed for page {}: {}", req.page_id, e);
+        }
+    }
+
+    state.set_project(project).await;
+    Ok(Json(true))
+}
+
+// ── Private helpers ────────────────────────────────────────────────────
+
+/// Collect the root block ID and all its descendants (BFS traversal).
+fn collect_descendant_ids(project: &ProjectSchema, root_id: &str) -> Vec<String> {
+    let mut ids = vec![root_id.to_string()];
+    let mut queue = vec![root_id.to_string()];
+    while let Some(id) = queue.pop() {
+        if let Some(block) = project.find_block(&id) {
+            for child_id in &block.children {
+                ids.push(child_id.clone());
+                queue.push(child_id.clone());
+            }
+        }
+    }
+    ids
+}
+
+/// Parse a block type string into the BlockType enum.
+fn parse_block_type(s: &str) -> BlockType {
+    match s {
+        "page" => BlockType::Page,
+        "container" => BlockType::Container,
+        "section" => BlockType::Section,
+        "columns" => BlockType::Columns,
+        "column" => BlockType::Column,
+        "flex" => BlockType::Flex,
+        "grid" => BlockType::Grid,
+        "text" => BlockType::Text,
+        "heading" => BlockType::Heading,
+        "paragraph" => BlockType::Paragraph,
+        "link" => BlockType::Link,
+        "image" => BlockType::Image,
+        "video" => BlockType::Video,
+        "icon" => BlockType::Icon,
+        "form" => BlockType::Form,
+        "input" => BlockType::Input,
+        "textarea" => BlockType::TextArea,
+        "select" => BlockType::Select,
+        "checkbox" => BlockType::Checkbox,
+        "radio" => BlockType::Radio,
+        "button" => BlockType::Button,
+        "modal" => BlockType::Modal,
+        "dropdown" => BlockType::Dropdown,
+        "tabs" => BlockType::Tabs,
+        "accordion" => BlockType::Accordion,
+        "list" => BlockType::List,
+        "table" => BlockType::Table,
+        "card" => BlockType::Card,
+        "instance" => BlockType::Instance,
+        other => BlockType::Custom(other.to_string()),
+    }
+}
+
+/// Parse a breakpoint string into the Breakpoint enum.
+fn parse_breakpoint(s: &str) -> Option<Breakpoint> {
+    match s {
+        "mobile" => Some(Breakpoint::Mobile),
+        "tablet" => Some(Breakpoint::Tablet),
+        "desktop" => Some(Breakpoint::Desktop),
+        _ => None,
+    }
 }
