@@ -34,7 +34,7 @@ import gitRouter from './routes/git.js';
 app.use('/api/project', projectRouter);
 import blocksRouter from './routes/blocks.js';
 app.use('/api/blocks', blocksRouter);
-// app.use('/api/workspace', workspaceRouter);
+app.use('/api/workspace', workspaceRouter);
 app.use('/api/pages', pagesRouter);
 import logicFlowsRouter from './routes/logicFlows.js';
 app.use('/api/logic-flows', logicFlowsRouter);
@@ -51,5 +51,4 @@ app.use('/api/git', gitRouter);
 
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
-    console.log(`Mode: Web Cloud`);
 });
