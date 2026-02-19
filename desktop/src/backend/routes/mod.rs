@@ -12,3 +12,4 @@ pub mod project;
 pub mod variables;
 pub mod workspace;
 pub mod diagrams;
+pub mod akasha;

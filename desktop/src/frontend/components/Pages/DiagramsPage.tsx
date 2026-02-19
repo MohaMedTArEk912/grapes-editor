@@ -8,7 +8,8 @@
  */
 
 import React, { useRef, useState, useCallback, useEffect } from "react";
-import useApi, { DiagramEntry } from "../../hooks/useTauri";
+import useApi, { DiagramEntry, AnalysisResult } from "../../hooks/useTauri";
+import AnalysisPanel from "../Akasha/AnalysisPanel";
 
 const DRAWIO_SRC = "/src/drawio/index.html";
 
@@ -21,6 +22,12 @@ const DiagramsPage: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [loadingList, setLoadingList] = useState(false);
     const [isDirty, setIsDirty] = useState(false);
+
+    // ─── Akasha analysis state ──────────────────────
+    const [showAnalysis, setShowAnalysis] = useState(false);
+    const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+    const [analysisLoading, setAnalysisLoading] = useState(false);
+    const [analysisError, setAnalysisError] = useState<string | null>(null);
 
     // Initial load of diagrams
     useEffect(() => {
@@ -96,6 +103,21 @@ const DiagramsPage: React.FC = () => {
             "*"
         );
         setLoaded(true);
+    };
+
+    // ─── Akasha analysis handler ────────────────────
+    const handleAnalyze = async () => {
+        if (!selectedDiagram) return;
+        setAnalysisLoading(true);
+        setAnalysisError(null);
+        try {
+            const result = await api.analyzeDiagram(selectedDiagram);
+            setAnalysisResult(result);
+        } catch (err) {
+            setAnalysisError(`Analysis failed: ${err}`);
+        } finally {
+            setAnalysisLoading(false);
+        }
     };
 
     const handleIframeLoad = useCallback(() => {
@@ -179,8 +201,8 @@ const DiagramsPage: React.FC = () => {
                             key={d.path}
                             onClick={() => selectDiagram(d.name)}
                             className={`group flex items-center px-3 py-2 text-sm rounded cursor-pointer select-none ${selectedDiagram === d.name
-                                    ? "bg-[var(--ide-active-bg)] text-[var(--ide-active-text)]"
-                                    : "text-[var(--ide-text)] hover:bg-[var(--ide-hover-bg)]"
+                                ? "bg-[var(--ide-active-bg)] text-[var(--ide-active-text)]"
+                                : "text-[var(--ide-text)] hover:bg-[var(--ide-hover-bg)]"
                                 }`}
                         >
                             <svg className={`w-4 h-4 mr-2 ${selectedDiagram === d.name ? "text-[var(--ide-primary)]" : "text-[var(--ide-text-secondary)]"}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -200,43 +222,92 @@ const DiagramsPage: React.FC = () => {
                 </div>
             </div>
 
-            {/* Main Area */}
-            <div className="flex-1 flex flex-col min-w-0">
-                {!selectedDiagram ? (
-                    <div className="flex-1 flex flex-col items-center justify-center text-[var(--ide-text-secondary)]">
-                        <svg className="w-16 h-16 mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
-                        </svg>
-                        <p>Select a diagram to edit</p>
-                    </div>
-                ) : (
-                    <div className="flex-1 relative bg-white">
-                        {error && (
-                            <div className="absolute inset-0 z-50 bg-[var(--ide-bg)] flex items-center justify-center">
-                                <div className="text-center p-8 text-red-500">
-                                    <p>{error}</p>
-                                    <button onClick={() => selectDiagram(selectedDiagram)} className="mt-4 px-4 py-2 bg-[var(--ide-surface)] rounded border hover:bg-[var(--ide-hover-bg)]">Retry</button>
-                                </div>
-                            </div>
-                        )}
-                        {!loaded && !error && (
-                            <div className="absolute inset-0 z-50 bg-[var(--ide-bg)] flex items-center justify-center text-[var(--ide-text-secondary)]">
-                                <span className="animate-pulse">Loading editor...</span>
-                            </div>
-                        )}
+            {/* Main Area + Analysis Panel */}
+            <div className="flex-1 flex min-w-0">
+                {/* Editor Area */}
+                <div className="flex-1 flex flex-col min-w-0">
+                    {/* Toolbar */}
+                    {selectedDiagram && (
+                        <div
+                            style={{
+                                height: 36,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "flex-end",
+                                padding: "0 8px",
+                                gap: 6,
+                                background: "var(--ide-chrome)",
+                                borderBottom: "1px solid var(--ide-border)",
+                            }}
+                        >
+                            <button
+                                onClick={() => setShowAnalysis(!showAnalysis)}
+                                style={{
+                                    padding: "4px 10px",
+                                    fontSize: 11,
+                                    fontWeight: 500,
+                                    borderRadius: 4,
+                                    border: showAnalysis
+                                        ? "1px solid var(--ide-primary, #3b82f6)"
+                                        : "1px solid var(--ide-border)",
+                                    cursor: "pointer",
+                                    background: showAnalysis
+                                        ? "rgba(59,130,246,0.12)"
+                                        : "transparent",
+                                    color: showAnalysis
+                                        ? "var(--ide-primary, #3b82f6)"
+                                        : "var(--ide-text-secondary)",
+                                    transition: "all 0.15s",
+                                }}
+                            >
+                                🧠 Akasha
+                            </button>
+                        </div>
+                    )}
 
-                        <iframe
-                            ref={iframeRef}
-                            src={DRAWIO_SRC}
-                            className={`w-full h-full border-0 block ${!loaded ? 'opacity-0' : 'opacity-100'}`}
-                            title="Architecture Diagram Editor"
-                            onLoad={handleIframeLoad}
-                            onError={handleIframeError}
-                        // Important: allow-modals is needed for some draw.io dialogs? sandbox restrictions might be tricky.
-                        // 'embed=1&spin=1&proto=json&configure=1' are typical URL params for embed mode
-                        // We are using local index.html, assume it's configured for embed/postMessage.
-                        />
-                    </div>
+                    {!selectedDiagram ? (
+                        <div className="flex-1 flex flex-col items-center justify-center text-[var(--ide-text-secondary)]">
+                            <svg className="w-16 h-16 mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+                            </svg>
+                            <p>Select a diagram to edit</p>
+                        </div>
+                    ) : (
+                        <div className="flex-1 relative bg-white">
+                            {error && (
+                                <div className="absolute inset-0 z-50 bg-[var(--ide-bg)] flex items-center justify-center">
+                                    <div className="text-center p-8 text-red-500">
+                                        <p>{error}</p>
+                                        <button onClick={() => selectDiagram(selectedDiagram)} className="mt-4 px-4 py-2 bg-[var(--ide-surface)] rounded border hover:bg-[var(--ide-hover-bg)]">Retry</button>
+                                    </div>
+                                </div>
+                            )}
+                            {!loaded && !error && (
+                                <div className="absolute inset-0 z-50 bg-[var(--ide-bg)] flex items-center justify-center text-[var(--ide-text-secondary)]">
+                                    <span className="animate-pulse">Loading editor...</span>
+                                </div>
+                            )}
+
+                            <iframe
+                                ref={iframeRef}
+                                src={DRAWIO_SRC}
+                                className={`w-full h-full border-0 block ${!loaded ? 'opacity-0' : 'opacity-100'}`}
+                                title="Architecture Diagram Editor"
+                                onLoad={handleIframeLoad}
+                                onError={handleIframeError}
+                            />
+                        </div>
+                    )}
+                </div>
+
+                {/* Akasha Analysis Panel */}
+                {showAnalysis && selectedDiagram && (
+                    <AnalysisPanel
+                        result={analysisResult}
+                        loading={analysisLoading}
+                        error={analysisError}
+                        onAnalyze={handleAnalyze}
+                    />
                 )}
             </div>
         </div>

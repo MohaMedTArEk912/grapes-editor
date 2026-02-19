@@ -168,6 +168,15 @@ pub fn create_router(state: BackendAppState) -> Router {
         .route("/api/files/delete", delete(routes::files::delete_file))
         .route("/api/files/content", get(routes::files::read_file))
         .route("/api/files/content", put(routes::files::write_file))
+        // Akasha product intelligence
+        .route(
+            "/api/akasha/analyze/:diagram_name",
+            post(routes::akasha::analyze_diagram),
+        )
+        .route(
+            "/api/akasha/analyze-raw",
+            post(routes::akasha::analyze_raw),
+        )
         // CORS layer
         .layer(
             CorsLayer::new()

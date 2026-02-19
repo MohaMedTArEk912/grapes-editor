@@ -16,6 +16,7 @@ pub mod generator;
 pub mod schema;
 pub mod storage;
 pub mod vfs; // Backend API server
+pub mod akasha; // Product intelligence engine
 
 // Re-exports
 pub use schema::ProjectSchema;
@@ -179,6 +180,9 @@ pub fn run() {
             commands::ipc::ipc_git_status,
             commands::ipc::ipc_git_discard_changes,
             commands::ipc::ipc_git_get_file_content,
+            // ─── Akasha Product Intelligence ────────────────
+            commands::ipc::ipc_analyze_diagram,
+            commands::ipc::ipc_analyze_diagram_raw,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

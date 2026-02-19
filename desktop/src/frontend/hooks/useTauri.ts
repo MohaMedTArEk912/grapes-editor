@@ -248,6 +248,52 @@ export interface DiagramEntry {
     last_modified?: number;
 }
 
+// ===== Akasha Product Intelligence Types =====
+
+export type NodeType = 'actor' | 'feature' | 'screen' | 'api' | 'database' | 'external_service' | 'decision' | 'process' | 'unknown';
+export type RelationshipType = 'flow' | 'dependency' | 'association';
+export type Severity = 'info' | 'warning' | 'error';
+
+export interface ProductNode {
+    id: string;
+    label: string;
+    node_type: NodeType;
+    properties: Record<string, string>;
+}
+
+export interface ProductEdge {
+    id: string;
+    source: string;
+    target: string;
+    label: string;
+    relationship_type: RelationshipType;
+}
+
+export interface ProductGraph {
+    nodes: ProductNode[];
+    edges: ProductEdge[];
+}
+
+export interface ValidationIssue {
+    severity: Severity;
+    message: string;
+    element_id?: string;
+    rule: string;
+}
+
+export interface GraphStats {
+    total_nodes: number;
+    total_edges: number;
+    unknown_type_count: number;
+    issue_count: number;
+}
+
+export interface AnalysisResult {
+    graph: ProductGraph;
+    issues: ValidationIssue[];
+    stats: GraphStats;
+}
+
 // ===== API Functions (all via Tauri IPC) =====
 
 /**
@@ -511,8 +557,16 @@ export function useApi() {
 
         deleteDiagram: (name: string) =>
             invoke<boolean>('ipc_delete_diagram', { name }),
+
+        // ─── Akasha Product Intelligence ────────────────
+        analyzeDiagram: (name: string) =>
+            invoke<AnalysisResult>('ipc_analyze_diagram', { name }),
+
+        analyzeDiagramRaw: (xml: string) =>
+            invoke<AnalysisResult>('ipc_analyze_diagram_raw', { xml }),
     };
 }
 
 // Default export for backwards compatibility
 export default useApi;
+
