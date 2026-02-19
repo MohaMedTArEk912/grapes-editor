@@ -8,7 +8,7 @@
  */
 
 import React, { useRef, useState, useCallback, useEffect } from "react";
-import useApi, { DiagramEntry, AnalysisResult } from "../../hooks/useTauri";
+import useApi, { DiagramEntry, AnalysisResult } from "../../hooks/useApi";
 import AnalysisPanel from "../Akasha/AnalysisPanel";
 
 const DRAWIO_SRC = "/src/drawio/index.html";

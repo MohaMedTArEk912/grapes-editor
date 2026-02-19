@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { DiffEditor } from "@monaco-editor/react";
 import { useProjectStore } from "../../../hooks/useProjectStore";
 import { closeDiffView } from "../../../stores/projectStore";
-import useApi from "../../../hooks/useTauri";
+import useApi from "../../../hooks/useApi";
 
 function getLanguage(filename: string): string {
     const ext = filename.split('.').pop()?.toLowerCase();

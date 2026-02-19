@@ -17,7 +17,7 @@ import {
     addRelation,
     deleteRelation,
 } from "../../stores/projectStore";
-import { DataModelSchema, FieldSchema, RelationSchema } from "../../hooks/useTauri";
+import { DataModelSchema, FieldSchema, RelationSchema } from "../../hooks/useApi";
 
 const FIELD_TYPES = [
     "String", "Int", "Float", "Boolean", "DateTime",
@@ -407,10 +407,10 @@ const FieldRow: React.FC<FieldRowProps> = ({ field, modelId }) => {
                 <div className="hidden group-hover:flex items-center gap-0.5">
                     <button onClick={() => { setEditData({ name: field.name, field_type: field.field_type, required: field.required, unique: field.unique }); setIsEditing(true); }}
                         className="p-0.5 text-[var(--ide-text-muted)] hover:text-[var(--ide-primary)]" title="Edit">
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                     </button>
                     <button onClick={handleDelete} className="p-0.5 text-[var(--ide-text-muted)] hover:text-red-400" title="Delete">
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
                     </button>
                 </div>
             )}

@@ -9,7 +9,7 @@ import { addApi, archiveApi, addLogicFlow, setActivePage, updateEndpoint } from 
 import { useProjectStore } from "../../../hooks/useProjectStore";
 import PromptModal from "../../UI/PromptModal";
 import { useToast } from "../../../context/ToastContext";
-import type { DataShape, ShapeField } from "../../../hooks/useTauri";
+import type { DataShape, ShapeField } from "../../../hooks/useApi";
 
 const getMethodColor = (method: string): string => {
     switch (method.toUpperCase()) {

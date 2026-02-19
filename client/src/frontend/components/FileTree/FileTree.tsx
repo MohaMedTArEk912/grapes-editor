@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { listen } from "@tauri-apps/api/event";
+
 import { useProjectStore } from "../../hooks/useProjectStore";
-import { useApi, FileEntry, GitStatus } from "../../hooks/useTauri";
+import { useApi, FileEntry, GitStatus } from "../../hooks/useApi";
 import { refreshCurrentProject, selectFile, setActivePage } from "../../stores/projectStore";
 import ConfirmModal from "../Modals/ConfirmModal";
 import { useToast } from "../../context/ToastContext";
@@ -501,30 +501,8 @@ const FileTree: React.FC = () => {
         }
     }, [project?.root_path, api, showHiddenFiles, fetchGitStatus]);
 
-    // Listen for real-time file system changes from Rust
-    useEffect(() => {
-        let unlisten: (() => void) | undefined;
-
-        const setupListener = async () => {
-            try {
-                // @ts-ignore - Tauri v2 types might vary depending on setup
-                unlisten = await listen("vfs://change", (event) => {
-                    console.log("File system changed:", event.payload);
-                    loadRootDirectory();
-                });
-            } catch (err) {
-                console.error("Failed to setup file watcher listener:", err);
-            }
-        };
-
-        setupListener();
-        return () => {
-            if (unlisten) {
-                // If it's a promise (v1) or sync (v2 handle)
-                if (typeof unlisten === "function") unlisten();
-            }
-        };
-    }, [loadRootDirectory]);
+    // File watcher currently disabled for web mode
+    // Real-time updates would require WebSocket or polling implementation
 
     useEffect(() => {
         loadRootDirectory();

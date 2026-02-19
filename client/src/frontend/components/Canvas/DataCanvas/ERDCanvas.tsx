@@ -8,7 +8,7 @@
 import React, { useState } from "react";
 import { addDataModel, addField, archiveDataModel, deleteField } from "../../../stores/projectStore";
 import { useProjectStore } from "../../../hooks/useProjectStore";
-import { DataModelSchema, FieldSchema } from "../../../hooks/useTauri";
+import { DataModelSchema, FieldSchema } from "../../../hooks/useApi";
 import PromptModal, { PromptField } from "../../UI/PromptModal";
 import { useToast } from "../../../context/ToastContext";
 

@@ -6,7 +6,7 @@
 
 import React, { useState } from "react";
 import { setWorkspace } from "../../stores/projectStore";
-import { useApi } from "../../hooks/useTauri";
+import { useApi } from "../../hooks/useApi";
 import WindowControls from "../UI/WindowControls";
 import { useToast } from "../../context/ToastContext";
 

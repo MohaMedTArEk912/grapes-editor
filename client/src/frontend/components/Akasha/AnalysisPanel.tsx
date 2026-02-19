@@ -9,7 +9,7 @@
  */
 
 import React, { useState } from "react";
-import type { AnalysisResult, ProductNode, ValidationIssue, Severity, NodeType } from "../../hooks/useTauri";
+import type { AnalysisResult, ProductNode, ValidationIssue, Severity, NodeType } from "../../hooks/useApi";
 
 interface AnalysisPanelProps {
     result: AnalysisResult | null;

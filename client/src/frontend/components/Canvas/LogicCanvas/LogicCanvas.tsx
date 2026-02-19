@@ -10,7 +10,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useProjectStore } from "../../../hooks/useProjectStore";
 import { addLogicFlow, deleteLogicFlow, updateLogicFlow } from "../../../stores/projectStore";
-import { LogicNode, TriggerType } from "../../../hooks/useTauri";
+import { LogicNode, TriggerType } from "../../../hooks/useApi";
 
 // ─── Node type metadata ──────────────────────────────
 

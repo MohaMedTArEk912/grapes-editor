@@ -806,8 +806,8 @@ export async function updateEndpoint(
         name?: string;
         description?: string;
         auth_required?: boolean;
-        request_body?: import("../hooks/useTauri").DataShape | null;
-        response_body?: import("../hooks/useTauri").DataShape | null;
+        request_body?: import("../hooks/useApi").DataShape | null;
+        response_body?: import("../hooks/useApi").DataShape | null;
         permissions?: string[];
         logic_flow_id?: string | null;
     }
@@ -1131,7 +1131,7 @@ export async function setProjectRoot(path: string): Promise<void> {
 export async function addLogicFlow(
     name: string,
     context: 'frontend' | 'backend'
-): Promise<import("../hooks/useTauri").LogicFlowSchema> {
+): Promise<import("../hooks/useApi").LogicFlowSchema> {
     const created = await api.createLogicFlow(name, context);
     await loadProject();
     isDirtyValue = true;
@@ -1154,10 +1154,10 @@ export async function updateLogicFlow(
     id: string,
     updates: {
         name?: string;
-        nodes?: import("../hooks/useTauri").LogicNode[];
+        nodes?: import("../hooks/useApi").LogicNode[];
         entry_node_id?: string | null;
         description?: string;
-        trigger?: import("../hooks/useTauri").TriggerType;
+        trigger?: import("../hooks/useApi").TriggerType;
     }
 ): Promise<void> {
     await api.updateLogicFlow(id, updates);

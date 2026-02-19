@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import React, { useState } from "react";
+
 
 interface WindowControlsProps {
     className?: string;
@@ -11,104 +11,20 @@ interface WindowControlsProps {
  * Optimized for Tauri v2 with proper permissions.
  */
 const WindowControls: React.FC<WindowControlsProps> = ({ className = "" }) => {
-    const [isMaximized, setIsMaximized] = useState(false);
+    const [isMaximized] = useState(false);
     const [isHovering, setIsHovering] = useState(false);
-    const [isTauri, setIsTauri] = useState(false);
-
-    useEffect(() => {
-        let unlistenRes: (() => void) | undefined;
-        let unlistenMove: (() => void) | undefined;
-
-        // Detect if we are running in Tauri
-        const checkTauri = async () => {
-            try {
-                const win = getCurrentWindow();
-                const maximized = await win.isMaximized();
-                const fullscreen = await win.isFullscreen();
-                setIsMaximized(maximized || fullscreen);
-                setIsTauri(true);
-
-                // Listen for window scale/resize/move to update state robustly
-                unlistenRes = await win.onResized(async () => {
-                    const m = await win.isMaximized();
-                    const f = await win.isFullscreen();
-                    setIsMaximized(m || f);
-                });
-
-                unlistenMove = await win.onMoved(async () => {
-                    const m = await win.isMaximized();
-                    const f = await win.isFullscreen();
-                    setIsMaximized(m || f);
-                });
-            } catch (e) {
-                console.warn("WindowControls: Not running in Tauri environment");
-                setIsTauri(false);
-            }
-        };
-
-        void checkTauri();
-
-        return () => {
-            if (unlistenRes) unlistenRes();
-            if (unlistenMove) unlistenMove();
-        };
-    }, []);
+    // Removed Tauri window event listeners
 
     const handleMinimize = async () => {
-        if (!isTauri) return;
-        try {
-            await getCurrentWindow().minimize();
-        } catch (err) {
-            console.error("WindowControls: Failed to minimize:", err);
-        }
+        console.warn("Window controls not available in web mode");
     };
 
     const handleToggleMaximize = async () => {
-        if (!isTauri) return;
-        try {
-            const win = getCurrentWindow();
-            const maximized = await win.isMaximized();
-            const fullscreen = await win.isFullscreen();
-
-            if (maximized || fullscreen) {
-                // To be safe, we disable fullscreen and unmaximize
-                await win.setFullscreen(false);
-                await win.unmaximize();
-                setIsMaximized(false);
-            } else {
-                await win.maximize();
-                setIsMaximized(true);
-            }
-
-            // Deferred re-sync to catch OS-level changes
-            setTimeout(async () => {
-                const nowMaximized = await win.isMaximized();
-                const nowFullscreen = await win.isFullscreen();
-                setIsMaximized(nowMaximized || nowFullscreen);
-            }, 200);
-        } catch (err) {
-            console.error("WindowControls: Failed to toggle maximize:", err);
-            // Fallback to simple toggle if granular calls fail
-            try {
-                const win = getCurrentWindow();
-                await win.toggleMaximize();
-            } catch (e) {
-                console.error("WindowControls: Fallback toggle also failed", e);
-            }
-        }
+        console.warn("Window controls not available in web mode");
     };
 
     const handleClose = async () => {
-        if (!isTauri) {
-            window.close();
-            return;
-        }
-        try {
-            await getCurrentWindow().close();
-        } catch (err) {
-            console.error("WindowControls: Failed to close:", err);
-            window.close();
-        }
+        console.warn("Window controls not available in web mode");
     };
 
     return (

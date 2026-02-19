@@ -138,7 +138,10 @@ akasha/
 
 ## 📡 API Reference
 
-The embedded Axum server exposes **46 RESTful endpoints** on `localhost:3001`.
+## 📡 API Reference
+
+The embedded Express server exposes **46 RESTful endpoints** on `localhost:3001`.
+
 
 <details>
 <summary><strong>Health</strong></summary>
@@ -292,17 +295,21 @@ The embedded Axum server exposes **46 RESTful endpoints** on `localhost:3001`.
 
 ### Scripts
 
+### Scripts
+
 ```bash
 # Root
-npm run dev            # Tauri dev mode (hot-reload)
+npm run dev            # Concurrent dev mode (Client + Server)
 npm run build          # Production build
 npm run install:all    # Install all JS dependencies
-npm run dev:log        # Dev mode with RUST_LOG=info
 
-# Desktop
-cd desktop
-npm run build:frontend # Vite-only build (no Tauri)
-npm run preview        # Vite preview server
+# Client
+cd client
+npm run dev            # Vite dev server
+
+# Server
+cd server
+npm run dev            # Nodemon server
 ```
 
 ### Environment
@@ -351,17 +358,6 @@ npm run preview        # Vite preview server
 
 ---
 
-## 🐳 Docker (Headless Mode)
-
-```bash
-docker-compose up -d
-```
-
-Runs the Axum API server without the desktop UI:
-- **Port:** `3001` → `http://localhost:3001/health`
-- **Database:** SQLite persisted to a Docker volume
-
----
 
 
 
@@ -371,20 +367,7 @@ Runs the Axum API server without the desktop UI:
 npm run build
 ```
 
-Produces platform-specific installers:
 
-| Platform | Output |
-|----------|--------|
-| Windows | `.exe` (NSIS) / `.msi` (WiX) |
-| macOS | `.app` / `.dmg` |
-| Linux | `.AppImage` / `.deb` |
-
-### System Requirements
-- **Windows** 10+ (64-bit)
-- **macOS** 10.15+
-- **Linux** Ubuntu 20.04+ or equivalent
-
----
 
 ## 🤝 Contributing
 
@@ -409,7 +392,7 @@ MIT — see [LICENSE](LICENSE).
 
 ## 🙏 Acknowledgments
 
-[Tauri](https://tauri.app/) · [Axum](https://github.com/tokio-rs/axum) · [React](https://react.dev/) · [Tailwind CSS](https://tailwindcss.com/) · [Monaco Editor](https://microsoft.github.io/monaco-editor/) · [SQLite](https://www.sqlite.org/) · [NestJS](https://nestjs.com/) · [Prisma](https://www.prisma.io/)
+[Axum](https://github.com/tokio-rs/axum) · [React](https://react.dev/) · [Tailwind CSS](https://tailwindcss.com/) · [Monaco Editor](https://microsoft.github.io/monaco-editor/) · [SQLite](https://www.sqlite.org/) · [NestJS](https://nestjs.com/) · [Prisma](https://www.prisma.io/)
 
 ---
 

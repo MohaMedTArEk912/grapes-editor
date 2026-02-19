@@ -22,9 +22,9 @@ export const httpApi = {
         const res = await client.get('/workspace');
         return res.data;
     },
-    setWorkspacePath: async (path: string) => true,
+    setWorkspacePath: async (_path: string) => true,
     pickFolder: async () => null,
-    loadProjectById: async (id: string) => {
+    loadProjectById: async (id: string): Promise<ProjectSchema> => {
         const res = await client.get(`/project/${id}`);
         activeProjectId = id; // Set active context
         return res.data;
@@ -35,28 +35,36 @@ export const httpApi = {
     },
 
     // ─── Project ────────────────────────────────────
-    getProject: async () => {
+    getProject: async (): Promise<ProjectSchema | null> => {
         console.warn('getProject called in web mode without ID context.');
-        return null;
+        return null; // Return null explicitly
     },
-    createProject: async (name: string) => {
+    createProject: async (name: string): Promise<ProjectSchema> => {
         const res = await client.post('/project', { name });
         if (res.data && res.data.id) {
             activeProjectId = res.data.id;
         }
         return res.data;
     },
-    renameProject: async (name: string) => {
+    renameProject: async (_name: string) => {
         // Needs ID context usually
         throw new Error('Rename not implemented in HTTP hook without ID');
     },
-    updateSettings: async (settings: Partial<ProjectSettings>) => {
+    updateSettings: async (_settings: Partial<ProjectSettings>) => {
         throw new Error('Update settings not implemented');
     },
-    resetProject: async (clearDiskFiles?: boolean) => null,
-    importProjectJson: async (json: string) => null,
+    resetProject: async (_clearDiskFiles?: boolean): Promise<ProjectSchema> => {
+        // Mock implementation for reset
+        if (!activeProjectId) throw new Error("No active project");
+        // For now just return getProject
+        const res = await client.get(`/project/${activeProjectId}`);
+        return res.data;
+    },
+    importProjectJson: async (_json: string): Promise<ProjectSchema> => {
+        throw new Error("Import not implemented");
+    },
     exportProjectJson: async () => "{}",
-    setProjectRoot: async (path: string) => true,
+    setProjectRoot: async (_path: string) => true,
     syncToDisk: async () => {
         if (!activeProjectId) return false;
         await client.post('/codegen/sync', { projectId: activeProjectId });
@@ -65,29 +73,33 @@ export const httpApi = {
     syncDiskToProject: async () => true,
 
     // ─── Blocks ─────────────────────────────────────
-    addBlock: async (blockType: string, name: string, parentId?: string, pageId?: string, componentId?: string) => {
+    addBlock: async (_blockType: string, _name: string, _parentId?: string, _pageId?: string, _componentId?: string): Promise<BlockSchema> => {
         // Need Implementation
         throw new Error("Not implemented");
     },
     bulkSyncPageBlocks: (_projectId: string, pageId: string, blocks: BlockSchema[]) => {
         return client.post('/blocks/sync', { page_id: pageId, blocks });
     },
-    updateBlockProperty: async (blockId: string, property: string, value: unknown) => { },
-    updateBlockStyle: async (blockId: string, style: string, value: string) => { },
-    archiveBlock: async (blockId: string) => { },
-    moveBlock: async (blockId: string, newParentId: string | null, index: number) => { },
+    updateBlockProperty: async (_blockId: string, _property: string, _value: unknown) => { },
+    updateBlockStyle: async (_blockId: string, _style: string, _value: string) => { },
+    archiveBlock: async (_blockId: string) => { },
+    moveBlock: async (_blockId: string, _newParentId: string | null, _index: number) => { },
 
     // ─── Pages ──────────────────────────────────────
-    addPage: async (name: string, path: string) => {
-        throw new Error("Not implemented");
+    addPage: async (name: string, path: string): Promise<PageSchema> => {
+        // Mock return for now since backend might not support it yet via http?
+        // Actually backend supports it.
+        if (!activeProjectId) throw new Error("No active project");
+        const res = await client.post('/pages', { projectId: activeProjectId, name, path });
+        return res.data;
     },
-    updatePage: async (id: string, name?: string, path?: string) => { },
-    archivePage: async (id: string) => { },
-    getPageContent: async (id: string) => ({ content: "{}" }),
+    updatePage: async (_id: string, _name?: string, _path?: string) => { },
+    archivePage: async (_id: string) => { },
+    getPageContent: async (_id: string) => ({ content: "{}" }),
 
     // ─── Logic Flows ────────────────────────────────
     getLogicFlows: async () => {
-        if (!activeProjectId) return [];
+        if (!activeProjectId) return [] as LogicFlowSchema[];
         const res = await client.get('/logic-flows', { params: { projectId: activeProjectId } });
         return res.data;
     },
@@ -107,7 +119,7 @@ export const httpApi = {
 
     // ─── Data Models ────────────────────────────────
     getModels: async () => {
-        if (!activeProjectId) return [];
+        if (!activeProjectId) return [] as DataModelSchema[];
         const res = await client.get('/data-models', { params: { projectId: activeProjectId } });
         return res.data;
     },
@@ -183,14 +195,14 @@ export const httpApi = {
     },
 
     // ─── API Endpoints ──────────────────────────────
-    getEndpoints: async () => [],
-    addApi: async (method: string, path: string, name: string) => { throw new Error("Not implemented") },
-    updateEndpoint: async (id: string, updates: any) => { throw new Error("Not implemented") },
-    archiveApi: async (id: string) => true,
+    getEndpoints: async () => [] as ApiSchema[],
+    addApi: async (_method: string, _path: string, _name: string) => { throw new Error("Not implemented") },
+    updateEndpoint: async (_id: string, _updates: any) => { throw new Error("Not implemented") },
+    archiveApi: async (_id: string) => true,
 
     // ─── Variables ──────────────────────────────────
     getVariables: async () => {
-        if (!activeProjectId) return [];
+        if (!activeProjectId) return [] as VariableSchema[];
         const res = await client.get('/variables', { params: { projectId: activeProjectId } });
         return res.data;
     },
@@ -222,62 +234,57 @@ export const httpApi = {
     generateDatabase: async () => ({ files: [] }),
     downloadZip: async () => new Blob([], { type: 'application/zip' }),
 
-    // Sync hooks from Project section that might use this
-    syncToDisk: async () => {
-        if (!activeProjectId) return false;
-        await client.post('/codegen/sync', { projectId: activeProjectId });
-        return true;
-    },
+
 
     // ─── File System ────────────────────────────────
-    listDirectory: async (path?: string) => ({ path: path || '', entries: [] }),
-    createFile: async (path: string, content?: string) => ({ name: '', path, is_directory: false }),
+    listDirectory: async (path?: string) => ({ path: path || '', entries: [] as FileEntry[] }),
+    createFile: async (path: string, _content?: string) => ({ name: '', path, is_directory: false }),
     createFolder: async (path: string) => ({ name: '', path, is_directory: true }),
-    renameFile: async (oldPath: string, newPath: string) => ({ name: '', path: newPath, is_directory: false }),
-    deleteFile: async (path: string) => true,
+    renameFile: async (_oldPath: string, newPath: string) => ({ name: '', path: newPath, is_directory: false }),
+    deleteFile: async (_path: string) => true,
     readFileContent: async (path: string) => ({ content: "", path }),
     writeFileContent: async (path: string, content: string) => ({ content, path }),
     installDependencies: async () => ({ success: true, steps: [] }),
 
     // ─── Components ─────────────────────────────────
     getComponents: async () => {
-        if (!activeProjectId) return [];
+        if (!activeProjectId) return [] as BlockSchema[];
         const res = await client.get('/components', { params: { projectId: activeProjectId } });
         return res.data;
     },
-    createComponent: async (name: string, description?: string) => {
+    createComponent: async (name: string, description?: string): Promise<BlockSchema> => {
         if (!activeProjectId) throw new Error("No active project");
         const res = await client.post('/components', { projectId: activeProjectId, name, description });
         return res.data;
     },
-    getComponent: async (id: string) => { throw new Error("Not implemented") },
-    instantiateComponent: async (componentId: string, parentId?: string) => { throw new Error("Not implemented") },
+    getComponent: async (_id: string) => { throw new Error("Not implemented") },
+    instantiateComponent: async (_componentId: string, _parentId?: string) => { throw new Error("Not implemented") },
 
     // ─── Git Version Control ────────────────────────
     // Basic stubs calling the implemented endpoints
     gitHistory: async (limit?: number) => {
-        if (!activeProjectId) return [];
+        if (!activeProjectId) return [] as GitCommitInfo[];
         const res = await client.get(`/git/${activeProjectId}/history`, { params: { limit } });
         return res.data;
     },
-    gitRestore: async (commitId: string) => { throw new Error("Not implemented") },
+    gitRestore: async (_commitId: string) => { throw new Error("Not implemented") },
     gitDiff: async (commitId: string) => {
         if (!activeProjectId) return "";
         const res = await client.get(`/git/${activeProjectId}/diff`, { params: { commitId } });
         return res.data;
     },
-    gitDiscard: async (filePath: string) => { },
+    gitDiscard: async (_filePath: string) => { },
     gitCommit: async (message: string) => {
         if (!activeProjectId) return null;
         const res = await client.post(`/git/${activeProjectId}/commit`, { message });
         return res.data;
     },
     gitStatus: async () => {
-        if (!activeProjectId) return { is_repo: false, changed_files: [], total_commits: 0 };
+        if (!activeProjectId) return { is_repo: false, changed_files: [] as any[], total_commits: 0 } as GitStatus;
         const res = await client.get(`/git/${activeProjectId}/status`);
         return res.data;
     },
-    gitGetFileContent: async (filePath: string, revision: string) => "",
+    gitGetFileContent: async (_filePath: string, _revision: string) => "",
     initGitRepo: async () => true,
 
     // ─── Diagrams ───────────────────────────────────
@@ -304,7 +311,7 @@ export const httpApi = {
         const res = await client.post('/diagrams', { projectId: activeProjectId, name, content });
         return res.data.success;
     },
-    deleteDiagram: async (name: string) => true,
-    analyzeDiagram: async (name: string) => ({ graph: { nodes: [], edges: [] }, issues: [], stats: { total_nodes: 0, total_edges: 0, unknown_type_count: 0, issue_count: 0 } }),
-    analyzeDiagramRaw: async (xml: string) => ({ graph: { nodes: [], edges: [] }, issues: [], stats: { total_nodes: 0, total_edges: 0, unknown_type_count: 0, issue_count: 0 } }),
+    deleteDiagram: async (_name: string) => true,
+    analyzeDiagram: async (_name: string) => ({ graph: { nodes: [], edges: [] }, issues: [], stats: { total_nodes: 0, total_edges: 0, unknown_type_count: 0, issue_count: 0 } }),
+    analyzeDiagramRaw: async (_xml: string) => ({ graph: { nodes: [], edges: [] }, issues: [], stats: { total_nodes: 0, total_edges: 0, unknown_type_count: 0, issue_count: 0 } }),
 };

@@ -9,13 +9,13 @@ app.use(cors());
 app.use(express.json());
 
 // Determine operational mode (Web vs Tauri-replacement)
-const IS_WEB_MODE = process.env.AKASHA_MODE === 'web';
+
 
 app.get('/', (req, res) => {
     res.json({
         status: 'ok',
         message: 'Akasha Node.js Backend is running',
-        mode: IS_WEB_MODE ? 'web' : 'desktop-replacement'
+        mode: 'web'
     });
 });
 
@@ -51,5 +51,5 @@ app.use('/api/git', gitRouter);
 
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
-    console.log(`Mode: ${IS_WEB_MODE ? 'Web Cloud' : 'Desktop Replacement'}`);
+    console.log(`Mode: Web Cloud`);
 });

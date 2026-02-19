@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { useApi, GitCommitInfo, GitStatus } from "../../hooks/useTauri";
+import { useApi, GitCommitInfo, GitStatus } from "../../hooks/useApi";
 import { openDiffView } from "../../stores/projectStore";
 
 
