@@ -318,4 +318,51 @@ export const httpApi = {
     },
     analyzeDiagram: async (_name: string) => ({ graph: { nodes: [], edges: [] }, issues: [], stats: { total_nodes: 0, total_edges: 0, unknown_type_count: 0, issue_count: 0 } }),
     analyzeDiagramRaw: async (_xml: string) => ({ graph: { nodes: [], edges: [] }, issues: [], stats: { total_nodes: 0, total_edges: 0, unknown_type_count: 0, issue_count: 0 } }),
+
+    // ─── Use Cases ─────────────────────────────────
+    listUseCases: async () => {
+        if (!activeProjectId) return [];
+        const res = await client.get('/usecases', { params: { projectId: activeProjectId } });
+        return res.data;
+    },
+    createUseCase: async (data: any) => {
+        if (!activeProjectId) throw new Error("No active project");
+        const res = await client.post('/usecases', { ...data, projectId: activeProjectId });
+        return res.data;
+    },
+    updateUseCase: async (id: string, data: any) => {
+        if (!activeProjectId) throw new Error("No active project");
+        const res = await client.put(`/usecases/${id}`, data);
+        return res.data;
+    },
+    deleteUseCase: async (id: string) => {
+        if (!activeProjectId) throw new Error("No active project");
+        const res = await client.delete(`/usecases/${id}`);
+        return res.data;
+    },
+
+    // ─── API Client (Proxy + History) ──────────────
+    sendProxyRequest: async (data: { method: string; url: string; headers?: Record<string, string>; body?: string; params?: Record<string, string> }) => {
+        const res = await client.post('/proxy', data);
+        return res.data;
+    },
+    listApiHistory: async () => {
+        if (!activeProjectId) return [];
+        const res = await client.get('/api-history', { params: { projectId: activeProjectId } });
+        return res.data;
+    },
+    saveApiHistory: async (data: any) => {
+        if (!activeProjectId) throw new Error("No active project");
+        const res = await client.post('/api-history', { ...data, projectId: activeProjectId });
+        return res.data;
+    },
+    deleteApiHistory: async (id: string) => {
+        const res = await client.delete(`/api-history/${id}`);
+        return res.data;
+    },
+    clearApiHistory: async () => {
+        if (!activeProjectId) throw new Error("No active project");
+        const res = await client.delete(`/api-history/clear/${activeProjectId}`);
+        return res.data;
+    },
 };

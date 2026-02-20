@@ -23,6 +23,8 @@ model Project {
   dataModels  DataModel[]
   apis        ApiEndpoint[]
   logicFlows  LogicFlow[]
+  useCases    UseCase[]
+  apiRequests ApiRequest[]
 }
 
 model Page {
@@ -113,4 +115,42 @@ model LogicFlow {
   nodes        String   // JSON array of nodes
   edges        String   // JSON array of edges (if separate) or embedded in nodes
   archived     Boolean  @default(false)
+}
+
+model UseCase {
+  id              String   @id @default(uuid())
+  projectId       String
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name            String
+  description     String   @default("")
+  actors          String   @default("[]")  // JSON array of role/actor names
+  preconditions   String   @default("")
+  postconditions  String   @default("")
+  steps           String   @default("[]")  // JSON array: [{order, description}]
+  priority        String   @default("medium")  // low | medium | high | critical
+  status          String   @default("draft")   // draft | active | completed | archived
+  category        String   @default("")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  archived        Boolean  @default(false)
+
+  @@index([projectId])
+}
+
+model ApiRequest {
+  id              String   @id @default(uuid())
+  projectId       String
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  method          String
+  url             String
+  headers         String   @default("{}")  // JSON object
+  body            String   @default("")
+  params          String   @default("{}")  // JSON query params
+  responseStatus  Int?
+  responseHeaders String   @default("{}")  // JSON
+  responseBody    String   @default("")
+  duration        Int      @default(0)     // ms
+  createdAt       DateTime @default(now())
+
+  @@index([projectId])
 }

@@ -241,6 +241,53 @@ export interface DiagramEntry {
     last_modified?: number;
 }
 
+export interface UseCaseStep {
+    order: number;
+    description: string;
+}
+
+export interface UseCaseSchema {
+    id: string;
+    project_id: string;
+    name: string;
+    description: string;
+    actors: string[];
+    preconditions: string;
+    postconditions: string;
+    steps: UseCaseStep[];
+    priority: 'low' | 'medium' | 'high' | 'critical';
+    status: 'draft' | 'active' | 'completed' | 'archived';
+    category: string;
+    created_at: string;
+    updated_at: string;
+    archived: boolean;
+}
+
+export interface ApiRequestEntry {
+    id: string;
+    project_id: string;
+    method: string;
+    url: string;
+    headers: Record<string, string>;
+    body: string;
+    params: Record<string, string>;
+    response_status: number | null;
+    response_headers: Record<string, string>;
+    response_body: string;
+    duration: number;
+    created_at: string;
+}
+
+export interface ProxyResponse {
+    status: number;
+    statusText: string;
+    headers: Record<string, string>;
+    body: string;
+    duration_ms: number;
+    url: string;
+    error?: boolean;
+}
+
 // ===== Akasha Product Intelligence Types =====
 
 export type NodeType = 'actor' | 'feature' | 'screen' | 'api' | 'database' | 'external_service' | 'decision' | 'process' | 'unknown';

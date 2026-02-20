@@ -23,6 +23,7 @@ import * as EditorSettingsStore from "../../stores/editorSettingsStore";
 import ProjectSettingsModal from "../Modals/ProjectSettingsModal";
 import WindowControls from "../UI/WindowControls";
 import Terminal from "../Terminal/Terminal";
+import { Logo } from "../UI/Logo";
 
 // Feature Pages
 import UIDesignPage from "../Pages/UIDesignPage";
@@ -93,8 +94,14 @@ const IDELayout: React.FC = () => {
             >
                 {/* Left: App name */}
                 <div className="flex items-center gap-3" data-tauri-drag-region>
-                    <span className="text-xs font-bold tracking-wider text-[var(--ide-text)]" data-tauri-drag-region>
-                        AKASHA
+                    <Logo size={24} />
+                    <div className="flex flex-col leading-none" data-tauri-drag-region>
+                        <span className="text-xs font-bold tracking-wider text-[var(--ide-text)]" data-tauri-drag-region>
+                            AKASHA
+                        </span>
+                    </div>
+                    <span className="text-[10px] text-[var(--ide-text-secondary)] opacity-50" data-tauri-drag-region>
+                        |
                     </span>
                     <span className="text-[10px] text-[var(--ide-text-secondary)]" data-tauri-drag-region>
                         {project?.name || ""}

@@ -49,6 +49,12 @@ import codegenRouter from './routes/codegen.js';
 app.use('/api/codegen', codegenRouter);
 app.use('/api/components', componentsRouter);
 app.use('/api/git', gitRouter);
+import usecasesRouter from './routes/usecases.js';
+app.use('/api/usecases', usecasesRouter);
+import apiProxyRouter from './routes/apiProxy.js';
+app.use('/api/proxy', apiProxyRouter);
+import apiHistoryRouter from './routes/apiHistory.js';
+app.use('/api/api-history', apiHistoryRouter);
 
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
