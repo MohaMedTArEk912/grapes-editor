@@ -17,8 +17,8 @@ import React, { useEffect, useState } from "react";
 import { useProjectStore } from "../../hooks/useProjectStore";
 import { setActivePage, installProjectDependencies, clearInstallStatus, toggleTerminal } from "../../stores/projectStore";
 import type { FeaturePage } from "../../stores/projectStore";
-import { useEditorSettings } from "../../hooks/useEditorSettings";
-import * as EditorSettingsStore from "../../stores/editorSettingsStore";
+
+
 
 import ProjectSettingsModal from "../Modals/ProjectSettingsModal";
 
@@ -32,7 +32,7 @@ import APIsPage from "../Pages/APIsPage";
 import DatabasePage from "../Pages/DatabasePage";
 import DiagramsPage from "../Pages/DiagramsPage";
 import SourceCodePage from "../Pages/SourceCodePage";
-import SourceControlPage from "../Pages/SourceControlPage";
+
 import ProjectDashboard from "../Pages/ProjectDashboard";
 
 /* ───── Feature Page Definitions ───── */
@@ -51,7 +51,6 @@ const FEATURE_PAGES: FeaturePageDef[] = [
     { id: "database", label: "Database", icon: "M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" },
     { id: "diagrams", label: "Diagrams", icon: "M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" },
     { id: "code", label: "Source Code", icon: "M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" },
-    { id: "git", label: "Source Control", icon: "M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" },
 ];
 
 /**
@@ -59,7 +58,6 @@ const FEATURE_PAGES: FeaturePageDef[] = [
  */
 const IDELayout: React.FC = () => {
     const { project, activePage, loading, loadingMessage, installLog, installError, terminalOpen } = useProjectStore();
-    const editorSettings = useEditorSettings();
     const [settingsOpen, setSettingsOpen] = useState(false);
 
     // Global keyboard shortcut: toggle terminal
@@ -78,8 +76,8 @@ const IDELayout: React.FC = () => {
             case "apis": return <APIsPage />;
             case "database": return <DatabasePage />;
             case "diagrams": return <DiagramsPage />;
-            case "code": return <SourceCodePage />;
-            case "git": return <SourceControlPage />;
+            case "code":
+            case "git": return <SourceCodePage />;
             default: return <UIDesignPage />;
         }
     };
@@ -229,36 +227,29 @@ const IDELayout: React.FC = () => {
                 </div>
             )}
 
-            {/* ===== BOTTOM: Status Bar ===== */}
-            <footer className="h-6 bg-[var(--ide-statusbar)] flex items-center px-3 text-[11px] text-white select-none flex-shrink-0">
-                {/* Left side */}
-                <div className="flex items-center gap-4">
-                    <span className="font-medium">{project?.name || "No Project"}</span>
-                    <span className="opacity-60">|</span>
-                    <span className="opacity-90 capitalize">{activePage}</span>
-                </div>
+            {/* ===== BOTTOM: Status Bar (hidden on code page — CodeEditor has its own) ===== */}
+            {activePage !== "code" && activePage !== "git" && activePage !== "dashboard" && (
+                <footer className="h-6 bg-[var(--ide-statusbar)] flex items-center px-3 text-[11px] text-white select-none flex-shrink-0">
+                    {/* Left side */}
+                    <div className="flex items-center gap-4">
+                        <span className="font-medium">{project?.name || "No Project"}</span>
+                        <span className="opacity-60">|</span>
+                        <span className="opacity-90 capitalize">{activePage}</span>
+                    </div>
 
-                {/* Right side */}
-                <div className="ml-auto flex items-center gap-4">
-                    <span className="opacity-90">UTF-8</span>
-                    <span className="opacity-90">LF</span>
-                    {activePage === "code" && (
+                    {/* Right side */}
+                    <div className="ml-auto flex items-center gap-4">
+                        <span className="opacity-90">UTF-8</span>
+                        <span className="opacity-90">LF</span>
                         <button
-                            onClick={() => EditorSettingsStore.resetZoom()}
-                            className="hover:bg-white/20 px-2 py-0.5 rounded transition-colors opacity-90 hover:opacity-100"
-                            title="Click to reset zoom"
+                            onClick={() => toggleTerminal()}
+                            className="hover:bg-white/20 px-2 py-0.5 rounded transition-colors"
                         >
-                            Zoom: {editorSettings.zoomLevel}%
+                            {terminalOpen ? "Hide Terminal" : "Terminal"}
                         </button>
-                    )}
-                    <button
-                        onClick={() => toggleTerminal()}
-                        className="hover:bg-white/20 px-2 py-0.5 rounded transition-colors"
-                    >
-                        {terminalOpen ? "Hide Terminal" : "Terminal"}
-                    </button>
-                </div>
-            </footer>
+                    </div>
+                </footer>
+            )}
 
             {/* Settings Modal */}
             <ProjectSettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
