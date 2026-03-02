@@ -55,6 +55,8 @@ import apiProxyRouter from './routes/apiProxy.js';
 app.use('/api/proxy', apiProxyRouter);
 import apiHistoryRouter from './routes/apiHistory.js';
 app.use('/api/api-history', apiHistoryRouter);
+import aiRouter from './routes/ai.js';
+app.use('/api/ai', aiRouter);
 
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);

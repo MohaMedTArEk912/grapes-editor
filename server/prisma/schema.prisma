@@ -154,3 +154,59 @@ model ApiRequest {
 
   @@index([projectId])
 }
+
+model Team {
+  id              String        @id @default(uuid())
+  name            String        @unique
+  adminSessionId  String
+  createdAt       DateTime      @default(now())
+  
+  members         TeamMember[]
+  joinRequests   JoinRequest[]
+  chats           TeamChat[]
+  ideas           TeamIdea[]
+}
+
+model TeamMember {
+  id        String   @id @default(uuid())
+  teamId    String
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  sessionId String
+  username  String
+  role      String   @default("member") // "admin", "member"
+  createdAt DateTime @default(now())
+
+  @@unique([teamId, sessionId])
+}
+
+model JoinRequest {
+  id        String   @id @default(uuid())
+  teamId    String
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  sessionId String
+  username  String
+  status    String   @default("pending") // "pending", "approved", "rejected"
+  createdAt DateTime @default(now())
+
+  @@unique([teamId, sessionId])
+}
+
+model TeamChat {
+  id        String   @id @default(uuid())
+  teamId    String
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  role      String   // "user", "assistant"
+  content   String
+  username  String?  // If user, keep track of who said it
+  createdAt DateTime @default(now())
+}
+
+model TeamIdea {
+  id         String   @id @default(uuid())
+  teamId     String
+  team       Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  username   String
+  content    String
+  evaluation String?  // JSON string
+  createdAt  DateTime @default(now())
+}
