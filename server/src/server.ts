@@ -2,6 +2,12 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -12,13 +18,8 @@ app.use(express.json());
 // Determine operational mode (Web vs Tauri-replacement)
 
 
-app.get('/', (req, res) => {
-    res.json({
-        status: 'ok',
-        message: 'Akasha Node.js Backend is running',
-        mode: 'web'
-    });
-});
+app.use(express.static(path.join(__dirname, '../../public')));
+
 
 // Health check
 app.get('/health', (req, res) => {

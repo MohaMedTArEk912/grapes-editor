@@ -86,7 +86,7 @@ async function sendMessage() {
     const loaderRow = appendLoader();
 
     try {
-        const res = await fetch('/chat', {
+        const res = await fetch('/api/ai/simple-chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ message: text }),
