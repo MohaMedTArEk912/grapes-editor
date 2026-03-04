@@ -49,7 +49,7 @@ export async function createDiagram(req: Request, res: Response) {
         const diagramsDir = path.join(root, 'diagrams');
         await fs.ensureDir(diagramsDir);
 
-        const fileName = name.endsWith('.drawio') ? name : `${name}.drawio`;
+        const fileName = (name as string).endsWith('.drawio') ? name : `${name}.drawio`;
         const filePath = path.join(diagramsDir, fileName);
 
         await fs.writeFile(filePath, content || '<mxfile host="Electron" />');
@@ -66,9 +66,9 @@ export async function getDiagram(req: Request, res: Response) {
         if (!projectId || typeof projectId !== 'string') throw new Error('Project ID required');
 
         const root = await getProjectRoot(projectId);
-        let filePath = path.join(root, 'diagrams', name);
+        let filePath = path.join(root, 'diagrams', name as string);
 
-        if (!fs.existsSync(filePath) && !name.endsWith('.drawio')) {
+        if (!fs.existsSync(filePath) && !(name as string).endsWith('.drawio')) {
             filePath = path.join(root, 'diagrams', `${name}.drawio`);
         }
 
@@ -92,9 +92,9 @@ export async function deleteDiagram(req: Request, res: Response) {
         }
 
         const root = await getProjectRoot(projectId);
-        let filePath = path.join(root, 'diagrams', name);
+        let filePath = path.join(root, 'diagrams', name as string);
 
-        if (!fs.existsSync(filePath) && !name.endsWith('.drawio')) {
+        if (!fs.existsSync(filePath) && !(name as string).endsWith('.drawio')) {
             filePath = path.join(root, 'diagrams', `${name}.drawio`);
         }
 

@@ -12,6 +12,7 @@ import IDELayout from "./components/Layout/IDELayout";
 import DashboardView from "./components/Dashboard/DashboardView";
 import WorkspaceSetup from "./components/Dashboard/WorkspaceSetup";
 import ErrorBoundary from './components/Shared/ErrorBoundary';
+import FloatingBot from "./components/Bot/FloatingBot";
 
 // Stores
 import { initWorkspace } from "./stores/projectStore";
@@ -46,6 +47,7 @@ const App: React.FC = () => {
         <ThemeProvider>
           <ToastProvider>
             <WorkspaceSetup />
+            <FloatingBot />
           </ToastProvider>
         </ThemeProvider>
       </ErrorBoundary>
@@ -58,6 +60,7 @@ const App: React.FC = () => {
         <ThemeProvider>
           <ToastProvider>
             <DashboardView />
+            <FloatingBot />
           </ToastProvider>
         </ThemeProvider>
       </ErrorBoundary>
@@ -70,6 +73,7 @@ const App: React.FC = () => {
         <ToastProvider>
           <DragDropProvider>
             <IDELayout />
+            <FloatingBot />
           </DragDropProvider>
         </ToastProvider>
       </ThemeProvider>

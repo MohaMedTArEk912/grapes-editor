@@ -21,7 +21,7 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ isOpen, onClose }) => {
     const [isTyping, setIsTyping] = useState(false);
     const [sessionId, setSessionId] = useState<string>("");
     const [status, setStatus] = useState<string | null>(null);
-    const [team, setTeam] = useState<string | null>(null);
+    const [, setTeam] = useState<string | null>(null);
     const chatEndRef = useRef<HTMLDivElement>(null);
 
     // Initialize session from localStorage

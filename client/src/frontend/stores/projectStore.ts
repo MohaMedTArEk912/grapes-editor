@@ -18,7 +18,7 @@ interface ProjectState {
     selectedBlockId: string | null;
     selectedPageId: string | null;
     selectedComponentId: string | null;
-    activePage: "dashboard" | "ui" | "usecases" | "apis" | "database" | "diagrams" | "code" | "git";
+    activePage: "dashboard" | "idea" | "ui" | "usecases" | "apis" | "database" | "diagrams" | "code" | "git";
     viewport: "desktop" | "tablet" | "mobile";
     editMode: "visual" | "code";
     inspectorOpen: boolean;
@@ -283,11 +283,11 @@ export async function resetProject(clearDiskFiles?: boolean): Promise<void> {
 /**
  * Create a new project in the workspace
  */
-export async function createProject(name: string): Promise<void> {
+export async function createProject(name: string, description?: string): Promise<void> {
     updateState(() => ({ loading: true, error: null }));
 
     try {
-        let project = await api.createProject(name);
+        let project = await api.createProject(name, description);
 
         // If workspace is set, we automatically configure the sync root 
         // as a subfolder within the workspace
@@ -1042,7 +1042,7 @@ export function closeDiffView(): void {
 /**
  * Switch the active feature page
  */
-export type FeaturePage = "dashboard" | "ui" | "usecases" | "apis" | "database" | "diagrams" | "code" | "git";
+export type FeaturePage = "dashboard" | "idea" | "ui" | "usecases" | "apis" | "database" | "diagrams" | "code" | "git";
 
 export function setActivePage(page: FeaturePage): void {
     const editMode: "visual" | "code" = page === "code" ? "code" : "visual";

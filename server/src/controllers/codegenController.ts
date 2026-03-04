@@ -17,7 +17,7 @@ export async function syncProject(req: Request, res: Response) {
         }
 
         const syncService = new SyncService(project.rootPath);
-        const pages = await prisma.page.findMany({ where: { projectId } });
+        const pages = await prisma.page.findMany({ where: { projectId: projectId as string } });
         for (const page of pages) {
             await syncService.syncPageToDisk(page.id, projectId);
         }

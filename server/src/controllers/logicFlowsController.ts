@@ -64,7 +64,7 @@ export async function updateLogicFlow(req: Request, res: Response) {
         if (edges) updates.edges = JSON.stringify(edges);
 
         const flow = await prisma.logicFlow.update({
-            where: { id },
+            where: { id: id as string },
             data: updates
         });
 
@@ -84,7 +84,7 @@ export async function deleteLogicFlow(req: Request, res: Response) {
     try {
         const { id } = req.params;
         await prisma.logicFlow.update({
-            where: { id },
+            where: { id: id as string },
             data: { archived: true }
         });
         res.json({ success: true });

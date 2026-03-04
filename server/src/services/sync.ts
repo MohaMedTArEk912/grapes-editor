@@ -290,8 +290,9 @@ export default function ${name}({ children, className = '', ...props }: ${name}P
     await fs.ensureDir(pageDir);
 
     const usedComponents = new Set<string>();
-    if (page.rootBlockId) {
-      await this.collectUsedComponents(page.rootBlockId, projectId, usedComponents);
+    const rootBlock = await prisma.block.findFirst({ where: { pageId: page.idRoot, parentId: null } });
+    if (rootBlock) {
+      await this.collectUsedComponents(rootBlock.id, projectId, usedComponents);
     }
 
     const componentImports = Array.from(usedComponents).sort().map(name =>
@@ -301,8 +302,8 @@ export default function ${name}({ children, className = '', ...props }: ${name}P
     const pageName = pascalCase(page.name);
 
     let jsxContent = '';
-    if (page.rootBlockId) {
-      jsxContent = await this.generateBlockJsx(page.rootBlockId, 3);
+    if (rootBlock) {
+      jsxContent = await this.generateBlockJsx(rootBlock.id, 3);
     }
 
     const fileContent = `import React from 'react';

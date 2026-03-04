@@ -88,7 +88,7 @@ export async function updateUseCase(req: Request, res: Response) {
         if (status !== undefined) data.status = status;
         if (category !== undefined) data.category = category;
 
-        const useCase = await prisma.useCase.update({ where: { id }, data });
+        const useCase = await prisma.useCase.update({ where: { id: id as string }, data });
         res.json(toUseCaseResponse(useCase));
     } catch (error) {
         console.error('Error updating use case:', error);
@@ -99,7 +99,7 @@ export async function updateUseCase(req: Request, res: Response) {
 export async function deleteUseCase(req: Request, res: Response) {
     try {
         const { id } = req.params;
-        await prisma.useCase.update({ where: { id }, data: { archived: true } });
+        await prisma.useCase.update({ where: { id: id as string }, data: { archived: true } });
         res.json({ success: true });
     } catch (error) {
         console.error('Error deleting use case:', error);

@@ -1,14 +1,3 @@
-<<<<<<< HEAD
-node_modules
-target
-dist
-build
-.env
-.DS_Store
-.vscode
-node_modules
-node_modules
-=======
 # Dependencies
 node_modules/
 
@@ -79,4 +68,6 @@ coverage/
 # Rust
 **/*.rs.bk
 Cargo.lock
->>>>>>> 6ffd75229650225f9d06ba8fc6c5517518609244
+
+# Local model assets
+Qwen/

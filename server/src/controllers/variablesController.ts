@@ -10,7 +10,7 @@ export async function listVariables(req: Request, res: Response) {
         }
 
         const vars = await prisma.variable.findMany({
-            where: { projectId },
+            where: { projectId: projectId as string },
             orderBy: { name: 'asc' }
         });
 
@@ -55,7 +55,7 @@ export async function createVariable(req: Request, res: Response) {
 export async function deleteVariable(req: Request, res: Response) {
     try {
         const { id } = req.params;
-        await prisma.variable.delete({ where: { id } });
+        await prisma.variable.delete({ where: { id: id as string } });
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: 'Failed' });

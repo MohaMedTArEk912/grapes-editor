@@ -10,9 +10,7 @@ import { openProject, deleteProject, createProject } from "../../stores/projectS
 import { useToast } from "../../context/ToastContext";
 import { useTheme } from "../../context/ThemeContext";
 import IDESettingsModal from "../Modals/IDESettingsModal";
-import AIChatModal from "../Modals/AIChatModal";
-import AITeamIdeasModal from "../Modals/AITeamIdeasModal";
-import TeamAdminModal from "../Modals/TeamAdminModal";
+import IdeaWorkshop from "../Pages/IdeaWorkshop";
 
 interface ProjectSummary {
     id: string;
@@ -21,153 +19,43 @@ interface ProjectSummary {
 }
 
 const DashboardView: React.FC = () => {
-    const { projects, workspacePath, loading } = useProjectStore();
+    const { projects, workspacePath } = useProjectStore();
     const { theme } = useTheme();
     const toast = useToast();
     const [searchQuery, setSearchQuery] = useState("");
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-    const [showSettingsModal, setShowSettingsModal] = useState(false);
-    const [showAIChatModal, setShowAIChatModal] = useState(false);
-    const [showAITeamIdeasModal, setShowAITeamIdeasModal] = useState(false);
-    const [showTeamAdminModal, setShowTeamAdminModal] = useState(false);
+    const [isCreateWorkshopOpen, setIsCreateWorkshopOpen] = useState(false);
     const [projectName, setProjectName] = useState("");
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-    const [teamName, setTeamName] = useState(localStorage.getItem("akasha_team") || "");
-    const [teamStatus, setTeamStatus] = useState<string | null>(null); // 'admin', 'member', 'pending'
-    const [isJoining, setIsJoining] = useState(false);
-    const [allTeams, setAllTeams] = useState<any[]>([]);
-    const [searchTeamQuery, setSearchTeamQuery] = useState("");
-    const [showBrowseTeams, setShowBrowseTeams] = useState(false);
-
-    const checkTeamStatus = async () => {
-        const sessionId = localStorage.getItem("akasha_user_session");
-        if (!sessionId) return;
-        try {
-            const res = await fetch(`http://localhost:3001/api/ai/status?sessionId=${sessionId}`);
-            const data = await res.json();
-            if (data.team) {
-                setTeamName(data.team);
-                setTeamStatus(data.status);
-                localStorage.setItem("akasha_team", data.team);
-            } else {
-                setTeamStatus(null);
-            }
-        } catch (err) { }
-    };
-
-    const fetchTeams = async () => {
-        try {
-            const res = await fetch(`http://localhost:3001/api/ai/list-teams`);
-            const data = await res.json();
-            setAllTeams(data);
-        } catch (err) { }
-    };
-
-    React.useEffect(() => {
-        checkTeamStatus();
-        fetchTeams();
-        const interval = setInterval(checkTeamStatus, 5000);
-        return () => clearInterval(interval);
-    }, []);
-
-    const handleCreateTeam = async () => {
-        if (!teamName.trim()) return toast.showToast("Enter a team name", "warning");
-        setIsJoining(true);
-        try {
-            let sessionId = localStorage.getItem("akasha_user_session");
-            if (!sessionId) {
-                sessionId = "akasha_user_" + Date.now().toString();
-                localStorage.setItem("akasha_user_session", sessionId);
-            }
-            const res = await fetch("http://localhost:3001/api/ai/create-team", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ sessionId, teamName: teamName.trim() })
-            });
-            const data = await res.json();
-            if (res.ok) {
-                toast.showToast(`Team "${teamName}" created!`, "success");
-                checkTeamStatus();
-            } else {
-                toast.showToast(data.error || "Failed to create team", "error");
-            }
-        } catch (err: any) {
-            toast.showToast(err.message, "error");
-        } finally {
-            setIsJoining(false);
-        }
-    };
-
-    const handleRequestJoin = async (targetTeam?: string) => {
-        const tName = targetTeam || teamName.trim();
-        if (!tName) return toast.showToast("Enter or select a team", "warning");
-        setIsJoining(true);
-        try {
-            let sessionId = localStorage.getItem("akasha_user_session");
-            if (!sessionId) {
-                sessionId = "akasha_user_" + Date.now().toString();
-                localStorage.setItem("akasha_user_session", sessionId);
-            }
-            const res = await fetch("http://localhost:3001/api/ai/request-join", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ sessionId, teamName: tName })
-            });
-            const data = await res.json();
-            if (res.ok) {
-                toast.showToast(`Request sent to ${tName}`, "success");
-                setTeamName(tName);
-                checkTeamStatus();
-                setShowBrowseTeams(false);
-            } else {
-                toast.showToast(data.error || "Failed to request join", "error");
-            }
-        } catch (err: any) {
-            toast.showToast(err.message, "error");
-        } finally {
-            setIsJoining(false);
-        }
-    };
-
-    const handleLeaveTeam = async () => {
-        try {
-            const sessionId = localStorage.getItem("akasha_user_session");
-            if (!sessionId) return;
-            const res = await fetch("http://localhost:3001/api/ai/leave-team", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ sessionId })
-            });
-            if (res.ok) {
-                setTeamStatus(null);
-                setTeamName("");
-                localStorage.removeItem("akasha_team");
-                toast.showToast("Left team", "success");
-                fetchTeams();
-            }
-        } catch (err: any) {
-            toast.showToast(err.message, "error");
-        }
-    };
-
-    const handleJoinTeam = handleRequestJoin;
+    const [showSettingsModal, setShowSettingsModal] = useState(false);
 
     const filteredProjects = useMemo(
         () => (projects || []).filter((project) => project.name.toLowerCase().includes(searchQuery.toLowerCase())),
         [projects, searchQuery]
     );
 
-    const handleCreate = async (e: React.FormEvent) => {
+    const handleNextStep = (e: React.FormEvent) => {
         e.preventDefault();
         if (!projectName.trim()) return;
+        setIsCreateModalOpen(false);
+        setIsCreateWorkshopOpen(true);
+    };
 
+    const handleCreateProjectFinal = async (refinedIdea: string) => {
         try {
-            await createProject(projectName.trim());
+            await createProject(projectName.trim(), refinedIdea);
             setProjectName("");
             setIsCreateModalOpen(false);
+            setIsCreateWorkshopOpen(false);
         } catch (err) {
             toast.showToast(`Failed to create project: ${err}`, "error");
         }
+    };
+
+    const handleCancelCreate = () => {
+        setIsCreateModalOpen(false);
+        setIsCreateWorkshopOpen(false);
+        setProjectName("");
     };
 
     const handleDelete = async (id: string) => {
@@ -209,22 +97,6 @@ const DashboardView: React.FC = () => {
                         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
                             <div className="flex items-center gap-4">
                                 <button
-                                    onClick={() => setShowAIChatModal(true)}
-                                    className="h-10 px-4 flex items-center justify-center rounded-xl text-indigo-400 hover:text-white transition-all border border-indigo-500/20 hover:border-indigo-400 hover:bg-indigo-500/10 gap-2 text-xs font-bold uppercase tracking-widest"
-                                    title="Individual AI Chat"
-                                >
-                                    <span>✦</span> Chat
-                                </button>
-
-                                <button
-                                    onClick={() => setShowAITeamIdeasModal(true)}
-                                    className="h-10 px-4 flex items-center justify-center rounded-xl text-[#0ea5e9] hover:text-white transition-all border border-[#0ea5e9]/20 hover:border-[#0ea5e9]/80 hover:bg-[#0ea5e9]/10 gap-2 text-xs font-bold uppercase tracking-widest"
-                                    title="Team Startup Ideas"
-                                >
-                                    <span>💡</span> Ideas
-                                </button>
-
-                                <button
                                     onClick={() => setShowSettingsModal(true)}
                                     className="h-10 w-10 flex items-center justify-center rounded-xl text-white/40 hover:text-white transition-all border border-white/5 hover:border-white/20 hover:bg-white/5"
                                     title="IDE Settings"
@@ -234,117 +106,6 @@ const DashboardView: React.FC = () => {
                                         <circle cx="12" cy="12" r="3" strokeWidth="2" />
                                     </svg>
                                 </button>
-
-                                <div className="flex items-center gap-2 bg-[#111116] border border-white/5 rounded-2xl px-2 h-10 relative group/team">
-                                    <div className="flex items-center gap-2 px-2 border-r border-white/5 h-full">
-                                        <svg className="w-3 h-3 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                                        </svg>
-                                        <input
-                                            type="text"
-                                            placeholder="Find or Create Team..."
-                                            value={teamName}
-                                            onKeyDown={(e) => {
-                                                if (e.key === 'Enter') {
-                                                    if (teamStatus) return;
-                                                    handleRequestJoin();
-                                                }
-                                            }}
-                                            onChange={(e) => {
-                                                setTeamName(e.target.value);
-                                                setSearchTeamQuery(e.target.value);
-                                                setShowBrowseTeams(true);
-                                            }}
-                                            onFocus={() => {
-                                                setShowBrowseTeams(true);
-                                                fetchTeams();
-                                            }}
-                                            className="bg-transparent w-32 md:w-40 text-[11px] font-bold text-white placeholder:text-white/20 focus:outline-none"
-                                        />
-                                    </div>
-
-                                    {teamStatus ? (
-                                        <div className="flex items-center gap-1.5 px-1">
-                                            {teamStatus === 'admin' ? (
-                                                <button
-                                                    onClick={() => setShowTeamAdminModal(true)}
-                                                    className="h-7 px-3 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg text-[9px] font-black uppercase tracking-widest transition-all shadow-[0_0_10px_rgba(99,102,241,0.3)] flex items-center gap-1"
-                                                >
-                                                    <span className="text-[12px] opacity-70">★</span> Admin
-                                                </button>
-                                            ) : teamStatus === 'pending' ? (
-                                                <div className="px-3 py-1 bg-amber-500/10 text-amber-500 rounded-lg text-[9px] font-black uppercase tracking-widest animate-pulse border border-amber-500/20">
-                                                    Pending
-                                                </div>
-                                            ) : (
-                                                <div className="px-3 py-1 bg-indigo-500/10 text-indigo-400 rounded-lg text-[9px] font-black uppercase tracking-widest border border-indigo-500/20">
-                                                    Member
-                                                </div>
-                                            )}
-                                            <button
-                                                onClick={handleLeaveTeam}
-                                                className="h-7 w-7 flex items-center justify-center bg-white/5 hover:bg-red-500/20 text-white/40 hover:text-red-500 rounded-lg transition-all"
-                                                title="Leave Team"
-                                            >
-                                                ✕
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <div className="flex gap-1 pr-1">
-                                            <button
-                                                onClick={handleCreateTeam}
-                                                disabled={isJoining}
-                                                className="h-7 px-3 bg-white/5 hover:bg-white/10 text-white/70 hover:text-white rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1"
-                                                title="Create a new team"
-                                            >
-                                                <span className="text-[12px]">+</span> Create
-                                            </button>
-                                            <button
-                                                onClick={() => handleRequestJoin()}
-                                                disabled={isJoining}
-                                                className="h-7 px-3 bg-indigo-500/20 hover:bg-indigo-500 text-indigo-400 hover:text-white rounded-lg text-[9px] font-black uppercase tracking-widest transition-all"
-                                                title="Request to join team"
-                                            >
-                                                {isJoining ? "..." : "Join"}
-                                            </button>
-                                        </div>
-                                    )}
-
-                                    {showBrowseTeams && (
-                                        <div className="absolute top-12 left-0 w-80 bg-[#111116] border border-white/10 rounded-xl shadow-2xl p-2 z-[100] animate-slide-down">
-                                            <div className="flex items-center justify-between px-2 mb-2">
-                                                <span className="text-[9px] font-black text-white/40 uppercase tracking-widest">Global Discovery</span>
-                                                <button onClick={() => setShowBrowseTeams(false)} className="text-white/20 hover:text-white">✕</button>
-                                            </div>
-                                            <div className="max-h-48 overflow-y-auto custom-scrollbar space-y-1">
-                                                {allTeams.filter(t => t.name.toLowerCase().includes(searchTeamQuery.toLowerCase())).length > 0 ? (
-                                                    allTeams.filter(t => t.name.toLowerCase().includes(searchTeamQuery.toLowerCase())).map(t => (
-                                                        <div
-                                                            key={t.id}
-                                                            className="flex items-center justify-between p-2 hover:bg-white/5 rounded-lg transition-all group/item"
-                                                        >
-                                                            <div className="flex flex-col">
-                                                                <span className="text-[11px] font-bold text-white/80">{t.name}</span>
-                                                                <span className="text-[8px] text-white/30 uppercase tracking-wider">{t.members?.length || 0} members</span>
-                                                            </div>
-                                                            <button
-                                                                onClick={() => {
-                                                                    handleRequestJoin(t.name);
-                                                                    setShowBrowseTeams(false);
-                                                                }}
-                                                                className="h-6 px-3 bg-indigo-500/20 hover:bg-indigo-500 text-indigo-400 hover:text-white rounded-md text-[9px] font-black uppercase tracking-widest transition-all"
-                                                            >
-                                                                Join
-                                                            </button>
-                                                        </div>
-                                                    ))
-                                                ) : (
-                                                    <div className="text-[10px] text-white/30 text-center py-4">No other teams found</div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
 
                                 <div className="relative flex-1 sm:flex-initial group/search bg-[#111116] border border-white/5 rounded-2xl flex items-center transition-all hover:border-white/10 focus-within:ring-2 focus-within:ring-[#0ea5e9]/30 focus-within:border-[#0ea5e9]/50 w-full sm:w-56 md:w-64">
                                     <div className="pl-4 pr-3 flex items-center pointer-events-none">
@@ -363,7 +124,10 @@ const DashboardView: React.FC = () => {
                             </div>
 
                             <button
-                                onClick={() => setIsCreateModalOpen(true)}
+                                onClick={() => {
+                                    setIsCreateWorkshopOpen(false);
+                                    setIsCreateModalOpen(true);
+                                }}
                                 className="h-10 px-6 rounded-xl bg-[#0ea5e9] hover:bg-[#0284c7] text-[#050508] font-bold text-xs transition-all shadow-[0_0_20px_rgba(14,165,233,0.3)] hover:shadow-[0_0_25px_rgba(14,165,233,0.5)] flex items-center justify-center gap-2 whitespace-nowrap"
                             >
                                 New Project
@@ -374,6 +138,33 @@ const DashboardView: React.FC = () => {
                     <div className="flex items-center justify-between text-[11px] text-white/30 font-bold tracking-widest uppercase">
                         <span>{filteredProjects.length} project{filteredProjects.length === 1 ? "" : "s"}</span>
                     </div>
+
+                    {isCreateWorkshopOpen && (
+                        <div className="animate-fade-in">
+                            <div className="mb-3 flex items-center justify-between">
+                                <div className="inline-flex items-center gap-2 rounded-xl border border-indigo-500/20 bg-indigo-500/10 p-1">
+                                    <span className="h-8 px-3 rounded-lg text-[10px] font-black uppercase tracking-widest text-white/50 bg-white/5">
+                                        Name
+                                    </span>
+                                    <span className="h-8 px-3 rounded-lg text-[10px] font-black uppercase tracking-widest text-white bg-gradient-to-r from-indigo-500 to-cyan-500 flex items-center">
+                                        AI Workshop
+                                    </span>
+                                </div>
+                                <button
+                                    onClick={handleCancelCreate}
+                                    className="h-9 px-3 rounded-xl border border-white/10 text-white/60 hover:text-white hover:bg-white/10 transition-all text-xs font-bold"
+                                >
+                                    Close
+                                </button>
+                            </div>
+
+                            <IdeaWorkshop
+                                projectName={projectName || "New Project"}
+                                onRefined={handleCreateProjectFinal}
+                                onCancel={handleCancelCreate}
+                            />
+                        </div>
+                    )}
 
                     {/* Project Grid */}
                     {filteredProjects.length > 0 ? (
@@ -402,7 +193,10 @@ const DashboardView: React.FC = () => {
                                     : "Create your first project to start building with visual full-stack tools."}
                             </p>
                             <button
-                                onClick={() => setIsCreateModalOpen(true)}
+                                onClick={() => {
+                                    setIsCreateWorkshopOpen(false);
+                                    setIsCreateModalOpen(true);
+                                }}
                                 className="btn-modern-primary !h-12 !px-12"
                             >
                                 Create Project
@@ -412,22 +206,6 @@ const DashboardView: React.FC = () => {
                 </div>
 
                 {/* Modals */}
-                <AIChatModal
-                    isOpen={showAIChatModal}
-                    onClose={() => setShowAIChatModal(false)}
-                />
-
-                <AITeamIdeasModal
-                    isOpen={showAITeamIdeasModal}
-                    onClose={() => setShowAITeamIdeasModal(false)}
-                />
-
-                <TeamAdminModal
-                    isOpen={showTeamAdminModal}
-                    onClose={() => setShowTeamAdminModal(false)}
-                    teamName={teamName}
-                />
-
                 <IDESettingsModal
                     isOpen={showSettingsModal}
                     onClose={() => setShowSettingsModal(false)}
@@ -462,25 +240,26 @@ const DashboardView: React.FC = () => {
 
                 {isCreateModalOpen && (
                     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                        <div className="absolute inset-0 bg-black/55 backdrop-blur-xl animate-fade-in" onClick={() => setIsCreateModalOpen(false)} />
+                        <div className="absolute inset-0 bg-black/55 backdrop-blur-xl animate-fade-in" onClick={handleCancelCreate} />
+
                         <div className="relative w-full max-w-lg bg-[var(--ide-bg-panel)] border border-[var(--ide-border-strong)] rounded-[2rem] shadow-[var(--ide-shadow)] overflow-hidden animate-slide-up">
                             <div className="p-8 md:p-10">
                                 <div className="flex items-center gap-4 mb-8">
-                                    <div className="w-12 h-12 rounded-2xl bg-[var(--ide-text)] text-[var(--ide-bg)] flex items-center justify-center shadow-xl">
+                                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-cyan-500 text-white flex items-center justify-center shadow-xl shadow-indigo-500/20">
                                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" />
                                         </svg>
                                     </div>
                                     <div>
                                         <h2 className="text-2xl font-black leading-tight text-[var(--ide-text)]">New Project</h2>
-                                        <p className="text-[10px] text-[var(--ide-text-muted)] font-black uppercase tracking-widest mt-1">Full-Stack Scaffolding</p>
+                                        <p className="text-[10px] text-[var(--ide-text-muted)] font-black uppercase tracking-widest mt-1">Step 1: Naming</p>
                                     </div>
                                 </div>
 
-                                <form onSubmit={handleCreate} className="space-y-8">
+                                <form onSubmit={handleNextStep} className="space-y-6">
                                     <div className="space-y-3">
                                         <label className="text-xs font-black text-[var(--ide-text-secondary)] uppercase tracking-widest ml-1">
-                                            Project Identity
+                                            Project Name
                                         </label>
                                         <input
                                             type="text"
@@ -493,20 +272,20 @@ const DashboardView: React.FC = () => {
                                         />
                                     </div>
 
-                                    <div className="flex gap-4 pt-4">
+                                    <div className="flex gap-4 pt-2">
                                         <button
                                             type="button"
-                                            onClick={() => setIsCreateModalOpen(false)}
+                                            onClick={handleCancelCreate}
                                             className="flex-1 py-4 rounded-2xl border border-[var(--ide-border)] text-[var(--ide-text-secondary)] font-black text-[11px] uppercase tracking-widest hover:bg-[var(--ide-bg-elevated)] hover:text-[var(--ide-text)] transition-all"
                                         >
                                             Dismiss
                                         </button>
                                         <button
                                             type="submit"
-                                            disabled={loading || !projectName.trim()}
-                                            className="flex-1 py-4 rounded-2xl bg-[var(--ide-text)] text-[var(--ide-bg)] font-black text-[11px] uppercase tracking-widest hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-30"
+                                            disabled={!projectName.trim()}
+                                            className="flex-1 py-4 rounded-2xl bg-gradient-to-r from-indigo-500 to-cyan-500 text-white font-black text-[11px] uppercase tracking-widest hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-30 shadow-lg shadow-indigo-500/20"
                                         >
-                                            {loading ? "Scaffolding..." : "Initialize"}
+                                            Next: Workshop &rarr;
                                         </button>
                                     </div>
                                 </form>

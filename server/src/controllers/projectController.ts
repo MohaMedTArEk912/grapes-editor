@@ -61,7 +61,7 @@ export async function getProject(req: Request, res: Response) {
     try {
         const { id } = req.params;
         const project = await prisma.project.findUnique({
-            where: { id },
+            where: { id: id as string },
             include: { pages: true, blocks: true }
         });
 
@@ -111,7 +111,7 @@ export async function updateProject(req: Request, res: Response) {
         const { name, description, settings } = req.body;
 
         const project = await prisma.project.update({
-            where: { id },
+            where: { id: id as string },
             data: {
                 name,
                 description,
@@ -129,10 +129,27 @@ export async function updateProject(req: Request, res: Response) {
 export async function deleteProject(req: Request, res: Response) {
     try {
         const { id } = req.params;
-        await prisma.project.delete({ where: { id } });
+        await prisma.project.delete({ where: { id: id as string } });
         res.json({ success: true });
     } catch (error) {
         console.error('Error deleting project:', error);
         res.status(500).json({ error: 'Failed to delete project' });
+    }
+}
+
+export async function updateProjectIdea(req: Request, res: Response) {
+    try {
+        const { id } = req.params;
+        const { idea } = req.body;
+
+        const project = await prisma.project.update({
+            where: { id: id as string },
+            data: { description: idea || '' },
+            include: { pages: true, blocks: true }
+        });
+        res.json(toProjectSchema(project, project.pages, project.blocks));
+    } catch (error) {
+        console.error('Error updating project idea:', error);
+        res.status(500).json({ error: 'Failed to update project idea' });
     }
 }

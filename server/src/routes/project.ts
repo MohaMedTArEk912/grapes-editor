@@ -7,6 +7,7 @@ router.get('/', ctrl.listProjects);
 router.get('/:id', ctrl.getProject);
 router.post('/', ctrl.createProject);
 router.put('/:id', ctrl.updateProject);
+router.put('/:id/idea', ctrl.updateProjectIdea);
 router.delete('/:id', ctrl.deleteProject);
 
 export default router;

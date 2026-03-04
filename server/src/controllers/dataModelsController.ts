@@ -58,7 +58,7 @@ export async function updateDataModel(req: Request, res: Response) {
         const { id } = req.params;
         const { name, fields, relations } = req.body;
 
-        const model = await prisma.dataModel.findUnique({ where: { id } });
+        const model = await prisma.dataModel.findUnique({ where: { id: id as string } });
         if (!model) { res.status(404).json({ error: 'Model not found' }); return; }
 
         const currentSchema = JSON.parse(model.schema);
@@ -68,7 +68,7 @@ export async function updateDataModel(req: Request, res: Response) {
         };
 
         const updated = await prisma.dataModel.update({
-            where: { id },
+            where: { id: id as string },
             data: { name: name || model.name, schema: JSON.stringify(newSchema) }
         });
 
@@ -86,7 +86,7 @@ export async function updateDataModel(req: Request, res: Response) {
 export async function deleteDataModel(req: Request, res: Response) {
     try {
         const { id } = req.params;
-        await prisma.dataModel.update({ where: { id }, data: { archived: true } });
+        await prisma.dataModel.update({ where: { id: id as string }, data: { archived: true } });
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: 'Failed' });

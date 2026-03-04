@@ -27,7 +27,7 @@ export async function listHistory(req: Request, res: Response) {
         }
 
         const requests = await prisma.apiRequest.findMany({
-            where: { projectId },
+            where: { projectId: projectId as string },
             orderBy: { createdAt: 'desc' },
             take: 100,
         });
@@ -72,7 +72,7 @@ export async function saveHistory(req: Request, res: Response) {
 export async function deleteHistoryEntry(req: Request, res: Response) {
     try {
         const { id } = req.params;
-        await prisma.apiRequest.delete({ where: { id } });
+        await prisma.apiRequest.delete({ where: { id: id as string } });
         res.json({ success: true });
     } catch (error) {
         console.error('Error deleting API history:', error);
@@ -83,7 +83,7 @@ export async function deleteHistoryEntry(req: Request, res: Response) {
 export async function clearHistory(req: Request, res: Response) {
     try {
         const { projectId } = req.params;
-        await prisma.apiRequest.deleteMany({ where: { projectId } });
+        await prisma.apiRequest.deleteMany({ where: { projectId: projectId as string } });
         res.json({ success: true });
     } catch (error) {
         console.error('Error clearing API history:', error);

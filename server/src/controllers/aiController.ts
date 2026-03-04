@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import prisma from '../lib/prisma.js';
-import openaiClient from '../lib/openai.js';
+import { getLLMProvider } from '../lib/llmProvider.js';
 
 // --- Team Management ---
 
@@ -124,8 +124,12 @@ export async function teamChat(req: Request, res: Response) {
         chatHistory.push({ role: 'user', content: `${member.username}: ${message}` });
 
         console.log(`AI Chat for team ${team.name} by ${member.username}`);
-        const completion = await openaiClient.chat.completions.create({ model: 'google/gemma-3-4b-it:free', temperature: 0.3, messages: chatHistory as any });
-        const reply = completion.choices[0].message.content || "";
+        const llmProvider = getLLMProvider();
+        const reply = await llmProvider.chat({
+            model: 'google/gemma-3-4b-it:free',
+            temperature: 0.3,
+            messages: chatHistory
+        });
 
         await prisma.teamChat.createMany({
             data: [
@@ -135,7 +139,7 @@ export async function teamChat(req: Request, res: Response) {
         });
         res.json({ reply, teamName: team.name });
     } catch (err: any) {
-        console.error('OpenRouter error:', err.message);
+        console.error('LLM Chat error:', err.message);
         res.status(500).json({ error: `AI Connection failed: ${err.message}` });
     }
 }
@@ -194,8 +198,13 @@ export async function submitIdea(req: Request, res: Response) {
         // Background AI Evaluation
         try {
             const prompt = `You are a professional innovation evaluator.\nEvaluate the startup idea for Feasibility (1-10), Innovation (1-10), MarketPotential (1-10).\nRespond ONLY in JSON matching this structure exactly (no markdown formatting, no comments):\n{\n  "feasibility": 8,\n  "innovation": 7,\n  "marketPotential": 9,\n  "overallScore": 8.0,\n  "strengths": ["point1", "point2"],\n  "weaknesses": ["point1", "point2"],\n  "summary": "short paragraph",\n  "recommendedNextSteps": ["step1", "step2", "step3"]\n}\n\nSTARTUP IDEA TO EVALUATE:\n${idea}`;
-            const completion = await openaiClient.chat.completions.create({ model: 'google/gemma-3-4b-it:free', temperature: 0.2, messages: [{ role: 'user', content: prompt }] });
-            let rawJson = completion.choices[0].message?.content?.trim() || "{}";
+            const llmProvider = getLLMProvider();
+            const response = await llmProvider.chat({
+                model: 'google/gemma-3-4b-it:free',
+                temperature: 0.2,
+                messages: [{ role: 'user', content: prompt }]
+            });
+            let rawJson = response.trim() || "{}";
             if (rawJson.startsWith('```json')) rawJson = rawJson.replace(/```json/g, '').replace(/```/g, '').trim();
             if (rawJson.startsWith('```')) rawJson = rawJson.replace(/```/g, '').trim();
             const evaluation = JSON.parse(rawJson);
@@ -212,14 +221,231 @@ export async function simpleChat(req: Request, res: Response) {
         return res.status(400).json({ error: 'Invalid message' });
     }
     try {
-        const completion = await openaiClient.chat.completions.create({
-            model: 'google/gemma-3-4b-it:free', temperature: 0.3,
+        const llmProvider = getLLMProvider();
+        const reply = await llmProvider.chat({
+            model: 'google/gemma-3-4b-it:free',
+            temperature: 0.3,
             messages: [{ role: 'user', content: message }],
         });
-        const reply = completion.choices[0].message.content;
         res.json({ reply });
     } catch (err: any) {
-        console.error('OpenRouter error:', err.message);
+        console.error('LLM error:', err.message);
         res.status(500).json({ error: 'Failed to get AI response' });
+    }
+}
+
+// --- Project-Context-Aware Chat ---
+
+export async function projectChat(req: Request, res: Response) {
+    const { message, projectId, history } = req.body;
+    if (!message || !projectId) {
+        return res.status(400).json({ error: 'Message and projectId are required' });
+    }
+
+    try {
+        // Load project idea for context
+        const project = await prisma.project.findUnique({ where: { id: projectId } });
+        if (!project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        const projectIdea = project.description || 'No idea has been set for this project yet.';
+
+        const systemPrompt = `You are an intelligent AI assistant embedded in a project management IDE called "Akasha". You are helping the user with their project.
+
+PROJECT NAME: ${project.name}
+PROJECT IDEA/DESCRIPTION:
+${projectIdea}
+
+Your role:
+- Answer questions about the project idea, its feasibility, technical requirements, and implementation
+- Help brainstorm features, architecture, and improvements
+- Provide actionable advice based on the project context
+- Be concise, helpful, and professional
+- If the user asks about something unrelated to the project, still be helpful but try to relate it back to their project when relevant`;
+
+        // Build messages array
+        const messages: any[] = [
+            { role: 'system', content: systemPrompt }
+        ];
+
+        // Add conversation history if provided
+        if (Array.isArray(history)) {
+            for (const msg of history.slice(-10)) {
+                messages.push({
+                    role: msg.role === 'user' ? 'user' : 'assistant',
+                    content: msg.content
+                });
+            }
+        }
+
+        messages.push({ role: 'user', content: message });
+
+        const llmProvider = getLLMProvider();
+        const reply = await llmProvider.chat({
+            model: 'google/gemma-3-4b-it:free',
+            temperature: 0.4,
+            messages,
+        });
+
+        res.json({ reply, projectName: project.name });
+    } catch (err: any) {
+        console.error('Project chat error:', err.message);
+        res.status(500).json({ error: `AI Connection failed: ${err.message}` });
+    }
+}
+
+// --- Idea Validation & Refinement ---
+
+export async function analyzeIdea(req: Request, res: Response) {
+    const { idea } = req.body;
+    if (!idea || typeof idea !== 'string') {
+        return res.status(400).json({ error: 'Valid idea string is required' });
+    }
+
+    try {
+        const systemPrompt = `You are an elite startup mentor, product manager, and technical architect.
+Analyze the following project idea. Return ONLY valid JSON. No markdown, no code fences, no extra text.
+Keep answers concise to avoid token overflow:
+- summary: max 25 words
+- strengths/weaknesses/questions/suggestions: 4 items each, each item max 14 words
+{
+  "score": <number 0-100 evaluating viability and clarity>,
+  "summary": "<one sentence clear summary of the core value proposition>",
+  "strengths": ["<strength 1>", "<strength 2>", "<strength 3>", "<strength 4>"],
+  "weaknesses": ["<potential pitfall 1>", "<weakness 2>", "<weakness 3>", "<weakness 4>"],
+  "questions": ["<clarifying question 1>", "<clarifying question 2>", "<clarifying question 3>", "<clarifying question 4>"],
+  "suggestions": ["<actionable suggestion 1>", "<actionable suggestion 2>", "<actionable suggestion 3>", "<actionable suggestion 4>"]
+}`;
+
+        const normalizeList = (value: unknown): string[] =>
+            Array.isArray(value)
+                ? value
+                    .filter((item) => typeof item === 'string')
+                    .map((item) => item.trim())
+                    .filter(Boolean)
+                    .slice(0, 4)
+                : [];
+
+        const parseJsonFromModelOutput = (modelOutput: string) => {
+            let rawJson = modelOutput || '{}';
+            const startIdx = rawJson.indexOf('{');
+            const endIdx = rawJson.lastIndexOf('}');
+            if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+                rawJson = rawJson.substring(startIdx, endIdx + 1);
+            }
+            return JSON.parse(rawJson);
+        };
+
+        const llmProvider = getLLMProvider();
+        const response = await llmProvider.chat({
+            model: 'google/gemini-2.5-flash',
+            temperature: 0.2,
+            max_tokens: 1200,
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: idea }
+            ]
+        });
+
+        const parsed = parseJsonFromModelOutput(response);
+        const scoreNum = Number(parsed?.score);
+        const safeScore = Number.isFinite(scoreNum)
+            ? Math.max(0, Math.min(100, Math.round(scoreNum)))
+            : 0;
+
+        return res.json({
+            score: safeScore,
+            summary: typeof parsed?.summary === 'string' ? parsed.summary : '',
+            strengths: normalizeList(parsed?.strengths),
+            weaknesses: normalizeList(parsed?.weaknesses),
+            questions: normalizeList(parsed?.questions),
+            suggestions: normalizeList(parsed?.suggestions)
+        });
+    } catch (err: any) {
+        console.error('Idea analysis error:', err.message);
+        res.status(500).json({ error: 'Failed to analyze idea. ' + err.message });
+    }
+}
+
+export async function refineIdea(req: Request, res: Response) {
+    const { idea, history, projectId } = req.body;
+    if (!idea || typeof idea !== 'string' || !idea.trim()) {
+        return res.status(400).json({ error: 'Original idea is required' });
+    }
+
+    try {
+        const systemPrompt = `You are an elite product manager and technical architect.
+Your task is to take a raw project idea, incorporate the feedback and discussion history between the user and AI, and output a polished, implementation-ready Product Requirements Document (PRD) in Markdown.
+
+Output constraints:
+- Return ONLY valid Markdown
+- Keep it focused and practical (around 600-1000 words)
+- Use clear headings and concise bullets
+- Start directly with: # Product Vision
+
+Suggested structure:
+# Product Vision
+## Target Audience
+## Core Value Proposition
+## Problem Statement
+## Key Features
+## User Flows
+## Technical Architecture (High Level)
+## Data & API Requirements
+## Milestones
+## Success Metrics
+## Risks & Mitigations`;
+
+        const safeIdea = idea.trim().slice(0, 12000);
+        const safeHistory = Array.isArray(history)
+            ? history
+                .filter((msg) => msg && typeof msg.content === 'string' && (msg.role === 'user' || msg.role === 'assistant'))
+                .slice(-12)
+                .map((msg) => ({ role: msg.role, content: String(msg.content).slice(0, 1200) }))
+            : [];
+
+        const messages: any[] = [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: `Original Idea:\n${safeIdea}` }
+        ];
+
+        if (safeHistory.length > 0) {
+            messages.push({
+                role: 'user',
+                content: `Discussion history for refinement (latest first relevance):\n${JSON.stringify(safeHistory)}`
+            });
+        }
+
+        messages.push({ role: 'user', content: 'Generate the final polished PRD markdown now.' });
+
+        const llmProvider = getLLMProvider();
+        const refinedContent = await llmProvider.chat({
+            model: 'google/gemini-2.5-pro',
+            temperature: 0.4,
+            max_tokens: 1800,
+            messages
+        });
+
+        if (!refinedContent || refinedContent.trim().length === 0) {
+            throw new Error('Empty refinement response from AI model');
+        }
+
+        if (projectId) {
+            try {
+                await prisma.project.update({
+                    where: { id: projectId },
+                    data: { description: refinedContent }
+                });
+            } catch (err: any) {
+                // Do not fail refinement response if project persistence fails.
+                console.error('Project update after refinement failed:', err.message);
+            }
+        }
+
+        res.json({ refinedIdea: refinedContent });
+    } catch (err: any) {
+        console.error('Idea refinement error:', err.message);
+        res.status(500).json({ error: 'Failed to refine idea. ' + err.message });
     }
 }

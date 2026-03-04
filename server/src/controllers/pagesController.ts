@@ -5,7 +5,7 @@ export async function getPageContent(req: Request, res: Response) {
     try {
         const { id } = req.params;
         const blocks = await prisma.block.findMany({
-            where: { pageId: id },
+            where: { pageId: id as string },
             orderBy: { order: 'asc' }
         });
 

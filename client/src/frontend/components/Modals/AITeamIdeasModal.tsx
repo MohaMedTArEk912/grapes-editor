@@ -17,7 +17,7 @@ const AITeamIdeasModal: React.FC<AITeamIdeasModalProps> = ({ isOpen, onClose }) 
     const [sessionId, setSessionId] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [status, setStatus] = useState<string | null>(null);
-    const [team, setTeam] = useState<string | null>(null);
+    const [, setTeam] = useState<string | null>(null);
 
     useEffect(() => {
         if (isOpen) {

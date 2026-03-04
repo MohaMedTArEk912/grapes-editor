@@ -29,7 +29,7 @@ export async function syncBlocks(req: Request, res: Response) {
                 return tx.block.create({
                     data: {
                         id: b.id,
-                        projectId: projectId,
+                        projectId: projectId as string,
                         pageId: page_id,
                         parentId: b.parent_id || null,
                         blockType: b.block_type,

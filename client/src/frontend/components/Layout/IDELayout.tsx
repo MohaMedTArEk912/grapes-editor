@@ -32,6 +32,7 @@ import APIsPage from "../Pages/APIsPage";
 import DatabasePage from "../Pages/DatabasePage";
 import DiagramsPage from "../Pages/DiagramsPage";
 import SourceCodePage from "../Pages/SourceCodePage";
+import IdeaPage from "../Pages/IdeaPage";
 
 import ProjectDashboard from "../Pages/ProjectDashboard";
 
@@ -45,6 +46,7 @@ interface FeaturePageDef {
 // Used for Title Bar labels and Dashboard cards (but not rail anymore)
 const FEATURE_PAGES: FeaturePageDef[] = [
     { id: "dashboard", label: "Dashboard", icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" },
+    { id: "idea", label: "Project Idea", icon: "M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" },
     { id: "ui", label: "UI Design", icon: "M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" },
     { id: "usecases", label: "Use Cases", icon: "M13 10V3L4 14h7v7l9-11h-7z" },
     { id: "apis", label: "APIs", icon: "M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9" },
@@ -71,6 +73,7 @@ const IDELayout: React.FC = () => {
     const renderPage = () => {
         switch (activePage) {
             case "dashboard": return <ProjectDashboard />;
+            case "idea": return <IdeaPage />;
             case "ui": return <UIDesignPage />;
             case "usecases": return <UseCasesPage />;
             case "apis": return <APIsPage />;
@@ -160,6 +163,12 @@ const IDELayout: React.FC = () => {
                         label="Dashboard"
                         active={activePage === "dashboard"}
                         onClick={() => setActivePage("dashboard")}
+                    />
+                    <NavRailIcon
+                        icon="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+                        label="Project Idea"
+                        active={activePage === "idea"}
+                        onClick={() => setActivePage("idea")}
                     />
 
                     {/* Spacer */}

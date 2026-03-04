@@ -38,8 +38,8 @@ export const httpApi = {
         console.warn('getProject called in web mode without ID context.');
         return null; // Return null explicitly
     },
-    createProject: async (name: string): Promise<ProjectSchema> => {
-        const res = await client.post('/project', { name });
+    createProject: async (name: string, description?: string): Promise<ProjectSchema> => {
+        const res = await client.post('/project', { name, description: description || '' });
         if (res.data && res.data.id) {
             activeProjectId = res.data.id;
         }
@@ -364,4 +364,16 @@ export const httpApi = {
         const res = await client.delete(`/api-history/clear/${activeProjectId}`);
         return res.data;
     },
+
+    // ─── AI Idea Validation & Refinement ───────────
+    analyzeIdea: async (idea: string) => {
+        const res = await client.post('/ai/analyze-idea', { idea });
+        return res.data; // { score, summary, strengths, weaknesses, questions, suggestions }
+    },
+    refineIdea: async (idea: string, history: any[], projectId?: string) => {
+        const payload: any = { idea, history };
+        if (projectId) payload.projectId = projectId;
+        const res = await client.post('/ai/refine-idea', payload);
+        return res.data; // { refinedIdea }
+    }
 };

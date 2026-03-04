@@ -26,4 +26,11 @@ router.post('/submit-idea', ctrl.submitIdea);
 // Simple Chat (merged from server.js)
 router.post('/simple-chat', ctrl.simpleChat);
 
+// Project-Context-Aware Chat
+router.post('/project-chat', ctrl.projectChat);
+
+// Idea Validation & Refinement
+router.post('/analyze-idea', ctrl.analyzeIdea);
+router.post('/refine-idea', ctrl.refineIdea);
+
 export default router;
