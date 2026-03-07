@@ -3,16 +3,17 @@
  *
  * Renders:
  * - Unified toolbar: viewport switcher (left) + undo/redo & zoom (right)
- * - Rulers (horizontal + vertical) synced to scroll & zoom
  * - Zoomable artboard with craft.js <Frame>
  * - Empty state when no blocks exist
- * - Keyboard shortcuts for undo/redo/zoom
+ * - Keyboard shortcuts for undo/redo/zoom/delete/duplicate/lock
+ * - Palette→canvas drop handling (akasha-pointer-drop + HTML5 DnD)
+ * - Page background settings (color, gradient, image)
  *
  * Loads blocks from the backend on page change and deserializes them
  * into craft.js's internal state.
  */
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Frame, Element, useEditor } from "@craftjs/core";
 import { useProjectStore } from "../../../hooks/useProjectStore";
 import { setViewport } from "../../../stores/projectStore";
@@ -20,6 +21,8 @@ import { CraftBlock } from "./CraftBlock";
 import { blocksToSerializedNodes } from "./serialization";
 import { useCanvasViewport } from "./useCanvasViewport";
 import { CanvasToolbar } from "./CanvasToolbar";
+import { BLOCK_REGISTRY } from "./blockRegistry";
+import { HexColorPicker } from "react-colorful";
 
 /* ═══════════════════  Constants  ═══════════════════ */
 
@@ -29,13 +32,22 @@ const ARTBOARD_SIZES: Record<string, { w: number; h: number; label: string }> = 
     mobile: { w: 375, h: 812, label: "Mobile" },
 };
 
-
+const BG_PRESETS = [
+    { label: "White", value: "#ffffff" },
+    { label: "Light Gray", value: "#f8fafc" },
+    { label: "Warm", value: "#fffbeb" },
+    { label: "Cool", value: "#f0f9ff" },
+    { label: "Dark", value: "#0f172a" },
+    { label: "Gradient 1", value: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)" },
+    { label: "Gradient 2", value: "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)" },
+    { label: "Gradient 3", value: "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)" },
+];
 
 /* ═══════════════════  CraftFrame  ═════════════════ */
 
 export const CraftFrame: React.FC = () => {
     const { project, selectedPageId, selectedComponentId, viewport } = useProjectStore();
-    const { actions } = useEditor();
+    const { actions, query } = useEditor();
     const {
         zoom, scrollRef,
         zoomIn, zoomOut, zoomReset, setZoom,
@@ -44,6 +56,12 @@ export const CraftFrame: React.FC = () => {
 
     // Viewport measurement
     const [vpSize, setVpSize] = useState({ w: 0, h: 0 });
+    // Page background
+    const [pageBg, setPageBg] = useState("#ffffff");
+    const [showBgPicker, setShowBgPicker] = useState(false);
+    const bgPickerRef = useRef<HTMLDivElement>(null);
+    // Artboard ref for drop coordinate calculation
+    const artboardRef = useRef<HTMLDivElement>(null);
 
     const ab = ARTBOARD_SIZES[viewport] || ARTBOARD_SIZES.desktop;
     const artW = viewport === "desktop" ? Math.max(ab.w, vpSize.w) : ab.w;
@@ -87,45 +105,245 @@ export const CraftFrame: React.FC = () => {
         }
     }, [project, selectedPageId, actions]);
 
+    // ── Close BG picker on outside click ──
+    useEffect(() => {
+        if (!showBgPicker) return;
+        const handler = (e: MouseEvent) => {
+            if (bgPickerRef.current && !bgPickerRef.current.contains(e.target as Node)) {
+                setShowBgPicker(false);
+            }
+        };
+        document.addEventListener("mousedown", handler);
+        return () => document.removeEventListener("mousedown", handler);
+    }, [showBgPicker]);
+
+    // ── Helper: add a block via craft.js ──
+    const addBlockToCraft = useCallback((blockType: string, parentId?: string, componentId?: string) => {
+        try {
+            const meta = BLOCK_REGISTRY[blockType];
+            const nodeTree = query.parseReactElement(
+                React.createElement(CraftBlock, {
+                    blockType,
+                    blockName: meta?.displayName || blockType.charAt(0).toUpperCase() + blockType.slice(1),
+                    blockId: "",
+                    text: (meta?.defaultProps as any)?.text || "",
+                    styles: meta?.defaultStyles || {},
+                    responsiveStyles: {},
+                    properties: meta?.defaultProps || {},
+                    bindings: {},
+                    eventHandlers: [],
+                    componentId,
+                }),
+            ).toNodeTree();
+            actions.addNodeTree(nodeTree, parentId || "ROOT");
+        } catch (err) {
+            console.error("[CraftFrame] Failed to add block:", err);
+        }
+    }, [actions, query]);
+
+    // ── Palette pointer-drop handler ──
+    useEffect(() => {
+        const handler = (e: Event) => {
+            const detail = (e as CustomEvent).detail;
+            if (!detail?.payload?.type) return;
+
+            const { type, componentId } = detail.payload;
+
+            // Find the drop target - check if we dropped over a container node
+            const dropX = detail.x;
+            const dropY = detail.y;
+
+            // Check if drop is within the artboard area
+            const artboard = artboardRef.current;
+            if (artboard) {
+                const rect = artboard.getBoundingClientRect();
+                if (dropX < rect.left || dropX > rect.right || dropY < rect.top || dropY > rect.bottom) {
+                    return; // Drop outside canvas
+                }
+            }
+
+            // Find the craft node under the cursor
+            let targetNodeId = "ROOT";
+            const el = document.elementFromPoint(dropX, dropY);
+            if (el) {
+                const craftNode = el.closest("[data-block-type]");
+                if (craftNode) {
+                    const nodeId = craftNode.getAttribute("data-block-id");
+                    const nodeType = craftNode.getAttribute("data-block-type");
+                    // Only target containers
+                    if (nodeId && nodeType) {
+                        try {
+                            const nd = query.node(nodeId).get();
+                            if (nd?.data?.isCanvas) {
+                                targetNodeId = nodeId;
+                            }
+                        } catch { /* ignore */ }
+                    }
+                }
+            }
+
+            addBlockToCraft(type, targetNodeId, componentId);
+        };
+
+        document.addEventListener("akasha-pointer-drop", handler);
+        return () => document.removeEventListener("akasha-pointer-drop", handler);
+    }, [addBlockToCraft, query]);
+
+    // ── HTML5 DnD drop handler (fallback for browser) ──
+    const handleDragOver = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "copy";
+    }, []);
+
+    const handleDrop = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        const blockType = e.dataTransfer.getData("application/akasha-block")
+            || (window as any).__akashaDragData?.type;
+        const componentId = e.dataTransfer.getData("application/akasha-component-id")
+            || (window as any).__akashaDragData?.componentId;
+
+        if (!blockType) return;
+
+        // Find target under cursor
+        let targetNodeId = "ROOT";
+        const el = document.elementFromPoint(e.clientX, e.clientY);
+        if (el) {
+            const craftNode = el.closest("[data-block-type]");
+            if (craftNode) {
+                const nodeId = craftNode.getAttribute("data-block-id");
+                if (nodeId) {
+                    try {
+                        const nd = query.node(nodeId).get();
+                        if (nd?.data?.isCanvas) targetNodeId = nodeId;
+                    } catch { /* ignore */ }
+                }
+            }
+        }
+
+        addBlockToCraft(blockType, targetNodeId, componentId || undefined);
+        (window as any).__akashaDragData = null;
+    }, [addBlockToCraft, query]);
+
     // ── Keyboard shortcuts ──
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             const ctrl = e.ctrlKey || e.metaKey;
-            if (!ctrl) return;
 
-            switch (e.key) {
-                case "z":
-                    if (e.shiftKey) {
+            // Don't intercept if user is in an input/textarea
+            const tag = (e.target as HTMLElement)?.tagName;
+            if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement)?.isContentEditable) return;
+
+            if (ctrl) {
+                switch (e.key) {
+                    case "z":
+                        if (e.shiftKey) {
+                            e.preventDefault();
+                            actions.history.redo();
+                        } else {
+                            e.preventDefault();
+                            actions.history.undo();
+                        }
+                        break;
+                    case "y":
                         e.preventDefault();
                         actions.history.redo();
-                    } else {
+                        break;
+                    case "=":
+                    case "+":
                         e.preventDefault();
-                        actions.history.undo();
-                    }
-                    break;
-                case "y":
-                    e.preventDefault();
-                    actions.history.redo();
-                    break;
-                case "=":
-                case "+":
-                    e.preventDefault();
-                    zoomIn();
-                    break;
-                case "-":
-                    e.preventDefault();
-                    zoomOut();
-                    break;
-                case "0":
-                    e.preventDefault();
-                    zoomReset();
-                    break;
+                        zoomIn();
+                        break;
+                    case "-":
+                        e.preventDefault();
+                        zoomOut();
+                        break;
+                    case "0":
+                        e.preventDefault();
+                        zoomReset();
+                        break;
+                    case "d":
+                    case "D":
+                        e.preventDefault();
+                        // Duplicate selected node
+                        duplicateSelected();
+                        break;
+                    case "l":
+                    case "L":
+                        e.preventDefault();
+                        // Toggle lock on selected node
+                        toggleLockSelected();
+                        break;
+                }
+                return;
+            }
+
+            // Delete key
+            if (e.key === "Delete" || e.key === "Backspace") {
+                e.preventDefault();
+                deleteSelected();
             }
         };
 
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
     }, [actions, zoomIn, zoomOut, zoomReset]);
+
+    // ── Helper: get selected node ID ──
+    const getSelectedId = useCallback((): string | null => {
+        try {
+            const state = query.getState();
+            const sel = state.events.selected;
+            if (!sel) return null;
+            if (sel instanceof Set) return Array.from(sel)[0] ?? null;
+            if (typeof sel === "string") return sel;
+            if (Array.isArray(sel)) return sel[0] ?? null;
+            if (typeof sel === "object" && typeof (sel as any)[Symbol.iterator] === "function") {
+                return Array.from(sel as Iterable<string>)[0] ?? null;
+            }
+        } catch { /* ignore */ }
+        return null;
+    }, [query]);
+
+    const deleteSelected = useCallback(() => {
+        const nodeId = getSelectedId();
+        if (!nodeId || nodeId === "ROOT") return;
+        try { actions.delete(nodeId); } catch { /* ignore */ }
+    }, [actions, getSelectedId]);
+
+    const duplicateSelected = useCallback(() => {
+        const nodeId = getSelectedId();
+        if (!nodeId || nodeId === "ROOT") return;
+        try {
+            const nodeData = query.node(nodeId).get();
+            const parentId = nodeData.data.parent;
+            if (parentId) {
+                const nodeTree = query.node(nodeId).toNodeTree();
+                actions.addNodeTree(nodeTree, parentId);
+            }
+        } catch (err) {
+            console.error("[CraftFrame] Duplicate failed:", err);
+        }
+    }, [actions, query, getSelectedId]);
+
+    const toggleLockSelected = useCallback(() => {
+        const nodeId = getSelectedId();
+        if (!nodeId) return;
+        try {
+            const nodeData = query.node(nodeId).get();
+            const locked = !!(nodeData.data.props as any)?.properties?.__locked;
+            actions.setProp(nodeId, (p: any) => {
+                p.properties = { ...p.properties, __locked: !locked };
+            });
+        } catch { /* ignore */ }
+    }, [actions, query, getSelectedId]);
+
+    // ── Background style ──
+    const bgStyle: React.CSSProperties = {};
+    if (pageBg.startsWith("linear-gradient") || pageBg.startsWith("radial-gradient")) {
+        bgStyle.backgroundImage = pageBg;
+    } else {
+        bgStyle.backgroundColor = pageBg;
+    }
 
     // ── Early returns ──
     if (!project) {
@@ -143,11 +361,65 @@ export const CraftFrame: React.FC = () => {
                 {/* Left: Viewport switcher */}
                 <ViewportButtons viewport={viewport} artW={artW} artH={artH} />
 
+                {/* Center: Page Background */}
+                <div className="flex items-center gap-2 relative">
+                    <button
+                        onClick={() => setShowBgPicker(!showBgPicker)}
+                        className="flex items-center gap-1.5 h-7 px-2.5 bg-black/10 rounded-lg border border-white/5 hover:bg-black/20 transition-colors"
+                        title="Page Background"
+                    >
+                        <div
+                            className="w-4 h-4 rounded border border-white/20 shadow-inner"
+                            style={pageBg.startsWith("linear") ? { backgroundImage: pageBg } : { backgroundColor: pageBg }}
+                        />
+                        <span className="text-[10px] text-[var(--ide-text-muted)] font-medium hidden sm:inline">Background</span>
+                    </button>
+
+                    {showBgPicker && (
+                        <div
+                            ref={bgPickerRef}
+                            className="absolute top-full mt-2 left-1/2 -translate-x-1/2 z-50 bg-[#1a1a24] border border-white/10 rounded-xl shadow-2xl p-3 w-56"
+                        >
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="text-[10px] font-bold text-white/40 uppercase tracking-wider">Page Background</span>
+                                <button onClick={() => setShowBgPicker(false)} className="text-white/30 hover:text-white p-0.5">
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                                </button>
+                            </div>
+                            {/* Presets */}
+                            <div className="grid grid-cols-4 gap-1.5 mb-3">
+                                {BG_PRESETS.map(p => (
+                                    <button
+                                        key={p.label}
+                                        onClick={() => setPageBg(p.value)}
+                                        className={`h-8 rounded-lg border transition-all hover:scale-105 ${pageBg === p.value ? "border-indigo-500 ring-1 ring-indigo-500/50" : "border-white/10 hover:border-white/20"}`}
+                                        style={p.value.startsWith("linear") ? { backgroundImage: p.value } : { backgroundColor: p.value }}
+                                        title={p.label}
+                                    />
+                                ))}
+                            </div>
+                            {/* Custom color */}
+                            <HexColorPicker
+                                color={pageBg.startsWith("#") ? pageBg : "#ffffff"}
+                                onChange={(c) => setPageBg(c)}
+                                style={{ width: "100%", height: "120px" }}
+                            />
+                            {/* Custom input */}
+                            <input
+                                value={pageBg}
+                                onChange={(e) => setPageBg(e.target.value)}
+                                className="w-full mt-2 bg-white/5 border border-white/10 rounded-md px-2 py-1 text-[11px] text-white/70 focus:outline-none focus:border-indigo-500/50"
+                                placeholder="#ffffff or linear-gradient(...)"
+                            />
+                        </div>
+                    )}
+                </div>
+
                 {/* Right: Undo/Redo + Zoom */}
                 <CanvasToolbar zoom={zoom} onZoomChange={setZoom} />
             </div>
 
-            {/* ── Canvas area with rulers ── */}
+            {/* ── Canvas area ── */}
             <div className="flex-1 relative overflow-hidden bg-[var(--ide-canvas-bg)]">
                 {/* Subtle dot grid background */}
                 <div className="absolute inset-0 pointer-events-none opacity-[0.15]"
@@ -163,6 +435,8 @@ export const CraftFrame: React.FC = () => {
                     className="absolute overflow-auto inset-0 custom-scrollbar"
                     onScroll={onScroll}
                     onWheel={onWheel}
+                    onDragOver={handleDragOver}
+                    onDrop={handleDrop}
                 >
                     <div
                         className="min-h-full"
@@ -185,10 +459,13 @@ export const CraftFrame: React.FC = () => {
                         >
                             {/* Artboard (page surface) */}
                             <div
-                                className={`transition-all duration-300 relative bg-white ${viewport !== "desktop" ? "shadow-[0_20px_40px_-15px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.1)] rounded-[32px] overflow-hidden border border-white/5 ring-4 ring-black/20" : ""}`}
+                                ref={artboardRef}
+                                className={`transition-all duration-300 relative ${viewport !== "desktop" ? "shadow-[0_20px_40px_-15px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.1)] rounded-[32px] overflow-hidden border border-white/5 ring-4 ring-black/20" : ""}`}
                                 style={{
                                     width: viewport === "desktop" ? "100%" : artW,
+                                    height: viewport === "desktop" ? "100%" : artH,
                                     minHeight: viewport === "desktop" ? "100%" : artH,
+                                    ...bgStyle,
                                 }}
                             >
                                 {/* Mobile/Tablet Device Chrome (optional subtle top bar) */}
@@ -205,8 +482,11 @@ export const CraftFrame: React.FC = () => {
                                     />
                                 )}
 
-                                {/* craft.js Frame */}
-                                <div className={`relative min-h-[200px] ${viewport !== "desktop" ? "mt-6" : ""}`}>
+                                {/* craft.js Frame — force all internal wrapper divs to stretch */}
+                                <div
+                                    className={`craft-root-stretch ${viewport !== "desktop" ? "mt-6" : ""}`}
+                                    style={{ height: "100%", minHeight: "100%" }}
+                                >
                                     <Frame>
                                         <Element
                                             canvas
@@ -324,11 +604,6 @@ const ComponentBanner: React.FC<{ name?: string }> = ({ name }) => (
         <button
             onClick={(e) => {
                 e.stopPropagation();
-                // We need to import closeComponentEditor at the top of the file 
-                // but since it's already there (it might not be exported from projectStore directly if it's a store method)
-                // Let's check `useProjectStore().getState().closeComponentEditor()` or similar.
-                // Wait, in `client/src/frontend/stores/projectStore.ts`, they are usually exported functions.
-                // Let's just use `useProjectStore.getState().closeComponentEditor()`
                 import("../../../stores/projectStore").then(m => m.closeComponentEditor());
             }}
             className="px-3 py-1 text-[10px] font-bold bg-white/20 hover:bg-white/30 rounded-lg transition-colors"

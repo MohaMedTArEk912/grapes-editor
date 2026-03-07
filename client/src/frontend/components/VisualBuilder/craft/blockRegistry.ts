@@ -374,11 +374,12 @@ export const BLOCK_REGISTRY: Record<string, BlockMeta> = {
 /* ═══════════════════  Helpers  ═════════════════════ */
 
 /** Container types that can accept children */
-export const CONTAINER_TYPES = new Set(
-    Object.entries(BLOCK_REGISTRY)
+export const CONTAINER_TYPES = new Set([
+    ...Object.entries(BLOCK_REGISTRY)
         .filter(([, meta]) => meta.canHaveChildren)
         .map(([key]) => key),
-);
+    "canvas", // The Page Root uses blockType="canvas"
+]);
 
 /** Get block categories for the palette */
 export function getPaletteCategories(): { name: string; blocks: BlockMeta[] }[] {

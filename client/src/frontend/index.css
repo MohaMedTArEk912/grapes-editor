@@ -175,6 +175,16 @@ body,
     background-size: 24px 24px;
 }
 
+/* Force craft.js internal wrapper divs to stretch to full height
+   so the Page Root (ROOT) block fills the entire artboard. */
+.craft-root-stretch,
+.craft-root-stretch > div,
+.craft-root-stretch > div > div,
+.craft-root-stretch > div > div > div {
+    height: 100%;
+    min-height: 100%;
+}
+
 /* Monaco: Akasha-managed read-only regions */
 .akasha-readonly-region {
     background-color: rgba(99, 102, 241, 0.06) !important;

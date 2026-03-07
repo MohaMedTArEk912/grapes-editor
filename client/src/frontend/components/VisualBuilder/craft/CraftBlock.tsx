@@ -4,9 +4,15 @@
  * Instead of having a separate file for every block type (TextNode, ButtonNode, etc.)
  * this single component reads from the block registry and renders any type.
  * craft.js uses this as the only resolver entry.
+ *
+ * Features:
+ * - Root-aware: ROOT node fills entire artboard, is NOT draggable
+ * - Position locking via __locked property
+ * - Context menu dispatch for right-click actions
+ * - Absolute positioning support for child blocks (free canvas mode)
  */
 
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useState, useRef, useEffect } from "react";
 import { useNode, useEditor } from "@craftjs/core";
 import { BLOCK_REGISTRY, CONTAINER_TYPES } from "./blockRegistry";
 import type { CraftBlockProps } from "./serialization";
@@ -24,7 +30,7 @@ export const CraftBlock: React.FC<React.PropsWithChildren<CraftBlockProps>> = (p
     } = props;
 
     const {
-        connectors: { connect, drag },
+        connectors: { connect },
         id,
         actions: { setProp },
     } = useNode();
@@ -34,9 +40,129 @@ export const CraftBlock: React.FC<React.PropsWithChildren<CraftBlockProps>> = (p
     }));
 
     const [editing, setEditing] = useState(false);
+    const blockRef = useRef<HTMLDivElement | null>(null);
 
     const meta = BLOCK_REGISTRY[blockType];
     const isContainer = CONTAINER_TYPES.has(blockType);
+    const isLocked = !!properties?.__locked;
+    const isRoot = id === "ROOT";
+
+    /* ── Free drag-to-reposition for non-root blocks ── */
+    const dragState = useRef<{
+        active: boolean;
+        startX: number;
+        startY: number;
+        origLeft: number;
+        origTop: number;
+    } | null>(null);
+
+    const handleMouseDown = useCallback(
+        (e: React.MouseEvent) => {
+            if (!enabled || isRoot || isLocked || editing) return;
+            // Only left button, no modifier keys
+            if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return;
+            // Don't intercept resize handles or content-editable
+            if ((e.target as HTMLElement).closest(".react-resizable-handle")) return;
+            if ((e.target as HTMLElement).isContentEditable) return;
+
+            e.stopPropagation();
+
+            const el = blockRef.current;
+            if (!el) return;
+
+            // Get current position
+            const computedStyle = window.getComputedStyle(el);
+            const currentLeft = parseInt(computedStyle.left, 10) || 0;
+            const currentTop = parseInt(computedStyle.top, 10) || 0;
+
+            dragState.current = {
+                active: false, // becomes true after threshold
+                startX: e.clientX,
+                startY: e.clientY,
+                origLeft: currentLeft,
+                origTop: currentTop,
+            };
+        },
+        [enabled, isRoot, isLocked, editing],
+    );
+
+    useEffect(() => {
+        if (isRoot || !enabled) return;
+
+        const handleMouseMove = (e: MouseEvent) => {
+            const ds = dragState.current;
+            if (!ds) return;
+
+            const dx = e.clientX - ds.startX;
+            const dy = e.clientY - ds.startY;
+
+            // Activation threshold (4px)
+            if (!ds.active && Math.abs(dx) + Math.abs(dy) < 4) return;
+            ds.active = true;
+
+            const el = blockRef.current;
+            if (!el) return;
+
+            // Calculate new position
+            let newLeft = ds.origLeft + dx;
+            let newTop = ds.origTop + dy;
+
+            // Boundary clamping against parent
+            const parent = el.parentElement;
+            if (parent) {
+                const parentRect = parent.getBoundingClientRect();
+                const elRect = el.getBoundingClientRect();
+                const elW = elRect.width;
+                const elH = elRect.height;
+
+                // Clamp so block stays within parent (allow at least 20px visible)
+                const minVisible = 20;
+                newLeft = Math.max(-elW + minVisible, Math.min(newLeft, parentRect.width - minVisible));
+                newTop = Math.max(-elH + minVisible, Math.min(newTop, parentRect.height - minVisible));
+            }
+
+            // Apply visual position immediately
+            el.style.position = "absolute";
+            el.style.left = newLeft + "px";
+            el.style.top = newTop + "px";
+            el.style.zIndex = "10";
+            el.style.cursor = "grabbing";
+        };
+
+        const handleMouseUp = (_e: MouseEvent) => {
+            const ds = dragState.current;
+            if (!ds) return;
+            dragState.current = null;
+
+            if (!ds.active) return; // Was a click, not a drag
+
+            const el = blockRef.current;
+            if (!el) return;
+
+            // Persist the new position into craft.js props
+            const finalLeft = parseInt(el.style.left, 10) || 0;
+            const finalTop = parseInt(el.style.top, 10) || 0;
+
+            el.style.cursor = "";
+            el.style.zIndex = "";
+
+            setProp((p: CraftBlockProps) => {
+                p.styles = {
+                    ...p.styles,
+                    position: "absolute",
+                    left: finalLeft + "px",
+                    top: finalTop + "px",
+                };
+            });
+        };
+
+        document.addEventListener("mousemove", handleMouseMove);
+        document.addEventListener("mouseup", handleMouseUp);
+        return () => {
+            document.removeEventListener("mousemove", handleMouseMove);
+            document.removeEventListener("mouseup", handleMouseUp);
+        };
+    }, [isRoot, enabled, setProp]);
 
     /* ── Inline text editing ── */
     const isTextEditable = ["text", "paragraph", "heading", "button", "link"].includes(blockType);
@@ -76,6 +202,17 @@ export const CraftBlock: React.FC<React.PropsWithChildren<CraftBlockProps>> = (p
         }
     }, []);
 
+    /* ── Context menu ── */
+    const onContextMenu = useCallback((e: React.MouseEvent) => {
+        if (!enabled) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const evt = new CustomEvent("akasha-context-menu", {
+            detail: { nodeId: id, x: e.clientX, y: e.clientY },
+        });
+        document.dispatchEvent(evt);
+    }, [enabled, id]);
+
     /* ── Convert styles object to React CSSProperties ── */
     const inlineStyle: React.CSSProperties = {};
     if (styles) {
@@ -88,33 +225,71 @@ export const CraftBlock: React.FC<React.PropsWithChildren<CraftBlockProps>> = (p
     }
     inlineStyle.pointerEvents = "auto";
 
-    /* ── Base CSS classes from registry (fallback) + block-specific classes ── */
+    /* ── ROOT-specific styles: fill entire artboard ── */
+    if (isRoot) {
+        inlineStyle.position = "relative";
+        inlineStyle.minHeight = "100%";
+        inlineStyle.width = "100%";
+        if (!inlineStyle.padding) inlineStyle.padding = "16px";
+    }
+
+    /* ── Base CSS classes ── */
     const registryClasses = meta?.appearance ?? "p-3 bg-white rounded-lg border border-slate-200 min-h-[36px]";
     const blockClasses = classes.length > 0 ? classes.join(" ") : "";
 
     /* ── Editor-mode container styling ── */
-    // In editor mode, containers need visible boundaries so users can see drop zones
-    const containerEditorClasses = isContainer && enabled
+    const containerEditorClasses = isContainer && enabled && !isRoot
         ? "border border-dashed border-indigo-200/50 rounded-xl bg-gradient-to-b from-slate-50/50 to-white min-h-[80px] p-3"
         : "";
 
-    // Priority: block-specific classes → editor container styling → registry appearance
-    const appliedClasses = blockClasses
-        || (isContainer && enabled ? containerEditorClasses : "")
-        || registryClasses;
+    // Root has no visible container styling — it's the page itself
+    const rootClasses = isRoot
+        ? "bg-white"
+        : "";
+
+    // Priority: root → block classes → container editor → registry
+    const appliedClasses = isRoot
+        ? rootClasses
+        : (blockClasses || (isContainer && enabled ? containerEditorClasses : "") || registryClasses);
+
+    /* ── Lock indicator style ── */
+    const lockStyle = isLocked && enabled ? "opacity-70" : "";
+
+    /* ── Cursor ── */
+    const cursorClass = editing
+        ? ""
+        : isRoot
+            ? "cursor-default"
+            : isLocked
+                ? "cursor-not-allowed"
+                : "cursor-grab";
 
     /* ── Render ── */
     return (
         <div
             ref={(ref) => {
-                if (ref) connect(drag(ref));
+                blockRef.current = ref;
+                if (ref) {
+                    connect(ref);
+                }
             }}
-            className={`relative ${appliedClasses} ${editing ? "" : "cursor-move"}`}
+            className={`relative ${appliedClasses} ${lockStyle} ${cursorClass}`}
             style={inlineStyle}
             onDoubleClick={onDoubleClick}
+            onMouseDown={handleMouseDown}
+            onContextMenu={onContextMenu}
             data-block-id={id}
             data-block-type={blockType}
         >
+            {/* Lock badge */}
+            {isLocked && enabled && !isRoot && (
+                <div className="absolute -top-1 -right-1 z-30 w-4 h-4 bg-amber-500 rounded-full flex items-center justify-center shadow-sm" title="Locked">
+                    <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                </div>
+            )}
+
             {/* Inline text editing */}
             {editing && isTextEditable ? (
                 <div
@@ -141,7 +316,7 @@ export const CraftBlock: React.FC<React.PropsWithChildren<CraftBlockProps>> = (p
 
             {/* Children slot for container types */}
             {isContainer && (
-                <div className="craft-children min-h-[40px]">
+                <div className={`craft-children ${isRoot ? "min-h-full" : "min-h-[40px]"}`}>
                     {children}
                     {/* Empty state indicator */}
                     {(!children || (Array.isArray(children) && (children as any[]).length === 0)) && enabled && (
@@ -176,7 +351,12 @@ export const CraftBlock: React.FC<React.PropsWithChildren<CraftBlockProps>> = (p
         eventHandlers: [],
     } as CraftBlockProps,
     rules: {
-        canDrag: () => true,
+        canDrag: (_node: any) => {
+            // Root can never be dragged
+            if (_node?.id === "ROOT") return false;
+            const locked = _node?.data?.props?.properties?.__locked;
+            return !locked;
+        },
         canDrop: (dropTarget: any) => {
             const bt = dropTarget?.data?.props?.blockType;
             return bt ? CONTAINER_TYPES.has(bt) : false;
@@ -273,6 +453,7 @@ const BlockVisual: React.FC<BlockVisualProps> = ({ blockType, text, properties }
                 </div>
             );
         // Container types show nothing extra (children render inside)
+        case "canvas":
         case "container":
         case "section":
         case "columns":

@@ -73,6 +73,10 @@ let state: ProjectState = { ...initialState };
 let listeners: Set<() => void> = new Set();
 let isDirtyValue = false;
 
+// ── Session persistence keys (survive page refresh) ──
+const SESSION_PROJECT_ID_KEY = "akasha_active_project_id";
+const SESSION_ACTIVE_PAGE_KEY = "akasha_active_page";
+
 // HTTP API client — static object
 // const api = useApi(); // No longer needed as we import 'api' directly
 
@@ -206,6 +210,24 @@ export async function initWorkspace(): Promise<void> {
             projects,
             isDashboardActive: !!workspace_path && !state.project
         }));
+
+        // ── Restore previously open project from sessionStorage ──
+        if (workspace_path && !state.project) {
+            const savedProjectId = sessionStorage.getItem(SESSION_PROJECT_ID_KEY);
+            const savedActivePage = sessionStorage.getItem(SESSION_ACTIVE_PAGE_KEY) as FeaturePage | null;
+            if (savedProjectId && projects.some((p: ProjectSchema) => p.id === savedProjectId)) {
+                try {
+                    await openProject(savedProjectId);
+                    if (savedActivePage) {
+                        setActivePage(savedActivePage);
+                    }
+                } catch (err) {
+                    console.error("Failed to restore project session:", err);
+                    sessionStorage.removeItem(SESSION_PROJECT_ID_KEY);
+                    sessionStorage.removeItem(SESSION_ACTIVE_PAGE_KEY);
+                }
+            }
+        }
     } catch (err) {
         console.error("Failed to init workspace:", err);
     }
@@ -352,6 +374,9 @@ export async function openProject(id: string): Promise<void> {
             openPageIds: allActivePageIds(project),
         }));
 
+        // ── Persist to sessionStorage so refresh re-opens this project ──
+        sessionStorage.setItem(SESSION_PROJECT_ID_KEY, id);
+
         // CHECK IF node_modules EXISTS (non-blocking, runs in background)
         if (project.root_path) {
             // Fire-and-forget: check client/node_modules (npm installs into client/ and server/)
@@ -402,6 +427,10 @@ export function closeProject(): void {
         selectedPageId: null,
         inspectorOpen: true
     }));
+
+    // ── Clear session so refresh goes to dashboard ──
+    sessionStorage.removeItem(SESSION_PROJECT_ID_KEY);
+    sessionStorage.removeItem(SESSION_ACTIVE_PAGE_KEY);
 }
 
 /**
@@ -1047,6 +1076,9 @@ export type FeaturePage = "dashboard" | "idea" | "ui" | "builder" | "usecases" |
 export function setActivePage(page: FeaturePage): void {
     const editMode: "visual" | "code" = page === "code" ? "code" : "visual";
     updateState(() => ({ activePage: page, editMode }));
+
+    // ── Persist active page to sessionStorage ──
+    sessionStorage.setItem(SESSION_ACTIVE_PAGE_KEY, page);
 }
 
 /**

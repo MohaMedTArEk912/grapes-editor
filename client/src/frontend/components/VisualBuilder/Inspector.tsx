@@ -7,7 +7,8 @@
  * - react-colorful replaces native <input type="color">
  */
 
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
+import { useEditor } from "@craftjs/core";
 import { useProjectStore } from "../../hooks/useProjectStore";
 import {
     archivePage,
@@ -23,7 +24,8 @@ type InspectorTab = "properties" | "styles" | "events";
 
 const Inspector: React.FC = () => {
     const { project } = useProjectStore();
-    const { isSelected, blockType, blockName, props, setProp, deleteNode, isDeletable } = useSelectedNode();
+    const { isSelected, blockType, blockName, props, setProp, deleteNode, isDeletable, nodeId } = useSelectedNode();
+    const { actions, query } = useEditor();
 
     const [activeTab, setActiveTab] = useState<InspectorTab>("properties");
     const toast = useToast();
@@ -75,6 +77,34 @@ const Inspector: React.FC = () => {
         }
     };
 
+    /* ── Duplicate selected node ── */
+    const handleDuplicate = useCallback(() => {
+        if (!nodeId || nodeId === "ROOT") return;
+        try {
+            const nodeData = query.node(nodeId).get();
+            const parentId = nodeData.data.parent;
+            if (parentId) {
+                const nodeTree = query.node(nodeId).toNodeTree();
+                actions.addNodeTree(nodeTree, parentId);
+                toast.success("Duplicated");
+            }
+        } catch {
+            toast.error("Duplicate failed");
+        }
+    }, [nodeId, query, actions, toast]);
+
+    /* ── Toggle lock ── */
+    const handleToggleLock = useCallback(() => {
+        if (!nodeId) return;
+        const isLocked = !!props?.properties?.__locked;
+        setProp((p: CraftBlockProps) => {
+            p.properties = { ...p.properties, __locked: !isLocked };
+        });
+        toast.success(isLocked ? "Unlocked" : "Locked");
+    }, [nodeId, props, setProp, toast]);
+
+    const isLocked = !!props?.properties?.__locked;
+
 
     const pendingBlockName =
         project?.blocks.find((b) => b.id === pendingDeleteBlockId)?.name || "this component";
@@ -112,15 +142,41 @@ const Inspector: React.FC = () => {
                             <div className="text-[9px] text-[var(--ide-text-muted)] font-mono uppercase truncate">{blockType || "block"}</div>
                         </div>
                     </div>
-                    {isDeletable && (
+                    <div className="flex items-center gap-0.5 shrink-0">
+                        {/* Lock toggle */}
                         <button
-                            onClick={deleteNode}
-                            className="p-1 hover:bg-red-500/10 rounded text-red-400/70 hover:text-red-400 transition-all shrink-0"
-                            title="Delete"
+                            onClick={handleToggleLock}
+                            className={`p-1 rounded transition-all shrink-0 ${isLocked ? "bg-amber-500/15 text-amber-400" : "hover:bg-white/10 text-[var(--ide-text-muted)] hover:text-white"}`}
+                            title={isLocked ? "Unlock" : "Lock"}
                         >
-                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={isLocked
+                                    ? "M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                                    : "M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"
+                                } />
+                            </svg>
                         </button>
-                    )}
+                        {/* Duplicate */}
+                        {isDeletable && (
+                            <button
+                                onClick={handleDuplicate}
+                                className="p-1 hover:bg-indigo-500/10 rounded text-[var(--ide-text-muted)] hover:text-indigo-400 transition-all shrink-0"
+                                title="Duplicate (Ctrl+D)"
+                            >
+                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                            </button>
+                        )}
+                        {/* Delete */}
+                        {isDeletable && (
+                            <button
+                                onClick={deleteNode}
+                                className="p-1 hover:bg-red-500/10 rounded text-red-400/70 hover:text-red-400 transition-all shrink-0"
+                                title="Delete (Del)"
+                            >
+                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                            </button>
+                        )}
+                    </div>
                 </div>
             )}
 
@@ -509,6 +565,30 @@ const StylesPanel: React.FC<{
                     <PropertyRow label="Radius"><CompactInput value={String(styles.borderRadius ?? "")} onChange={(e) => onChange("borderRadius", e.target.value)} placeholder="0px" /></PropertyRow>
                     <PropertyRow label="Width"><CompactInput value={String(styles.borderWidth ?? "")} onChange={(e) => onChange("borderWidth", e.target.value)} placeholder="0px" /></PropertyRow>
                 </div>
+            </InspectorSection>
+
+            {/* Opacity */}
+            <InspectorSection title="Effects">
+                <PropertyRow label="Opacity">
+                    <div className="flex items-center gap-2 w-full">
+                        <input
+                            type="range"
+                            min="0" max="1" step="0.01"
+                            value={Number(styles.opacity ?? 1)}
+                            onChange={(e) => onChange("opacity", e.target.value)}
+                            className="flex-1 h-1 accent-indigo-500 cursor-pointer"
+                        />
+                        <span className="text-[10px] text-white/40 font-mono w-8 text-right">{Math.round(Number(styles.opacity ?? 1) * 100)}%</span>
+                    </div>
+                </PropertyRow>
+                <PropertyRow label="Z-Index">
+                    <CompactInput
+                        type="number"
+                        value={String(styles.zIndex ?? "")}
+                        onChange={(e) => onChange("zIndex", e.target.value ? Number(e.target.value) : "")}
+                        placeholder="auto"
+                    />
+                </PropertyRow>
             </InspectorSection>
 
             {/* Typography */}

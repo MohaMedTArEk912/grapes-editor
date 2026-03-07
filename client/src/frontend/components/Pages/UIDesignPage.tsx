@@ -20,6 +20,7 @@ import Inspector from "../VisualBuilder/Inspector";
 import ComponentPalette from "../VisualBuilder/ComponentPalette";
 import LayersPanel from "../VisualBuilder/LayersPanel";
 import ExportModal from "../VisualBuilder/ExportModal";
+import ContextMenu from "../VisualBuilder/ContextMenu";
 import { useProjectStore } from "../../hooks/useProjectStore";
 import { addPage, updatePage, archivePage, selectPage, setActivePage } from "../../stores/projectStore";
 import { useToast } from "../../context/ToastContext";
@@ -294,6 +295,9 @@ const UIDesignPage: React.FC = () => {
 
                 {/* Export Modal */}
                 <ExportModal isOpen={exportOpen} onClose={() => setExportOpen(false)} />
+
+                {/* Right-click Context Menu */}
+                <ContextMenu />
             </div>
         </CraftEditor>
     );
