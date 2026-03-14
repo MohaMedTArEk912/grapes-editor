@@ -24,37 +24,71 @@ interface ChatMessage {
 
 const API_BASE = "http://localhost:3001/api/ai";
 
-const BotChat: React.FC<BotChatProps> = ({ onClose, projectId, projectName, anchorX, anchorY }) => {
+const BotChat: React.FC<BotChatProps> = ({ onClose, projectId, projectName, anchorX, anchorY: _anchorY }) => {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState("");
     const [isTyping, setIsTyping] = useState(false);
+    const [viewport, setViewport] = useState(() => ({
+        width: window.innerWidth,
+        height: window.innerHeight,
+    }));
     const chatEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
 
-    // Calculate panel position — open above/below/left/right based on bot position
-    const panelWidth = 380;
-    const panelHeight = 500;
-    const isNearBottom = anchorY > window.innerHeight - panelHeight - 80;
-    const isNearRight = anchorX > window.innerWidth - panelWidth - 40;
+    const isMobile = viewport.width < 768;
+    const dockToRight = isMobile || anchorX >= viewport.width / 2;
+    const panelWidth = isMobile
+        ? viewport.width
+        : Math.min(Math.max(Math.round(viewport.width * 0.34), 440), 620);
 
-    const panelStyle: React.CSSProperties = {
-        position: 'fixed',
-        width: panelWidth,
-        height: panelHeight,
-        zIndex: 9998,
-        left: isNearRight ? anchorX - panelWidth - 10 : anchorX + 10,
-        top: isNearBottom ? anchorY - panelHeight - 10 : anchorY + 40,
-    };
+    const panelStyle: React.CSSProperties = isMobile
+        ? {
+            position: "fixed",
+            inset: 0,
+            zIndex: 9998,
+        }
+        : {
+            position: "fixed",
+            top: 0,
+            bottom: 0,
+            zIndex: 9998,
+            width: panelWidth,
+            right: dockToRight ? 0 : "auto",
+            left: dockToRight ? "auto" : 0,
+        };
 
     // Auto scroll
     useEffect(() => {
         chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages, isTyping]);
 
+    useEffect(() => {
+        const handleResize = () => {
+            setViewport({
+                width: window.innerWidth,
+                height: window.innerHeight,
+            });
+        };
+
+        window.addEventListener("resize", handleResize);
+        return () => window.removeEventListener("resize", handleResize);
+    }, []);
+
     // Focus input on mount
     useEffect(() => {
         setTimeout(() => inputRef.current?.focus(), 100);
     }, []);
+
+    useEffect(() => {
+        const handleEscape = (event: KeyboardEvent) => {
+            if (event.key === "Escape") {
+                onClose();
+            }
+        };
+
+        window.addEventListener("keydown", handleEscape);
+        return () => window.removeEventListener("keydown", handleEscape);
+    }, [onClose]);
 
     const handleSend = async () => {
         if (!input.trim()) return;
@@ -90,10 +124,19 @@ const BotChat: React.FC<BotChatProps> = ({ onClose, projectId, projectName, anch
     };
 
     return (
-        <div style={panelStyle} className="animate-scale-in">
-            <div className="h-full flex flex-col bg-[#0c0e18] border border-white/10 rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.6),0_0_30px_rgba(99,102,241,0.15)] overflow-hidden backdrop-blur-xl">
+        <div
+            style={panelStyle}
+            className={isMobile ? "animate-chat-in-mobile" : dockToRight ? "animate-chat-in-right" : "animate-chat-in-left"}
+        >
+            <div
+                className={`h-full flex flex-col bg-[#0c0e18] overflow-hidden backdrop-blur-xl ${
+                    isMobile
+                        ? "rounded-none border-0 shadow-none"
+                        : `rounded-none border-y-0 ${dockToRight ? "border-l" : "border-r"} border-white/10 shadow-[0_24px_80px_rgba(0,0,0,0.65)]`
+                }`}
+            >
                 {/* Header */}
-                <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/5 bg-white/[0.02]">
+                <div className="flex items-center justify-between px-5 py-4 border-b border-white/5 bg-white/[0.02]">
                     <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-cyan-500/20">
                             <div className="flex flex-col items-center">
@@ -122,7 +165,7 @@ const BotChat: React.FC<BotChatProps> = ({ onClose, projectId, projectName, anch
                 </div>
 
                 {/* Messages */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+                <div className="flex-1 overflow-y-auto px-4 py-5 md:px-5 md:py-6 space-y-4 custom-scrollbar">
                     {messages.length === 0 && !isTyping && (
                         <div className="flex flex-col items-center justify-center h-full text-center opacity-40">
                             <div className="w-16 h-16 rounded-full bg-gradient-to-br from-cyan-500/20 to-indigo-500/20 border border-white/5 flex items-center justify-center mb-4">
@@ -176,7 +219,7 @@ const BotChat: React.FC<BotChatProps> = ({ onClose, projectId, projectName, anch
                 </div>
 
                 {/* Input */}
-                <div className="p-3 border-t border-white/5 bg-white/[0.01]">
+                <div className="px-4 py-4 border-t border-white/5 bg-white/[0.01]">
                     <div className="flex gap-2">
                         <textarea
                             ref={inputRef}
@@ -190,12 +233,12 @@ const BotChat: React.FC<BotChatProps> = ({ onClose, projectId, projectName, anch
                             }}
                             placeholder="Type a message..."
                             rows={1}
-                            className="flex-1 bg-white/[0.04] border border-white/8 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-cyan-500/40 resize-none"
+                            className="flex-1 min-h-11 bg-white/[0.04] border border-white/8 rounded-xl px-4 py-3 text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-cyan-500/40 resize-none"
                         />
                         <button
                             onClick={handleSend}
                             disabled={!input.trim() || isTyping}
-                            className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-indigo-600 hover:opacity-90 disabled:opacity-30 flex items-center justify-center transition-all shadow-lg shadow-cyan-500/20"
+                            className="w-11 h-11 rounded-xl bg-gradient-to-br from-cyan-500 to-indigo-600 hover:opacity-90 disabled:opacity-30 flex items-center justify-center transition-all shadow-lg shadow-cyan-500/20"
                         >
                             <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
@@ -206,8 +249,12 @@ const BotChat: React.FC<BotChatProps> = ({ onClose, projectId, projectName, anch
             </div>
 
             <style>{`
-                @keyframes scale-in { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
-                .animate-scale-in { animation: scale-in 0.2s ease-out both; }
+                @keyframes chat-in-right { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: translateX(0); } }
+                @keyframes chat-in-left { from { opacity: 0; transform: translateX(-24px); } to { opacity: 1; transform: translateX(0); } }
+                @keyframes chat-in-mobile { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+                .animate-chat-in-right { animation: chat-in-right 0.2s ease-out both; }
+                .animate-chat-in-left { animation: chat-in-left 0.2s ease-out both; }
+                .animate-chat-in-mobile { animation: chat-in-mobile 0.2s ease-out both; }
             `}</style>
         </div>
     );

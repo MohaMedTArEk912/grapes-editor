@@ -88,10 +88,13 @@ export async function createProject(req: Request, res: Response) {
             }
         });
 
+        // Prisma requires explicit ObjectID referencing for relations on MongoDB
+        // but simple scalar assignment usually doesn't trigger a transaction 
+        // if we don't use nested 'page: { create: {} }' syntax.
         const homePage = await prisma.page.create({
             data: {
                 id: randomUUID(),
-                projectId: project.id,
+                projectId: project.id, // Explicit scalar foreign key
                 name: 'Home',
                 path: '/',
                 isDynamic: false

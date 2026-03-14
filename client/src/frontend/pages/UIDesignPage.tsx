@@ -222,12 +222,13 @@ const UIDesignPage: React.FC = () => {
                             {/* Home button */}
                             <button
                                 onClick={() => setActivePage("dashboard")}
-                                className="h-full px-3 flex items-center justify-center text-[var(--ide-text-muted)] hover:text-[var(--ide-text)] hover:bg-white/5 transition-colors border-r border-[var(--ide-border)]"
-                                title="Back to Dashboard"
+                                className="h-full px-4 flex items-center gap-2 justify-center text-[var(--ide-text-muted)] hover:text-[var(--ide-text)] hover:bg-white/5 transition-colors border-r border-[var(--ide-border)]"
+                                title="Back to Project Dashboard"
                             >
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                                 </svg>
+                                <span className="text-[11px] font-bold tracking-wider uppercase">Back</span>
                             </button>
                             {tabs.map((tab) => (
                                 <button

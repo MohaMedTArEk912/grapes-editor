@@ -22,32 +22,31 @@ export async function syncBlocks(req: Request, res: Response) {
 
         const projectId = page.projectId;
 
-        await prisma.$transaction(async (tx) => {
-            await tx.block.deleteMany({ where: { pageId: page_id } });
+        // removed $transaction to support MongoDB standalone
+        await prisma.block.deleteMany({ where: { pageId: page_id } });
 
-            const operations = blocks.map((b: any, index: number) => {
-                return tx.block.create({
-                    data: {
-                        id: b.id,
-                        projectId: projectId as string,
-                        pageId: page_id,
-                        parentId: b.parent_id || null,
-                        blockType: b.block_type,
-                        name: b.name,
-                        properties: JSON.stringify(b.properties || {}),
-                        styles: JSON.stringify(b.styles || {}),
-                        responsiveStyles: JSON.stringify(b.responsive_styles || {}),
-                        classes: JSON.stringify(b.classes || []),
-                        events: JSON.stringify(b.event_handlers || []),
-                        bindings: JSON.stringify(b.bindings || {}),
-                        children: JSON.stringify(b.children || []),
-                        order: index
-                    }
-                });
+        const operations = blocks.map((b: any, index: number) => {
+            return prisma.block.create({
+                data: {
+                    id: b.id,
+                    projectId: projectId as string,
+                    pageId: page_id,
+                    parentId: b.parent_id || null,
+                    blockType: b.block_type,
+                    name: b.name,
+                    properties: JSON.stringify(b.properties || {}),
+                    styles: JSON.stringify(b.styles || {}),
+                    responsiveStyles: JSON.stringify(b.responsive_styles || {}),
+                    classes: JSON.stringify(b.classes || []),
+                    events: JSON.stringify(b.event_handlers || []),
+                    bindings: JSON.stringify(b.bindings || {}),
+                    children: JSON.stringify(b.children || []),
+                    order: index
+                }
             });
-
-            await Promise.all(operations);
         });
+
+        await Promise.all(operations);
 
         res.json({ success: true });
     } catch (error) {

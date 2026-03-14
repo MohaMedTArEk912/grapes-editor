@@ -10,6 +10,32 @@ interface StructuredChatResponse {
     warnings: string[];
 }
 
+type FeaturePriority = 'critical' | 'high' | 'medium' | 'low';
+type FeatureStatus = 'pending' | 'approved' | 'rejected';
+
+interface IdeaUnderstanding {
+    core_problem: string;
+    intended_solution: string;
+    target_users: string[];
+    explicit_requirements: string[];
+    inferred_requirements: string[];
+    constraints: string[];
+    assumptions: string[];
+    context_notes: string[];
+}
+
+interface FeatureQueueItem {
+    id: string;
+    title: string;
+    description: string;
+    rationale: string;
+    priority: FeaturePriority;
+    rating: number;
+    status: FeatureStatus;
+    user_comment: string;
+    integrated_summary: string;
+}
+
 const STRUCTURED_CHAT_SYSTEM_PROMPT = `You are Akasha AI.
 Return ONLY valid JSON and nothing else.
 Output schema (all keys are required):
@@ -52,6 +78,100 @@ function buildSummaryFromAnswer(answer: string): string {
     if (!compact) return '';
     const firstSentence = compact.split(/[.!?]/)[0]?.trim() || compact;
     return firstSentence.slice(0, 160);
+}
+
+function slugifyValue(value: string): string {
+    return value
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+}
+
+function normalizeFeaturePriority(value: unknown): FeaturePriority {
+    if (typeof value !== 'string') return 'medium';
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'critical' || normalized === 'high' || normalized === 'medium' || normalized === 'low') {
+        return normalized;
+    }
+    return 'medium';
+}
+
+function normalizeFeatureStatus(value: unknown): FeatureStatus {
+    if (typeof value !== 'string') return 'pending';
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'approved' || normalized === 'rejected' || normalized === 'pending') {
+        return normalized;
+    }
+    return 'pending';
+}
+
+function normalizeIdeaUnderstanding(value: unknown): IdeaUnderstanding {
+    const source = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+    return {
+        core_problem: typeof source.core_problem === 'string' ? source.core_problem.trim() : '',
+        intended_solution: typeof source.intended_solution === 'string' ? source.intended_solution.trim() : '',
+        target_users: normalizeStringArray(source.target_users ?? source.targetUsers, 10),
+        explicit_requirements: normalizeStringArray(source.explicit_requirements ?? source.explicitRequirements, 14),
+        inferred_requirements: normalizeStringArray(source.inferred_requirements ?? source.inferredRequirements, 14),
+        constraints: normalizeStringArray(source.constraints, 12),
+        assumptions: normalizeStringArray(source.assumptions, 12),
+        context_notes: normalizeStringArray(source.context_notes ?? source.contextNotes, 12),
+    };
+}
+
+function normalizeFeatureQueue(value: unknown, fallbackItems: string[] = []): FeatureQueueItem[] {
+    const parsedItems = Array.isArray(value)
+        ? value
+            .map((item, index) => {
+                const source = item && typeof item === 'object' ? (item as Record<string, unknown>) : null;
+                if (!source) return null;
+                const title = typeof source.title === 'string' ? source.title.trim() : '';
+                if (!title) return null;
+                return {
+                    id: typeof source.id === 'string' && source.id.trim()
+                        ? source.id.trim()
+                        : `feature-${index + 1}-${slugifyValue(title) || 'item'}`,
+                    title,
+                    description: typeof source.description === 'string' ? source.description.trim() : '',
+                    rationale: typeof source.rationale === 'string' ? source.rationale.trim() : '',
+                    priority: normalizeFeaturePriority(source.priority),
+                    rating: normalizeRating(source.rating, 3),
+                    status: normalizeFeatureStatus(source.status),
+                    user_comment: typeof source.user_comment === 'string'
+                        ? source.user_comment.trim()
+                        : typeof source.userComment === 'string'
+                            ? source.userComment.trim()
+                            : '',
+                    integrated_summary: typeof source.integrated_summary === 'string'
+                        ? source.integrated_summary.trim()
+                        : typeof source.integratedSummary === 'string'
+                            ? source.integratedSummary.trim()
+                            : '',
+                } satisfies FeatureQueueItem;
+            })
+            .filter((item): item is FeatureQueueItem => !!item)
+        : [];
+
+    if (parsedItems.length > 0) {
+        return parsedItems.slice(0, 10);
+    }
+
+    return fallbackItems
+        .filter((item) => typeof item === 'string')
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .slice(0, 6)
+        .map((title, index) => ({
+            id: `feature-${index + 1}-${slugifyValue(title) || 'item'}`,
+            title,
+            description: '',
+            rationale: '',
+            priority: index < 2 ? 'high' : 'medium',
+            rating: index === 0 ? 4 : 3,
+            status: 'pending',
+            user_comment: '',
+            integrated_summary: '',
+        }));
 }
 
 function normalizeStructuredChat(parsed: unknown, fallbackAnswer: string): StructuredChatResponse {
@@ -175,10 +295,8 @@ export async function resolveRequest(req: Request, res: Response) {
         if (action === 'approve') {
             const request = await prisma.joinRequest.findUnique({ where: { teamId_sessionId: { teamId: team.id, sessionId: userSessionId } } });
             if (request) {
-                await prisma.$transaction([
-                    prisma.teamMember.create({ data: { teamId: team.id, sessionId: userSessionId, username: request.username, role: 'member' } }),
-                    prisma.joinRequest.delete({ where: { id: request.id } })
-                ]);
+                await prisma.teamMember.create({ data: { teamId: team.id, sessionId: userSessionId, username: request.username, role: 'member' } });
+                await prisma.joinRequest.delete({ where: { id: request.id } });
             }
         } else {
             await prisma.joinRequest.delete({ where: { teamId_sessionId: { teamId: team.id, sessionId: userSessionId } } });
@@ -392,6 +510,171 @@ Your role:
 
 // --- Idea Validation & Refinement ---
 
+function buildSeedRefinedIdeaDoc(idea: string, understanding: IdeaUnderstanding, featureQueue: FeatureQueueItem[]): RefinedIdeaDocument {
+    const primaryFeatures = featureQueue.slice(0, 6).map((feature) => ({
+        feature: feature.title,
+        include: feature.status !== 'rejected',
+        rating: feature.rating,
+        rationale: feature.rationale || feature.description || feature.integrated_summary,
+    }));
+
+    const firstUser = understanding.target_users[0] || 'Target user';
+    const productLabel = featureQueue[0]?.title || 'Core workflow';
+
+    return {
+        title: 'Product Vision',
+        summary: buildSummaryFromAnswer(idea),
+        target_audience: understanding.target_users,
+        core_value_proposition: understanding.inferred_requirements.slice(0, 4),
+        problem_statement: understanding.core_problem
+            ? [understanding.core_problem, ...understanding.explicit_requirements.slice(0, 3)]
+            : understanding.explicit_requirements.slice(0, 4),
+        decision_summary: [
+            'Initial structured concept inferred from the raw project description.',
+            ...understanding.context_notes.slice(0, 3),
+        ],
+        key_features: primaryFeatures,
+        user_flows: primaryFeatures.slice(0, 3).map((feature, index) => `${firstUser} completes flow ${index + 1} through ${feature.feature}.`),
+        technical_architecture: understanding.constraints.length > 0
+            ? understanding.constraints.slice(0, 4).map((constraint) => `Design around constraint: ${constraint}.`)
+            : ['Use a modular frontend, API layer, and persistent data store sized for the MVP.'],
+        data_api_requirements: primaryFeatures.slice(0, 4).map((feature) => `Expose data/API support for ${feature.feature}.`),
+        milestones: [
+            { milestone: 'Discovery & scoping', scope: 'Confirm requirements, users, and success criteria.', owner_role: 'Product', eta: 'Week 1' },
+            { milestone: `Build ${productLabel}`, scope: 'Deliver the primary end-to-end MVP experience.', owner_role: 'Engineering', eta: 'Weeks 2-4' },
+            { milestone: 'Launch readiness', scope: 'QA, analytics, and go-live preparation.', owner_role: 'Product + Engineering', eta: 'Week 5' },
+        ],
+        success_metrics: [
+            'Activation rate for primary users',
+            'Time to first successful workflow completion',
+            'Retention or repeat usage after initial onboarding',
+        ],
+        risks: [
+            { risk: 'User needs are underspecified', impact: 'Medium', mitigation: 'Validate assumptions with targeted discovery interviews.' },
+            { risk: 'MVP scope expands too quickly', impact: 'High', mitigation: 'Keep only critical features in the first release.' },
+            { risk: 'Integration complexity delays delivery', impact: 'Medium', mitigation: 'Stage external dependencies behind clear interfaces.' },
+        ],
+        implementation_checklist: [
+            'Validate target users and problem statements',
+            'Prioritize and approve the feature queue',
+            'Draft UX and API requirements for approved features',
+            'Sequence milestones and engineering tasks',
+        ],
+        open_questions: understanding.assumptions.slice(0, 4),
+    };
+}
+
+function compactIdeaText(idea: string): string {
+    return idea.replace(/\s+/g, ' ').trim();
+}
+
+function splitIdeaFragments(idea: string, maxItems = 8): string[] {
+    return compactIdeaText(idea)
+        .split(/[\n.;]+|,\s+| and /i)
+        .map((item) => item.trim())
+        .filter((item) => item.length >= 4)
+        .slice(0, maxItems);
+}
+
+function inferTargetUsersFromIdea(idea: string): string[] {
+    const text = compactIdeaText(idea);
+    const matches = [
+        text.match(/\bfor\s+([a-z0-9 ,/&-]{3,80})/i)?.[1] || '',
+        text.match(/\bhelps?\s+([a-z0-9 ,/&-]{3,80})/i)?.[1] || '',
+        text.match(/\bused by\s+([a-z0-9 ,/&-]{3,80})/i)?.[1] || '',
+    ]
+        .map((item) => item.split(/\b(to|manage|track|with|that)\b/i)[0]?.trim() || '')
+        .filter(Boolean);
+
+    const normalized = matches
+        .flatMap((item) => item.split(/,|\/| and /i))
+        .map((item) => item.trim())
+        .filter((item) => item.length >= 3 && item.length <= 40);
+
+    return Array.from(new Set(normalized)).slice(0, 5);
+}
+
+function inferConstraintsFromIdea(idea: string): string[] {
+    const text = compactIdeaText(idea).toLowerCase();
+    const constraints: string[] = [];
+    if (/(hipaa|gdpr|compliance|privacy|security)/i.test(text)) constraints.push('Compliance and data security requirements must be handled from day one.');
+    if (/(budget|small team|solo|time|deadline|week|month|mvp)/i.test(text)) constraints.push('The first release should stay tightly scoped for MVP delivery.');
+    if (/(role-based|permissions|access control)/i.test(text)) constraints.push('Authorization and role boundaries are core system constraints.');
+    return constraints.slice(0, 4);
+}
+
+function buildFallbackIdeaAnalysis(idea: string) {
+    const fragments = splitIdeaFragments(idea);
+    const targetUsers = inferTargetUsersFromIdea(idea);
+    const capabilitySeeds = fragments
+        .map((item) => item.replace(/^(a|an|the)\s+/i, '').trim())
+        .filter((item) => item.length >= 5 && item.length <= 60)
+        .slice(0, 6);
+
+    const understanding: IdeaUnderstanding = {
+        core_problem: fragments[0] || 'The user described a problem that still needs sharper framing.',
+        intended_solution: `A product that ${buildSummaryFromAnswer(idea).toLowerCase() || 'addresses the described workflow more effectively.'}`,
+        target_users: targetUsers.length > 0 ? targetUsers : ['Primary operators of the workflow', 'Secondary stakeholders affected by delivery'],
+        explicit_requirements: capabilitySeeds.slice(0, 4),
+        inferred_requirements: [
+            'A clear onboarding and first-use path',
+            'Persistent data storage for the main workflow',
+            'Reporting or visibility into key outcomes',
+        ],
+        constraints: inferConstraintsFromIdea(idea),
+        assumptions: [
+            'Users need a faster or less error-prone workflow than current alternatives.',
+            'The MVP should prove value before adding advanced automations.',
+        ],
+        context_notes: [
+            'This analysis was generated from the raw idea when structured AI output was unavailable.',
+        ],
+    };
+
+    const majorCapabilities = capabilitySeeds.length > 0
+        ? capabilitySeeds.slice(0, 5)
+        : ['Core workflow management', 'Notifications and reminders', 'Permissions and role handling'];
+
+    const featureQueue = normalizeFeatureQueue(
+        majorCapabilities.map((title, index) => ({
+            id: `feature-${index + 1}-${slugifyValue(title) || 'item'}`,
+            title,
+            description: `Enable the product to support ${title.toLowerCase()}.`,
+            rationale: 'This capability appears central to the value proposition described by the user.',
+            priority: index === 0 ? 'critical' : index < 3 ? 'high' : 'medium',
+            rating: index === 0 ? 5 : index < 3 ? 4 : 3,
+            status: 'pending',
+            user_comment: '',
+            integrated_summary: '',
+        }))
+    );
+
+    return {
+        score: Math.max(45, Math.min(82, 52 + majorCapabilities.length * 5)),
+        summary: buildSummaryFromAnswer(idea) || 'The idea has promise but needs structured refinement.',
+        strengths: [
+            'Addresses a concrete workflow problem',
+            'Can be scoped into an MVP',
+            'Has obvious operational value if executed well',
+        ],
+        weaknesses: [
+            'Key assumptions are still implicit',
+            'Scope and success metrics need sharper definition',
+            'Technical constraints may affect the first release',
+        ],
+        questions: [
+            'Who is the primary day-one user?',
+            'What must the MVP do better than current alternatives?',
+            'Which workflow is most critical in the first release?',
+        ],
+        suggestions: majorCapabilities.slice(0, 4),
+        understanding,
+        major_capabilities: majorCapabilities,
+        feature_queue: featureQueue,
+        structured_concept: buildSeedRefinedIdeaDoc(idea, understanding, featureQueue),
+    };
+}
+
 export async function analyzeIdea(req: Request, res: Response) {
     const { idea } = req.body;
     if (!idea || typeof idea !== 'string') {
@@ -400,18 +683,73 @@ export async function analyzeIdea(req: Request, res: Response) {
 
     try {
         const systemPrompt = `You are an elite startup mentor, product manager, and technical architect.
-Analyze the following project idea. Return ONLY valid JSON. No markdown, no code fences, no extra text.
-Keep answers concise to avoid token overflow:
-- summary: max 25 words
-- strengths/weaknesses/questions/suggestions: 4 items each, each item max 14 words
+Deeply understand the user's raw idea before generating anything. Extract the core problem, intended solution, target users, explicit requirements, constraints, and context. Infer the missing but logically necessary details to make the project concept complete.
+
+Return ONLY valid JSON. No markdown, no code fences, no extra text.
+
+JSON schema:
 {
-  "score": <number 0-100 evaluating viability and clarity>,
-  "summary": "<one sentence clear summary of the core value proposition>",
-  "strengths": ["<strength 1>", "<strength 2>", "<strength 3>", "<strength 4>"],
-  "weaknesses": ["<potential pitfall 1>", "<weakness 2>", "<weakness 3>", "<weakness 4>"],
-  "questions": ["<clarifying question 1>", "<clarifying question 2>", "<clarifying question 3>", "<clarifying question 4>"],
-  "suggestions": ["<actionable suggestion 1>", "<actionable suggestion 2>", "<actionable suggestion 3>", "<actionable suggestion 4>"]
-}`;
+  "score": 0,
+  "summary": "one sentence summary",
+  "strengths": ["..."],
+  "weaknesses": ["..."],
+  "questions": ["..."],
+  "suggestions": ["..."],
+  "understanding": {
+    "core_problem": "string",
+    "intended_solution": "string",
+    "target_users": ["string"],
+    "explicit_requirements": ["string"],
+    "inferred_requirements": ["string"],
+    "constraints": ["string"],
+    "assumptions": ["string"],
+    "context_notes": ["string"]
+  },
+  "major_capabilities": ["string"],
+  "feature_queue": [
+    {
+      "id": "feature-1",
+      "title": "string",
+      "description": "string",
+      "rationale": "string",
+      "priority": "critical|high|medium|low",
+      "rating": 5,
+      "status": "pending",
+      "user_comment": "",
+      "integrated_summary": ""
+    }
+  ],
+  "structured_concept": {
+    "title": "Product Vision",
+    "summary": "string",
+    "target_audience": ["string"],
+    "core_value_proposition": ["string"],
+    "problem_statement": ["string"],
+    "decision_summary": ["string"],
+    "key_features": [
+      { "feature": "string", "include": true, "rating": 4, "rationale": "string" }
+    ],
+    "user_flows": ["string"],
+    "technical_architecture": ["string"],
+    "data_api_requirements": ["string"],
+    "milestones": [
+      { "milestone": "string", "scope": "string", "owner_role": "string", "eta": "string" }
+    ],
+    "success_metrics": ["string"],
+    "risks": [
+      { "risk": "string", "impact": "string", "mitigation": "string" }
+    ],
+    "implementation_checklist": ["string"],
+    "open_questions": ["string"]
+  }
+}
+
+Rules:
+- Fill ALL relevant fields in structured_concept, including inferred fields when the user omits them.
+- Identify the most critical capabilities and make them major features with priority critical/high and rating 4-5.
+- feature_queue must contain 4 to 8 sequential feature suggestions ordered for user review.
+- Keep strengths/weaknesses/questions/suggestions concise: max 4 items each.
+- Keep the concept practical, specific, and implementation-aware.`;
 
         const normalizeList = (value: unknown): string[] =>
             Array.isArray(value)
@@ -422,13 +760,10 @@ Keep answers concise to avoid token overflow:
                     .slice(0, 4)
                 : [];
 
+        const fallbackAnalysis = buildFallbackIdeaAnalysis(idea);
+
         const parseJsonFromModelOutput = (modelOutput: string) => {
-            let rawJson = modelOutput || '{}';
-            const startIdx = rawJson.indexOf('{');
-            const endIdx = rawJson.lastIndexOf('}');
-            if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
-                rawJson = rawJson.substring(startIdx, endIdx + 1);
-            }
+            const rawJson = extractJsonObject(modelOutput || '{}');
             return JSON.parse(rawJson);
         };
 
@@ -436,30 +771,55 @@ Keep answers concise to avoid token overflow:
         const response = await llmProvider.chat({
             model: 'google/gemini-2.5-flash',
             temperature: 0.2,
-            max_tokens: 1200,
+            max_tokens: 2600,
             messages: [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: idea }
             ]
         });
 
-        const parsed = parseJsonFromModelOutput(response);
+        let parsed: any = null;
+        try {
+            parsed = parseJsonFromModelOutput(response);
+        } catch (parseError: any) {
+            console.warn('Idea analysis returned non-JSON output, using fallback seed:', parseError?.message || parseError);
+            parsed = {};
+        }
         const scoreNum = Number(parsed?.score);
         const safeScore = Number.isFinite(scoreNum)
             ? Math.max(0, Math.min(100, Math.round(scoreNum)))
-            : 0;
+            : fallbackAnalysis.score;
+
+        const understanding = parsed?.understanding
+            ? normalizeIdeaUnderstanding(parsed?.understanding)
+            : fallbackAnalysis.understanding;
+        const suggestions = normalizeList(parsed?.suggestions);
+        const featureQueue = normalizeFeatureQueue(
+            parsed?.feature_queue ?? parsed?.featureQueue,
+            suggestions.length > 0 ? suggestions : fallbackAnalysis.suggestions
+        );
+        const structuredConcept = normalizeRefinedIdeaDoc(parsed?.structured_concept ?? parsed?.structuredConcept, response);
+        const seededConcept = structuredConcept.summary || structuredConcept.key_features.length > 0
+            ? structuredConcept
+            : buildSeedRefinedIdeaDoc(idea, understanding, featureQueue.length > 0 ? featureQueue : fallbackAnalysis.feature_queue);
 
         return res.json({
             score: safeScore,
-            summary: typeof parsed?.summary === 'string' ? parsed.summary : '',
-            strengths: normalizeList(parsed?.strengths),
-            weaknesses: normalizeList(parsed?.weaknesses),
-            questions: normalizeList(parsed?.questions),
-            suggestions: normalizeList(parsed?.suggestions)
+            summary: typeof parsed?.summary === 'string' && parsed.summary.trim() ? parsed.summary : fallbackAnalysis.summary,
+            strengths: normalizeList(parsed?.strengths).length > 0 ? normalizeList(parsed?.strengths) : fallbackAnalysis.strengths,
+            weaknesses: normalizeList(parsed?.weaknesses).length > 0 ? normalizeList(parsed?.weaknesses) : fallbackAnalysis.weaknesses,
+            questions: normalizeList(parsed?.questions).length > 0 ? normalizeList(parsed?.questions) : fallbackAnalysis.questions,
+            suggestions: suggestions.length > 0 ? suggestions : fallbackAnalysis.suggestions,
+            understanding,
+            major_capabilities: normalizeStringArray(parsed?.major_capabilities ?? parsed?.majorCapabilities, 8).length > 0
+                ? normalizeStringArray(parsed?.major_capabilities ?? parsed?.majorCapabilities, 8)
+                : fallbackAnalysis.major_capabilities,
+            feature_queue: featureQueue.length > 0 ? featureQueue : fallbackAnalysis.feature_queue,
+            structured_concept: seededConcept
         });
     } catch (err: any) {
         console.error('Idea analysis error:', err.message);
-        res.status(500).json({ error: 'Failed to analyze idea. ' + err.message });
+        return res.json(buildFallbackIdeaAnalysis(idea));
     }
 }
 
@@ -687,8 +1047,139 @@ function refinedDocToMarkdown(doc: RefinedIdeaDocument): string {
     return lines.join('\n\n');
 }
 
+export async function reviewIdeaFeature(req: Request, res: Response) {
+    const { idea, feature, structuredConcept, action, feedback, approvedFeatures, rejectedFeatures } = req.body;
+    if (!idea || typeof idea !== 'string' || !idea.trim()) {
+        return res.status(400).json({ error: 'Original idea is required' });
+    }
+
+    if (!feature || typeof feature !== 'object') {
+        return res.status(400).json({ error: 'Feature payload is required' });
+    }
+
+    const normalizedAction = typeof action === 'string' ? action.trim().toLowerCase() : '';
+    if (!['revise', 'approve', 'reject'].includes(normalizedAction)) {
+        return res.status(400).json({ error: 'Action must be revise, approve, or reject' });
+    }
+
+    try {
+        const safeIdea = idea.trim().slice(0, 12000);
+        const safeFeature = normalizeFeatureQueue([feature])[0];
+        if (!safeFeature) {
+            return res.status(400).json({ error: 'Feature payload is invalid' });
+        }
+
+        const safeApproved = normalizeFeatureQueue(approvedFeatures).filter((item) => item.status === 'approved' || item.status === 'pending');
+        const safeRejected = normalizeFeatureQueue(rejectedFeatures).map((item) => ({ ...item, status: 'rejected' as const }));
+        const baseConcept = normalizeRefinedIdeaDoc(structuredConcept, JSON.stringify(structuredConcept ?? {}));
+        const seededConcept = baseConcept.summary || baseConcept.key_features.length > 0
+            ? baseConcept
+            : buildSeedRefinedIdeaDoc(safeIdea, normalizeIdeaUnderstanding({}), safeApproved.length > 0 ? safeApproved : [safeFeature]);
+
+        const systemPrompt = `You are an elite product manager running an interactive feature refinement queue.
+You must deeply understand the original idea, the current structured concept, and the current feature before responding.
+Return ONLY valid JSON and nothing else.
+
+JSON schema:
+{
+  "feature": {
+    "id": "feature-1",
+    "title": "string",
+    "description": "string",
+    "rationale": "string",
+    "priority": "critical|high|medium|low",
+    "rating": 4,
+    "status": "pending|approved|rejected",
+    "user_comment": "string",
+    "integrated_summary": "string"
+  },
+  "structured_concept": {
+    "title": "Product Vision",
+    "summary": "string",
+    "target_audience": ["string"],
+    "core_value_proposition": ["string"],
+    "problem_statement": ["string"],
+    "decision_summary": ["string"],
+    "key_features": [
+      { "feature": "string", "include": true, "rating": 4, "rationale": "string" }
+    ],
+    "user_flows": ["string"],
+    "technical_architecture": ["string"],
+    "data_api_requirements": ["string"],
+    "milestones": [
+      { "milestone": "string", "scope": "string", "owner_role": "string", "eta": "string" }
+    ],
+    "success_metrics": ["string"],
+    "risks": [
+      { "risk": "string", "impact": "string", "mitigation": "string" }
+    ],
+    "implementation_checklist": ["string"],
+    "open_questions": ["string"]
+  },
+  "integration_note": "string"
+}
+
+Rules:
+- If action is "revise", reinterpret the user feedback and rewrite the feature. Keep status "pending".
+- If action is "approve", integrate the approved feature into the structured concept across all relevant sections. Status must be "approved".
+- If action is "reject", mark the feature rejected and keep it out of the included key features. Update decision_summary or open_questions only if useful.
+- Preserve the already approved features as part of the concept.
+- Keep the concept complete, inferred where necessary, and practical for implementation.`;
+
+        const llmProvider = getLLMProvider();
+        const modelOutput = await llmProvider.chat({
+            model: 'google/gemini-2.5-pro',
+            temperature: 0.2,
+            max_tokens: 2400,
+            messages: [
+                { role: 'system', content: systemPrompt },
+                {
+                    role: 'user',
+                    content: JSON.stringify({
+                        originalIdea: safeIdea,
+                        action: normalizedAction,
+                        feedback: typeof feedback === 'string' ? feedback.trim().slice(0, 1600) : '',
+                        currentFeature: safeFeature,
+                        approvedFeatures: safeApproved,
+                        rejectedFeatures: safeRejected,
+                        structuredConcept: seededConcept,
+                    }),
+                },
+            ],
+        });
+
+        const parsed = JSON.parse(extractJsonObject(modelOutput));
+        const reviewedFeatureStatus = normalizedAction === 'approve'
+            ? 'approved'
+            : normalizedAction === 'reject'
+                ? 'rejected'
+                : 'pending';
+        const reviewedFeature = {
+            ...(normalizeFeatureQueue([parsed?.feature ?? { ...safeFeature, status: reviewedFeatureStatus }])[0]
+                || { ...safeFeature, status: reviewedFeatureStatus }),
+            status: reviewedFeatureStatus,
+        };
+        const reviewedConcept = normalizeRefinedIdeaDoc(parsed?.structured_concept ?? parsed?.structuredConcept ?? seededConcept, modelOutput);
+        const integrationNote = typeof parsed?.integration_note === 'string'
+            ? parsed.integration_note.trim()
+            : typeof parsed?.integrationNote === 'string'
+                ? parsed.integrationNote.trim()
+                : '';
+
+        res.json({
+            feature: reviewedFeature,
+            structured_concept: reviewedConcept,
+            idea_markdown: refinedDocToMarkdown(reviewedConcept),
+            integration_note: integrationNote,
+        });
+    } catch (err: any) {
+        console.error('Feature review error:', err.message);
+        res.status(500).json({ error: 'Failed to review idea feature. ' + err.message });
+    }
+}
+
 export async function refineIdea(req: Request, res: Response) {
-    const { idea, history, projectId } = req.body;
+    const { idea, history, projectId, structuredConcept, featureQueue, understanding } = req.body;
     if (!idea || typeof idea !== 'string' || !idea.trim()) {
         return res.status(400).json({ error: 'Original idea is required' });
     }
@@ -726,6 +1217,7 @@ Required JSON schema:
 Rules:
 - Keep content practical and specific.
 - Reflect decision matrix include/exclude, rating, and comments when provided.
+- If a current structured concept is provided, treat it as the source of truth and polish it rather than replacing it with a weaker draft.
 - Use concise bullet-style strings in arrays.
 - Provide at least 3 key_features, 3 milestones, and 3 risks when possible.`;
 
@@ -746,6 +1238,27 @@ Rules:
             messages.push({
                 role: 'user',
                 content: `Discussion history for refinement (latest first relevance):\n${JSON.stringify(safeHistory)}`
+            });
+        }
+
+        if (structuredConcept) {
+            messages.push({
+                role: 'user',
+                content: `Current structured concept JSON:\n${JSON.stringify(structuredConcept).slice(0, 12000)}`
+            });
+        }
+
+        if (Array.isArray(featureQueue) && featureQueue.length > 0) {
+            messages.push({
+                role: 'user',
+                content: `Feature queue decisions:\n${JSON.stringify(featureQueue).slice(0, 12000)}`
+            });
+        }
+
+        if (understanding) {
+            messages.push({
+                role: 'user',
+                content: `Idea understanding:\n${JSON.stringify(understanding).slice(0, 8000)}`
             });
         }
 

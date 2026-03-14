@@ -15,14 +15,45 @@ interface IdeaWorkshopProps {
 }
 
 type Phase = 'input' | 'analyzing' | 'discussion' | 'refining' | 'complete';
+type FeaturePriority = 'critical' | 'high' | 'medium' | 'low';
+type FeatureStatus = 'pending' | 'approved' | 'rejected';
+
+interface IdeaUnderstanding {
+    core_problem: string;
+    intended_solution: string;
+    target_users: string[];
+    explicit_requirements: string[];
+    inferred_requirements: string[];
+    constraints: string[];
+    assumptions: string[];
+    context_notes: string[];
+}
 
 interface FeatureDecision {
     id: string;
     title: string;
+    description: string;
+    rationale: string;
+    priority: FeaturePriority;
     include: boolean;
     rating: 1 | 2 | 3 | 4 | 5;
+    status: FeatureStatus;
     comment: string;
+    integratedSummary: string;
     detailsRequested: boolean;
+}
+
+interface IdeaAnalysisResult {
+    score: number;
+    summary: string;
+    strengths: string[];
+    weaknesses: string[];
+    questions: string[];
+    suggestions: string[];
+    understanding: IdeaUnderstanding;
+    major_capabilities: string[];
+    feature_queue: FeatureDecision[];
+    structured_concept: RefinedIdeaDoc | null;
 }
 
 interface RefinedFeatureItem {
@@ -152,6 +183,49 @@ function toFeatureDecisionId(label: string, index: number): string {
 }
 
 function buildFeatureDecisions(analysis: any): FeatureDecision[] {
+    const queue = Array.isArray(analysis?.feature_queue) ? analysis.feature_queue : [];
+    if (queue.length > 0) {
+        return queue
+            .map((item: any, index: number) => {
+                const title = typeof item?.title === 'string' ? item.title.trim() : '';
+                if (!title) return null;
+                const priority = ['critical', 'high', 'medium', 'low'].includes(String(item?.priority).toLowerCase())
+                    ? String(item.priority).toLowerCase() as FeaturePriority
+                    : 'medium';
+                const ratingValue = Number(item?.rating);
+                const rating = Number.isFinite(ratingValue)
+                    ? Math.max(1, Math.min(5, Math.round(ratingValue))) as 1 | 2 | 3 | 4 | 5
+                    : (priority === 'critical' ? 5 : priority === 'high' ? 4 : 3);
+                const status = ['approved', 'rejected', 'pending'].includes(String(item?.status).toLowerCase())
+                    ? String(item.status).toLowerCase() as FeatureStatus
+                    : 'pending';
+
+                return {
+                    id: typeof item?.id === 'string' && item.id.trim() ? item.id.trim() : toFeatureDecisionId(title, index),
+                    title,
+                    description: typeof item?.description === 'string' ? item.description.trim() : '',
+                    rationale: typeof item?.rationale === 'string' ? item.rationale.trim() : '',
+                    priority,
+                    include: status !== 'rejected',
+                    rating,
+                    status,
+                    comment: typeof item?.user_comment === 'string'
+                        ? item.user_comment.trim()
+                        : typeof item?.comment === 'string'
+                            ? item.comment.trim()
+                            : '',
+                    integratedSummary: typeof item?.integrated_summary === 'string'
+                        ? item.integrated_summary.trim()
+                        : typeof item?.integratedSummary === 'string'
+                            ? item.integratedSummary.trim()
+                            : '',
+                    detailsRequested: false,
+                };
+            })
+            .filter((item): item is FeatureDecision => !!item)
+            .slice(0, 10);
+    }
+
     const source = Array.isArray(analysis?.suggestions) && analysis.suggestions.length > 0
         ? analysis.suggestions
         : [
@@ -169,9 +243,14 @@ function buildFeatureDecisions(analysis: any): FeatureDecision[] {
         .map((title: string, index: number) => ({
             id: toFeatureDecisionId(title, index),
             title,
+            description: '',
+            rationale: '',
+            priority: index < 2 ? 'high' as const : 'medium' as const,
             include: true,
-            rating: 3 as const,
+            rating: (index === 0 ? 4 : 3) as 1 | 2 | 3 | 4 | 5,
+            status: 'pending' as const,
             comment: '',
+            integratedSummary: '',
             detailsRequested: false,
         }));
 }
@@ -180,6 +259,13 @@ function getRatingStyle(value: number) {
     if (value >= 4) return 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300';
     if (value >= 3) return 'bg-amber-500/20 border-amber-500/40 text-amber-300';
     return 'bg-rose-500/20 border-rose-500/40 text-rose-300';
+}
+
+function getPriorityStyle(priority: FeaturePriority) {
+    if (priority === 'critical') return 'bg-rose-500/20 border-rose-500/40 text-rose-200';
+    if (priority === 'high') return 'bg-amber-500/20 border-amber-500/40 text-amber-200';
+    if (priority === 'medium') return 'bg-cyan-500/20 border-cyan-500/40 text-cyan-200';
+    return 'bg-white/10 border-white/15 text-white/60';
 }
 
 function toRecord(value: unknown): Record<string, unknown> | null {
@@ -280,6 +366,40 @@ function normalizeRefinedDoc(payload: unknown): RefinedIdeaDoc | null {
     return hasContent ? doc : null;
 }
 
+function normalizeIdeaUnderstanding(payload: unknown): IdeaUnderstanding {
+    const source = toRecord(payload) || {};
+    return {
+        core_problem: typeof source.core_problem === 'string' ? source.core_problem.trim() : '',
+        intended_solution: typeof source.intended_solution === 'string' ? source.intended_solution.trim() : '',
+        target_users: toStringList(source.target_users ?? source.targetUsers, 10),
+        explicit_requirements: toStringList(source.explicit_requirements ?? source.explicitRequirements, 14),
+        inferred_requirements: toStringList(source.inferred_requirements ?? source.inferredRequirements, 14),
+        constraints: toStringList(source.constraints, 12),
+        assumptions: toStringList(source.assumptions, 12),
+        context_notes: toStringList(source.context_notes ?? source.contextNotes, 12),
+    };
+}
+
+function normalizeAnalysisResult(payload: unknown): IdeaAnalysisResult | null {
+    const source = toRecord(payload);
+    if (!source) return null;
+
+    const scoreValue = Number(source.score);
+
+    return {
+        score: Number.isFinite(scoreValue) ? Math.max(0, Math.min(100, Math.round(scoreValue))) : 0,
+        summary: typeof source.summary === 'string' ? source.summary.trim() : '',
+        strengths: toStringList(source.strengths, 8),
+        weaknesses: toStringList(source.weaknesses, 8),
+        questions: toStringList(source.questions, 8),
+        suggestions: toStringList(source.suggestions, 8),
+        understanding: normalizeIdeaUnderstanding(source.understanding),
+        major_capabilities: toStringList(source.major_capabilities ?? source.majorCapabilities, 10),
+        feature_queue: buildFeatureDecisions(source),
+        structured_concept: normalizeRefinedDoc(source.structured_concept ?? source.structuredConcept),
+    };
+}
+
 function docToMarkdown(doc: RefinedIdeaDoc): string {
     const lines: string[] = [];
     lines.push(`# ${doc.title || 'Product Vision'}`);
@@ -344,6 +464,75 @@ function docToMarkdown(doc: RefinedIdeaDoc): string {
     return lines.join('\n\n');
 }
 
+function buildPreviewSections(doc: RefinedIdeaDoc | null, understanding: IdeaUnderstanding | null) {
+    return [
+        {
+            id: 'understanding',
+            title: 'Understanding',
+            items: [
+                understanding?.core_problem || '',
+                understanding?.intended_solution || '',
+                ...(understanding?.target_users || []).slice(0, 2).map((item) => `User: ${item}`),
+            ].filter(Boolean),
+        },
+        {
+            id: 'problem',
+            title: 'Problem',
+            items: doc?.problem_statement || [],
+        },
+        {
+            id: 'value',
+            title: 'Value',
+            items: doc?.core_value_proposition || [],
+        },
+        {
+            id: 'features',
+            title: 'Features',
+            items: (doc?.key_features || []).map((feature) => `${feature.feature} (${feature.rating}/5)`),
+        },
+        {
+            id: 'flows',
+            title: 'Flows',
+            items: doc?.user_flows || [],
+        },
+        {
+            id: 'architecture',
+            title: 'Architecture',
+            items: doc?.technical_architecture || [],
+        },
+        {
+            id: 'apis',
+            title: 'Data & APIs',
+            items: doc?.data_api_requirements || [],
+        },
+        {
+            id: 'milestones',
+            title: 'Milestones',
+            items: (doc?.milestones || []).map((item) => `${item.milestone}: ${item.scope || item.eta || 'Planned'}`),
+        },
+        {
+            id: 'metrics',
+            title: 'Success Metrics',
+            items: doc?.success_metrics || [],
+        },
+        {
+            id: 'risks',
+            title: 'Risks',
+            items: (doc?.risks || []).map((item) => `${item.risk} -> ${item.mitigation || item.impact || 'Mitigate'}`),
+        },
+        {
+            id: 'checklist',
+            title: 'Checklist',
+            items: doc?.implementation_checklist || [],
+        },
+        {
+            id: 'questions',
+            title: 'Open Questions',
+            items: doc?.open_questions || understanding?.assumptions || [],
+        },
+    ];
+}
+
 export default function IdeaWorkshop({
     projectName,
     projectId,
@@ -357,18 +546,19 @@ export default function IdeaWorkshop({
 
     const [phase, setPhase] = useState<Phase>('input');
     const [idea, setIdea] = useState(initialIdea);
-    const [analysis, setAnalysis] = useState<any>(null);
+    const [analysis, setAnalysis] = useState<IdeaAnalysisResult | null>(null);
     const [history, setHistory] = useState<{ role: 'user' | 'assistant'; content: string; structured?: StructuredAiResponse }[]>([]);
     const [chatInput, setChatInput] = useState('');
     const [isChatting, setIsChatting] = useState(false);
     const [refinedIdea, setRefinedIdea] = useState('');
     const [refinedDoc, setRefinedDoc] = useState<RefinedIdeaDoc | null>(null);
+    const [workingDoc, setWorkingDoc] = useState<RefinedIdeaDoc | null>(null);
     const [copied, setCopied] = useState(false);
     const [jsonCopied, setJsonCopied] = useState(false);
     const [featureDecisions, setFeatureDecisions] = useState<FeatureDecision[]>([]);
     const [newFeature, setNewFeature] = useState('');
     const [detailsLoadingId, setDetailsLoadingId] = useState<string | null>(null);
-    const [decisionsConfirmed, setDecisionsConfirmed] = useState(false);
+    const [previewRevealCount, setPreviewRevealCount] = useState(0);
 
     const draftStorageKey = useMemo(
         () => `akasha:idea-workshop:draft:${projectId || projectName}`,
@@ -376,7 +566,7 @@ export default function IdeaWorkshop({
     );
 
     const selectedFeatures = useMemo(
-        () => featureDecisions.filter((feature) => feature.include),
+        () => featureDecisions.filter((feature) => feature.status === 'approved' && feature.include),
         [featureDecisions]
     );
 
@@ -391,7 +581,21 @@ export default function IdeaWorkshop({
         [selectedFeatures]
     );
 
-    const canDraftFinalDoc = decisionsConfirmed && selectedFeatures.length > 0;
+    const queueComplete = useMemo(
+        () => featureDecisions.length > 0 && !featureDecisions.some((feature) => feature.status === 'pending'),
+        [featureDecisions]
+    );
+
+    const canDraftFinalDoc = queueComplete && selectedFeatures.length > 0;
+    const currentFeatureIndex = useMemo(
+        () => featureDecisions.findIndex((feature) => feature.status === 'pending'),
+        [featureDecisions]
+    );
+    const currentFeature = currentFeatureIndex >= 0 ? featureDecisions[currentFeatureIndex] : null;
+    const previewSections = useMemo(
+        () => buildPreviewSections(workingDoc, analysis?.understanding || null),
+        [analysis?.understanding, workingDoc]
+    );
 
     const activeStep = useMemo(() => {
         if (phase === 'input') return 1;
@@ -439,6 +643,20 @@ export default function IdeaWorkshop({
         localStorage.setItem(draftStorageKey, idea);
     }, [draftStorageKey, idea]);
 
+    useEffect(() => {
+        if (phase !== 'discussion' || previewSections.length === 0) return;
+        setPreviewRevealCount(0);
+        const timers = previewSections.map((_, index) =>
+            window.setTimeout(() => {
+                setPreviewRevealCount((current) => Math.max(current, index + 1));
+            }, 140 + index * 120)
+        );
+
+        return () => {
+            timers.forEach((timer) => window.clearTimeout(timer));
+        };
+    }, [phase, analysis?.summary]);
+
     const getScoreColor = (score: number) => {
         if (score >= 80) return 'text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]';
         if (score >= 60) return 'text-amber-400 drop-shadow-[0_0_8px_rgba(251,191,36,0.5)]';
@@ -474,18 +692,24 @@ export default function IdeaWorkshop({
         }
 
         setPhase('analyzing');
+        setAnalysis(null);
+        setWorkingDoc(null);
+        setFeatureDecisions([]);
         setRefinedDoc(null);
         setRefinedIdea('');
         try {
-            const result = await httpApi.analyzeIdea(idea);
+            const result = normalizeAnalysisResult(await httpApi.analyzeIdea(idea));
+            if (!result) {
+                throw new Error('Invalid analysis payload');
+            }
             setAnalysis(result);
+            setWorkingDoc(result.structured_concept);
             setFeatureDecisions(buildFeatureDecisions(result));
-            setDecisionsConfirmed(false);
             setHistory([
                 {
                     role: 'assistant',
                     content:
-                        'I analyzed your idea. Review the feature board, rate priorities, and ask for more details before drafting the final document.',
+                        'I analyzed the idea, built a structured concept, and queued the next features for review. Approve, reject, or rewrite them one by one.',
                 },
             ]);
             setPhase('discussion');
@@ -555,19 +779,77 @@ export default function IdeaWorkshop({
 
     const setFeatureDecision = (featureId: string, updater: (feature: FeatureDecision) => FeatureDecision) => {
         setFeatureDecisions((prev) => prev.map((feature) => (feature.id === featureId ? updater(feature) : feature)));
-        setDecisionsConfirmed(false);
     };
 
-    const requestFeatureDetails = async (feature: FeatureDecision) => {
-        if (isChatting) return;
-        setDetailsLoadingId(feature.id);
-        setFeatureDecision(feature.id, (current) => ({ ...current, detailsRequested: true }));
+    const reviewCurrentFeature = async (action: 'revise' | 'approve' | 'reject') => {
+        if (!currentFeature || isChatting) return;
+        if (action === 'revise' && !currentFeature.comment.trim()) {
+            toast.showToast('Add feedback before asking the AI to rewrite the feature.', 'warning');
+            return;
+        }
+
+        setDetailsLoadingId(currentFeature.id);
+        setIsChatting(true);
         try {
-            await sendDiscussionMessage(
-                `Please provide deeper details for this feature:\nFeature: ${feature.title}\nReturn implementation scope, UX details, backend/API impact, and delivery risks.`
-            );
+            const response = await httpApi.reviewIdeaFeature({
+                idea,
+                action,
+                feature: {
+                    ...currentFeature,
+                    user_comment: currentFeature.comment,
+                    integrated_summary: currentFeature.integratedSummary,
+                },
+                structuredConcept: workingDoc,
+                feedback: currentFeature.comment,
+                approvedFeatures: featureDecisions
+                    .filter((feature) => feature.status === 'approved')
+                    .map((feature) => ({
+                        ...feature,
+                        user_comment: feature.comment,
+                        integrated_summary: feature.integratedSummary,
+                    })),
+                rejectedFeatures: featureDecisions
+                    .filter((feature) => feature.status === 'rejected')
+                    .map((feature) => ({
+                        ...feature,
+                        user_comment: feature.comment,
+                        integrated_summary: feature.integratedSummary,
+                    })),
+            });
+
+            const reviewedFeature = buildFeatureDecisions({
+                feature_queue: [response?.feature],
+            })[0];
+            const nextDoc = normalizeRefinedDoc(response?.structured_concept);
+
+            if (reviewedFeature) {
+                setFeatureDecisions((prev) =>
+                    prev.map((feature) =>
+                        feature.id === currentFeature.id
+                            ? {
+                                ...feature,
+                                ...reviewedFeature,
+                                include: reviewedFeature.status !== 'rejected',
+                                comment: reviewedFeature.comment || feature.comment,
+                                integratedSummary: reviewedFeature.integratedSummary,
+                            }
+                            : feature
+                    )
+                );
+            }
+
+            if (nextDoc) {
+                setWorkingDoc(nextDoc);
+            }
+
+            if (typeof response?.integration_note === 'string' && response.integration_note.trim()) {
+                setHistory((prev) => [...prev, { role: 'assistant', content: response.integration_note.trim() }]);
+            }
+        } catch (err: any) {
+            toast.showToast(err?.message || 'Failed to review feature', 'error');
         } finally {
             setDetailsLoadingId(null);
+            setIsChatting(false);
         }
     };
 
@@ -580,19 +862,23 @@ export default function IdeaWorkshop({
             {
                 id: toFeatureDecisionId(title, prev.length + 1),
                 title,
+                description: '',
+                rationale: '',
+                priority: 'medium',
                 include: true,
-                rating: 3,
+                rating: 3 as const,
+                status: 'pending',
                 comment: '',
+                integratedSummary: '',
                 detailsRequested: false,
             },
         ]);
         setNewFeature('');
-        setDecisionsConfirmed(false);
     };
 
     const handleRefine = async () => {
         if (!canDraftFinalDoc) {
-            toast.showToast('Select at least one feature and confirm your decisions first.', 'warning');
+            toast.showToast('Review the queued features first, then finalize the approved concept.', 'warning');
             return;
         }
 
@@ -602,8 +888,11 @@ export default function IdeaWorkshop({
                 feature: feature.title,
                 include: feature.include,
                 rating: feature.rating,
+                status: feature.status,
+                priority: feature.priority,
                 comment: feature.comment,
-                detailsRequested: feature.detailsRequested,
+                description: feature.description,
+                rationale: feature.rationale,
             }));
 
             const synthesisNotes = {
@@ -623,7 +912,18 @@ export default function IdeaWorkshop({
                 },
             ];
 
-            const result = await httpApi.refineIdea(idea, refinementHistory, projectId);
+            const result = await httpApi.refineIdea(
+                idea,
+                refinementHistory,
+                projectId,
+                workingDoc,
+                featureDecisions.map((feature) => ({
+                    ...feature,
+                    user_comment: feature.comment,
+                    integrated_summary: feature.integratedSummary,
+                })),
+                analysis?.understanding
+            );
             const normalizedDoc = normalizeRefinedDoc((result as any)?.doc);
             const fallbackMarkdown = typeof (result as any)?.refinedIdea === 'string' ? (result as any).refinedIdea : '';
 
@@ -804,16 +1104,98 @@ export default function IdeaWorkshop({
         </div>
     );
 
-    const renderFeatureDecisionBoard = () => (
-        <div className="bg-violet-500/5 border border-violet-500/15 rounded-2xl p-4 space-y-4">
-            <div className="flex items-center justify-between">
+    const renderProgressiveConceptPreview = () => (
+        <div className="bg-[var(--ide-bg-elevated)] border border-[var(--ide-border)] rounded-2xl p-4 space-y-4">
+            <div className="flex items-center justify-between gap-3">
                 <div>
-                    <div className="text-xs font-black text-violet-300 uppercase tracking-widest">Feature Decision Board</div>
-                    <p className="text-[11px] text-white/50 mt-1">Choose features, rate priority, add comments, and request deeper AI details.</p>
+                    <div className="text-xs font-black text-cyan-300 uppercase tracking-widest">Live Project Concept</div>
+                    <p className="text-[11px] text-white/45 mt-1">
+                        The AI creates the structure first, then fills each section progressively.
+                    </p>
                 </div>
                 <div className="text-right">
-                    <div className="text-[10px] text-white/40 uppercase tracking-wider">Selected</div>
-                    <div className="text-sm font-black text-violet-300">{selectedFeatures.length}</div>
+                    <div className="text-[10px] uppercase tracking-widest text-white/40">Sections</div>
+                    <div className="text-sm font-black text-white">{Math.min(previewRevealCount, previewSections.length)}/{previewSections.length}</div>
+                </div>
+            </div>
+
+            {workingDoc?.summary && (
+                <div className="rounded-2xl border border-indigo-500/20 bg-indigo-500/10 p-4">
+                    <div className="text-[10px] font-black uppercase tracking-widest text-indigo-300">Structured Summary</div>
+                    <p className="mt-2 text-sm text-white/80 leading-relaxed">{workingDoc.summary}</p>
+                </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {previewSections.map((section, index) => {
+                    const isReady = index < previewRevealCount;
+                    const hasItems = section.items.length > 0;
+
+                    return (
+                        <div key={section.id} className="rounded-2xl border border-white/10 bg-black/20 p-4 min-h-[148px]">
+                            <div className="flex items-center justify-between gap-2">
+                                <div className="text-[11px] font-black uppercase tracking-widest text-white/60">{section.title}</div>
+                                <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold border ${
+                                    isReady
+                                        ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-200'
+                                        : 'bg-white/10 border-white/15 text-white/45'
+                                }`}>
+                                    {isReady ? 'Ready' : 'Loading'}
+                                </span>
+                            </div>
+
+                            {isReady ? (
+                                <ul className="mt-3 space-y-1.5 text-xs text-white/80">
+                                    {hasItems ? section.items.slice(0, 5).map((item, itemIndex) => (
+                                        <li key={`${section.id}-${itemIndex}`} className="flex items-start gap-2">
+                                            <span className="mt-0.5 text-cyan-400/70">•</span>
+                                            <span>{item}</span>
+                                        </li>
+                                    )) : (
+                                        <li className="text-white/35">No content generated for this section yet.</li>
+                                    )}
+                                </ul>
+                            ) : (
+                                <div className="mt-4 space-y-2">
+                                    <div className="h-3 rounded-full bg-white/8 animate-pulse" />
+                                    <div className="h-3 w-5/6 rounded-full bg-white/8 animate-pulse" />
+                                    <div className="h-3 w-2/3 rounded-full bg-white/8 animate-pulse" />
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+
+    const renderFeatureDecisionBoard = () => (
+        <div className="bg-violet-500/5 border border-violet-500/15 rounded-2xl p-4 space-y-4">
+            <div className="flex items-center justify-between gap-3">
+                <div>
+                    <div className="text-xs font-black text-violet-300 uppercase tracking-widest">Sequential Feature Queue</div>
+                    <p className="text-[11px] text-white/50 mt-1">Review one AI-suggested feature at a time. Rewrite it with feedback, then approve or reject it.</p>
+                </div>
+                <div className="text-right">
+                    <div className="text-[10px] text-white/40 uppercase tracking-wider">Reviewed</div>
+                    <div className="text-sm font-black text-violet-300">
+                        {featureDecisions.filter((feature) => feature.status !== 'pending').length}/{featureDecisions.length}
+                    </div>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                <div className="rounded-xl bg-black/20 border border-white/10 p-3">
+                    <div className="text-white/45">Approved</div>
+                    <div className="mt-1 text-lg font-black text-white">{selectedFeatures.length}</div>
+                </div>
+                <div className="rounded-xl bg-black/20 border border-white/10 p-3">
+                    <div className="text-white/45">Pending</div>
+                    <div className="mt-1 text-lg font-black text-white">{featureDecisions.filter((feature) => feature.status === 'pending').length}</div>
+                </div>
+                <div className="rounded-xl bg-black/20 border border-white/10 p-3">
+                    <div className="text-white/45">Queue Ready</div>
+                    <div className="mt-1 text-lg font-black text-white">{queueComplete ? 'Yes' : 'No'}</div>
                 </div>
             </div>
 
@@ -822,83 +1204,142 @@ export default function IdeaWorkshop({
                     type="text"
                     value={newFeature}
                     onChange={(e) => setNewFeature(e.target.value)}
-                    placeholder="Add custom feature idea..."
-                    className="flex-1 h-9 rounded-xl bg-black/20 border border-white/10 px-3 text-xs text-white placeholder:text-white/40 focus:outline-none focus:border-violet-400/40"
+                    placeholder="Add a custom feature into the queue..."
+                    className="flex-1 h-10 rounded-xl bg-black/20 border border-white/10 px-3 text-xs text-white placeholder:text-white/40 focus:outline-none focus:border-violet-400/40"
                 />
                 <button
                     onClick={handleAddFeature}
                     type="button"
-                    className="h-9 px-3 rounded-xl text-xs font-bold bg-violet-500/20 border border-violet-500/40 text-violet-200 hover:bg-violet-500/30 transition-all"
+                    className="h-10 px-4 rounded-xl text-xs font-bold bg-violet-500/20 border border-violet-500/40 text-violet-200 hover:bg-violet-500/30 transition-all"
                 >
-                    Add
+                    Add Feature
                 </button>
             </div>
 
-            <div className="space-y-3 max-h-[360px] overflow-y-auto pr-1 custom-scrollbar">
-                {featureDecisions.map((feature) => (
-                    <div key={feature.id} className="rounded-xl bg-black/20 border border-white/10 p-3 space-y-2.5">
-                        <div className="flex items-start gap-2">
-                            <input
-                                type="checkbox"
-                                checked={feature.include}
-                                onChange={(e) => setFeatureDecision(feature.id, (current) => ({ ...current, include: e.target.checked }))}
-                                className="mt-0.5 h-4 w-4 rounded border-white/30 bg-transparent accent-violet-500"
-                            />
-                            <div className="flex-1">
-                                <div className="text-xs text-white/90 font-semibold leading-relaxed">{feature.title}</div>
-                                <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                                    {[1, 2, 3, 4, 5].map((level) => (
-                                        <button
-                                            key={`${feature.id}-rating-${level}`}
-                                            type="button"
-                                            onClick={() => setFeatureDecision(feature.id, (current) => ({ ...current, rating: level as 1 | 2 | 3 | 4 | 5 }))}
-                                            className={`h-6 w-6 rounded-lg border text-[10px] font-black transition-all ${
-                                                feature.rating === level
-                                                    ? getRatingStyle(level)
-                                                    : 'border-white/15 bg-white/5 text-white/50 hover:text-white'
-                                            }`}
-                                        >
-                                            {level}
-                                        </button>
-                                    ))}
+            <div className="space-y-3 max-h-[260px] overflow-y-auto pr-1 custom-scrollbar">
+                {featureDecisions.map((feature, index) => (
+                    <div
+                        key={feature.id}
+                        className={`rounded-xl border p-3 transition-all ${
+                            currentFeature?.id === feature.id
+                                ? 'border-violet-400/40 bg-violet-500/10 shadow-[0_0_0_1px_rgba(139,92,246,0.2)]'
+                                : 'border-white/10 bg-black/20'
+                        }`}
+                    >
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-white/35">#{index + 1}</span>
+                                    <span className={`inline-flex px-2 py-0.5 rounded-md border text-[10px] font-bold uppercase tracking-wide ${getPriorityStyle(feature.priority)}`}>
+                                        {feature.priority}
+                                    </span>
+                                    <span className={`inline-flex px-2 py-0.5 rounded-md border text-[10px] font-bold uppercase tracking-wide ${
+                                        feature.status === 'approved'
+                                            ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-200'
+                                            : feature.status === 'rejected'
+                                                ? 'bg-white/10 border-white/15 text-white/45'
+                                                : 'bg-amber-500/15 border-amber-500/30 text-amber-200'
+                                    }`}>
+                                        {feature.status}
+                                    </span>
+                                </div>
+                                <div className="mt-2 text-sm font-semibold text-white">{feature.title}</div>
+                                <div className="mt-1 text-xs text-white/55 leading-relaxed">
+                                    {feature.integratedSummary || feature.description || feature.rationale || 'Waiting for review.'}
                                 </div>
                             </div>
-                            <button
-                                type="button"
-                                onClick={() => requestFeatureDetails(feature)}
-                                disabled={isChatting || detailsLoadingId === feature.id}
-                                className="h-7 px-2 rounded-lg text-[10px] font-bold bg-cyan-500/10 border border-cyan-500/20 text-cyan-200 hover:bg-cyan-500/20 disabled:opacity-50 transition-all"
-                            >
-                                {detailsLoadingId === feature.id ? 'Loading...' : feature.detailsRequested ? 'Details Again' : 'Need Details'}
-                            </button>
+                            <span className={`inline-flex px-2 py-0.5 rounded-md border text-[10px] font-bold ${getRatingStyle(feature.rating)}`}>
+                                {feature.rating}/5
+                            </span>
                         </div>
-
-                        <textarea
-                            value={feature.comment}
-                            onChange={(e) => setFeatureDecision(feature.id, (current) => ({ ...current, comment: e.target.value }))}
-                            placeholder="Comment: why include/exclude, constraints, assumptions..."
-                            rows={2}
-                            className="w-full rounded-xl bg-black/25 border border-white/10 px-3 py-2 text-[11px] text-white/80 placeholder:text-white/35 focus:outline-none focus:border-violet-400/40 resize-none"
-                        />
                     </div>
                 ))}
             </div>
 
-            <div className="rounded-xl bg-black/20 border border-white/10 p-3">
-                <label className="flex items-start gap-2 text-xs text-white/80">
-                    <input
-                        type="checkbox"
-                        checked={decisionsConfirmed}
-                        onChange={(e) => setDecisionsConfirmed(e.target.checked)}
-                        className="mt-0.5 h-4 w-4 rounded border-white/30 bg-transparent accent-emerald-500"
-                    />
-                    <span>
-                        I confirm these feature decisions (include/exclude, rating, and comments) should drive the final document.
-                    </span>
-                </label>
-                <div className="mt-2 text-[11px] text-white/45">
-                    Draft readiness: {selectedFeatures.length} selected feature(s), average rating {averageRating || 0}/5.
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4 space-y-4">
+                <div className="flex items-start justify-between gap-3">
+                    <div>
+                        <div className="text-[10px] font-black uppercase tracking-widest text-white/45">Current Suggestion</div>
+                        {currentFeature ? (
+                            <>
+                                <h4 className="mt-2 text-lg font-black text-white">{currentFeature.title}</h4>
+                                <p className="mt-2 text-sm text-white/70 leading-relaxed">
+                                    {currentFeature.description || currentFeature.rationale || 'The AI will refine this feature when you add feedback.'}
+                                </p>
+                            </>
+                        ) : (
+                            <p className="mt-2 text-sm text-emerald-200">All queued features were reviewed. You can finalize the concept now.</p>
+                        )}
+                    </div>
+                    {currentFeature && (
+                        <span className={`inline-flex px-2 py-1 rounded-lg border text-[10px] font-bold uppercase tracking-wide ${getPriorityStyle(currentFeature.priority)}`}>
+                            {currentFeature.priority}
+                        </span>
+                    )}
                 </div>
+
+                {currentFeature && (
+                    <>
+                        <div>
+                            <div className="text-[10px] font-black uppercase tracking-widest text-white/45 mb-2">Priority Rating</div>
+                            <div className="flex flex-wrap items-center gap-2">
+                                {[1, 2, 3, 4, 5].map((level) => (
+                                    <button
+                                        key={`${currentFeature.id}-rating-${level}`}
+                                        type="button"
+                                        onClick={() => setFeatureDecision(currentFeature.id, (feature) => ({ ...feature, rating: level as 1 | 2 | 3 | 4 | 5 }))}
+                                        className={`h-8 w-8 rounded-lg border text-[11px] font-black transition-all ${
+                                            currentFeature.rating === level
+                                                ? getRatingStyle(level)
+                                                : 'border-white/15 bg-white/5 text-white/50 hover:text-white'
+                                        }`}
+                                    >
+                                        {level}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <textarea
+                            value={currentFeature.comment}
+                            onChange={(e) => setFeatureDecision(currentFeature.id, (feature) => ({ ...feature, comment: e.target.value }))}
+                            placeholder="Add feedback. The AI will rewrite this feature until you explicitly approve it."
+                            rows={3}
+                            className="w-full rounded-xl bg-black/25 border border-white/10 px-3 py-3 text-sm text-white/85 placeholder:text-white/35 focus:outline-none focus:border-violet-400/40 resize-none"
+                        />
+
+                        <div className="flex flex-wrap gap-2">
+                            <button
+                                type="button"
+                                onClick={() => reviewCurrentFeature('revise')}
+                                disabled={isChatting || detailsLoadingId === currentFeature.id}
+                                className="h-10 px-4 rounded-xl text-xs font-bold bg-cyan-500/15 border border-cyan-500/30 text-cyan-100 hover:bg-cyan-500/25 disabled:opacity-50 transition-all"
+                            >
+                                {detailsLoadingId === currentFeature.id ? 'Rewriting...' : 'Rewrite From Feedback'}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => reviewCurrentFeature('approve')}
+                                disabled={isChatting || detailsLoadingId === currentFeature.id}
+                                className="h-10 px-4 rounded-xl text-xs font-bold bg-emerald-500/20 border border-emerald-500/35 text-emerald-100 hover:bg-emerald-500/30 disabled:opacity-50 transition-all"
+                            >
+                                Approve & Integrate
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => reviewCurrentFeature('reject')}
+                                disabled={isChatting || detailsLoadingId === currentFeature.id}
+                                className="h-10 px-4 rounded-xl text-xs font-bold bg-white/8 border border-white/15 text-white/70 hover:bg-white/12 disabled:opacity-50 transition-all"
+                            >
+                                Reject
+                            </button>
+                        </div>
+                    </>
+                )}
+            </div>
+
+            <div className="text-[11px] text-white/45">
+                Final draft readiness: {selectedFeatures.length} approved feature(s), average rating {averageRating || 0}/5.
             </div>
         </div>
     );
@@ -1315,12 +1756,12 @@ export default function IdeaWorkshop({
                                 </div>
                             </div>
 
-                            <div className="flex-1 min-h-0 bg-[var(--ide-bg-elevated)] border border-[var(--ide-border)] rounded-2xl p-2 md:p-3 shadow-inner">
+                            <div className="flex-1 min-h-0 overflow-hidden bg-[var(--ide-bg-elevated)] border border-[var(--ide-border)] rounded-2xl p-2 md:p-3 shadow-inner">
                                 <textarea
                                     value={idea}
                                     onChange={(e) => setIdea(e.target.value)}
                                     placeholder="Describe the problem, users, value proposition, and must-have features..."
-                                    className="w-full h-full min-h-[280px] bg-transparent rounded-xl p-3 md:p-4 text-[var(--ide-text)] text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500/50 transition-all resize-none"
+                                    className="block w-full h-full min-h-[280px] box-border bg-transparent rounded-xl p-3 md:p-4 text-[var(--ide-text)] text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500/50 transition-all resize-none"
                                 />
                             </div>
 
@@ -1333,21 +1774,51 @@ export default function IdeaWorkshop({
                 )}
 
                 {(phase === 'analyzing' || phase === 'refining') && (
-                    <div className="h-full flex flex-col items-center justify-center space-y-6 animate-fade-in">
-                        <div className="relative">
-                            <div className="w-24 h-24 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin"></div>
-                            <div className="absolute inset-0 flex items-center justify-center text-3xl">🤖</div>
-                            <div className="absolute -inset-8 bg-indigo-500/10 blur-[30px] rounded-full animate-pulse z-[-1]" />
+                    <div className="h-full min-h-0 animate-fade-in grid grid-cols-1 xl:grid-cols-[1.1fr,0.9fr] gap-4">
+                        <div className="bg-[var(--ide-bg-elevated)] border border-[var(--ide-border)] rounded-2xl p-4 space-y-4">
+                            <div className="flex items-center gap-3">
+                                <div className="relative">
+                                    <div className="w-14 h-14 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin"></div>
+                                    <div className="absolute inset-0 flex items-center justify-center text-xl">🤖</div>
+                                </div>
+                                <div>
+                                    <h3 className="text-xl font-black text-white">
+                                        {phase === 'analyzing' ? 'Building the project concept...' : 'Polishing the final PRD...'}
+                                    </h3>
+                                    <p className="text-sm text-[var(--ide-text-secondary)]">
+                                        {phase === 'analyzing'
+                                            ? 'Understanding the idea first, then filling the concept sections progressively.'
+                                            : 'Converting the approved concept into the final structured output.'}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                {Array.from({ length: 8 }).map((_, index) => (
+                                    <div key={`preview-skeleton-${index}`} className="rounded-2xl border border-white/10 bg-black/20 p-4 min-h-[148px]">
+                                        <div className="h-3 w-24 rounded-full bg-white/10 animate-pulse" />
+                                        <div className="mt-4 space-y-2">
+                                            <div className="h-3 rounded-full bg-white/8 animate-pulse" />
+                                            <div className="h-3 w-5/6 rounded-full bg-white/8 animate-pulse" />
+                                            <div className="h-3 w-2/3 rounded-full bg-white/8 animate-pulse" />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
-                        <div className="text-center space-y-2">
-                            <h3 className="text-xl font-black text-white">
-                                {phase === 'analyzing' ? 'Analyzing your idea...' : 'Drafting final decision-based PRD...'}
-                            </h3>
-                            <p className="text-sm text-[var(--ide-text-secondary)] animate-pulse">
-                                {phase === 'analyzing'
-                                    ? 'Scoring viability, strengths, risks, and next questions.'
-                                    : 'Converting your confirmed decisions and discussion into a polished document with tables.'}
-                            </p>
+
+                        <div className="bg-black/20 border border-white/10 rounded-2xl p-4 space-y-4">
+                            <div className="text-[10px] font-black uppercase tracking-widest text-violet-300">Feature Queue Skeleton</div>
+                            <div className="space-y-3">
+                                {Array.from({ length: 4 }).map((_, index) => (
+                                    <div key={`queue-skeleton-${index}`} className="rounded-xl border border-white/10 bg-black/20 p-4">
+                                        <div className="h-3 w-20 rounded-full bg-white/10 animate-pulse" />
+                                        <div className="mt-3 h-4 w-3/4 rounded-full bg-white/8 animate-pulse" />
+                                        <div className="mt-2 h-3 w-full rounded-full bg-white/8 animate-pulse" />
+                                        <div className="mt-2 h-3 w-2/3 rounded-full bg-white/8 animate-pulse" />
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     </div>
                 )}
@@ -1355,7 +1826,7 @@ export default function IdeaWorkshop({
                 {phase === 'discussion' && analysis && (
                     <div
                         className={`h-full min-h-0 animate-fade-in ${
-                            fullScreen ? 'grid grid-cols-1 xl:grid-cols-[420px,1fr] gap-4' : 'flex flex-col space-y-6'
+                            fullScreen ? 'grid grid-cols-1 xl:grid-cols-[1.1fr,0.9fr] gap-4' : 'flex flex-col space-y-6'
                         }`}
                     >
                         <div
@@ -1419,10 +1890,13 @@ export default function IdeaWorkshop({
                                 </div>
                             </div>
 
-                            {renderFeatureDecisionBoard()}
+                            {renderProgressiveConceptPreview()}
                         </div>
 
-                        {renderChatPanel()}
+                        <div className="min-h-0 flex flex-col gap-4">
+                            {renderFeatureDecisionBoard()}
+                            {renderChatPanel()}
+                        </div>
                     </div>
                 )}
 
@@ -1513,7 +1987,7 @@ export default function IdeaWorkshop({
                             onClick={handleRefine}
                             disabled={!canDraftFinalDoc}
                             className="btn-modern-primary !h-10 !px-8 text-xs !bg-gradient-to-r !from-emerald-500 !to-teal-500 hover:!from-emerald-400 hover:!to-teal-400 !shadow-emerald-500/20 disabled:opacity-50"
-                            title={!canDraftFinalDoc ? 'Select at least one feature and confirm decisions first.' : ''}
+                            title={!canDraftFinalDoc ? 'Finish reviewing the queued features before finalizing the document.' : ''}
                         >
                             Confirm & Draft Final Document
                         </button>

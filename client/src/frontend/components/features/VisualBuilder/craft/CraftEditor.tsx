@@ -26,6 +26,11 @@ export const CraftEditor: React.FC<CraftEditorProps> = ({
             resolver={{ CraftBlock }}
             onRender={RenderNode}
             enabled={enabled}
+            indicator={{
+                success: "#6366f1", // indigo-500
+                error: "#ef4444", // red-500
+                thickness: 3, // very thin line, so it doesn't take up block space
+            }}
         >
             {children}
         </Editor>

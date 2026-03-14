@@ -49,7 +49,7 @@ export function useSelectedNode(): SelectedNodeInfo {
         }
     }
 
-    if (!nodeId) {
+    if (!nodeId || nodeId === "ROOT") {
         return {
             isSelected: false,
             nodeId: null,

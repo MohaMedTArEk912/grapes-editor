@@ -139,33 +139,6 @@ const DashboardView: React.FC = () => {
                         <span>{filteredProjects.length} project{filteredProjects.length === 1 ? "" : "s"}</span>
                     </div>
 
-                    {isCreateWorkshopOpen && (
-                        <div className="animate-fade-in">
-                            <div className="mb-3 flex items-center justify-between">
-                                <div className="inline-flex items-center gap-2 rounded-xl border border-indigo-500/20 bg-indigo-500/10 p-1">
-                                    <span className="h-8 px-3 rounded-lg text-[10px] font-black uppercase tracking-widest text-white/50 bg-white/5">
-                                        Name
-                                    </span>
-                                    <span className="h-8 px-3 rounded-lg text-[10px] font-black uppercase tracking-widest text-white bg-gradient-to-r from-indigo-500 to-cyan-500 flex items-center">
-                                        AI Workshop
-                                    </span>
-                                </div>
-                                <button
-                                    onClick={handleCancelCreate}
-                                    className="h-9 px-3 rounded-xl border border-white/10 text-white/60 hover:text-white hover:bg-white/10 transition-all text-xs font-bold"
-                                >
-                                    Close
-                                </button>
-                            </div>
-
-                            <IdeaWorkshop
-                                projectName={projectName || "New Project"}
-                                onRefined={handleCreateProjectFinal}
-                                onCancel={handleCancelCreate}
-                            />
-                        </div>
-                    )}
-
                     {/* Project Grid */}
                     {filteredProjects.length > 0 ? (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-fade-in pb-12">
@@ -290,6 +263,20 @@ const DashboardView: React.FC = () => {
                                     </div>
                                 </form>
                             </div>
+                        </div>
+                    </div>
+                )}
+
+                {isCreateWorkshopOpen && (
+                    <div className="fixed inset-0 z-[10010] bg-[#050508] animate-fade-in">
+                        <div className="pointer-events-none absolute inset-0" style={{ background: ambientBackground }} />
+                        <div className="relative h-full w-full">
+                            <IdeaWorkshop
+                                projectName={projectName || "New Project"}
+                                fullScreen
+                                onRefined={handleCreateProjectFinal}
+                                onCancel={handleCancelCreate}
+                            />
                         </div>
                     </div>
                 )}

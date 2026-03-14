@@ -175,13 +175,31 @@ export const DragDropProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             }
         };
 
+        const onDragEnd = () => {
+            // HTML5 drag ended — ensure pointer drag state is cleared
+            // (the HTML5 drag system consumes mouseup, so our mouseup handler
+            //  may never fire during a native drag)
+            if (pendingRef.current || stateRef.current.isDragging) {
+                pendingRef.current = null;
+                setState({
+                    isDragging: false,
+                    payload: null,
+                    mouseX: 0,
+                    mouseY: 0,
+                    didMove: false,
+                });
+            }
+        };
+
         document.addEventListener("mousemove", onMouseMove);
         document.addEventListener("mouseup", onMouseUp);
         document.addEventListener("keydown", onKeyDown);
+        document.addEventListener("dragend", onDragEnd);
         return () => {
             document.removeEventListener("mousemove", onMouseMove);
             document.removeEventListener("mouseup", onMouseUp);
             document.removeEventListener("keydown", onKeyDown);
+            document.removeEventListener("dragend", onDragEnd);
         };
     }, [cancelDrag]);
 
@@ -192,17 +210,22 @@ export const DragDropProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             {/* ── Floating ghost label ── */}
             {state.isDragging && state.payload && (
                 <div
-                    className="px-3 py-1.5 rounded-lg text-xs font-bold shadow-2xl text-white"
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold shadow-2xl text-white select-none"
                     style={{
                         position: "fixed",
-                        left: state.mouseX + 12,
-                        top: state.mouseY - 10,
+                        left: state.mouseX + 16,
+                        top: state.mouseY - 12,
                         zIndex: 99999,
                         pointerEvents: "none",
                         background: "linear-gradient(135deg, #6366f1, #818cf8)",
+                        transform: "scale(1)",
+                        transition: "opacity 0.1s ease",
+                        boxShadow: "0 4px 16px rgba(99,102,241,0.4)",
+                        borderRadius: "8px",
+                        letterSpacing: "0.05em",
                     }}
                 >
-                    {state.payload.label}
+                    ⊕ {state.payload.label}
                 </div>
             )}
         </DragDropCtx.Provider>

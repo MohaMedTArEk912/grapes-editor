@@ -318,18 +318,6 @@ export const CraftBlock: React.FC<React.PropsWithChildren<CraftBlockProps>> = (p
             {isContainer && (
                 <div className={`craft-children ${isRoot ? "min-h-full" : "min-h-[40px]"}`}>
                     {children}
-                    {/* Empty state indicator */}
-                    {(!children || (Array.isArray(children) && (children as any[]).length === 0)) && enabled && (
-                        <div className="flex flex-col items-center justify-center py-10 select-none pointer-events-none">
-                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-100 to-slate-100 flex items-center justify-center mb-3 shadow-sm border border-slate-200/60">
-                                <svg className="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 4v16m8-8H4" />
-                                </svg>
-                            </div>
-                            <span className="text-xs font-semibold text-slate-400 mb-1">Drop blocks here</span>
-                            <span className="text-[10px] text-slate-300">or click a component from the sidebar</span>
-                        </div>
-                    )}
                 </div>
             )}
         </div>

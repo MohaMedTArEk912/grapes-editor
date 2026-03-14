@@ -31,6 +31,7 @@ router.post('/project-chat', ctrl.projectChat);
 
 // Idea Validation & Refinement
 router.post('/analyze-idea', ctrl.analyzeIdea);
+router.post('/review-idea-feature', ctrl.reviewIdeaFeature);
 router.post('/refine-idea', ctrl.refineIdea);
 
 export default router;

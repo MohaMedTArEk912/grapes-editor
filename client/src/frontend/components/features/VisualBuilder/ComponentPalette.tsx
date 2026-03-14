@@ -6,7 +6,7 @@
  * Click-to-add creates craft.js nodes directly (not old store addBlockAtPosition).
  */
 
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback } from "react";
 import { useProjectStore } from "../../../hooks/useProjectStore";
 import { createMasterComponent, selectComponent } from "../../../stores/projectStore";
 import { useDragDrop } from "../../../context/DragDropContext";
@@ -62,52 +62,18 @@ const ComponentPalette: React.FC = () => {
         }
     }, [actions, query]);
 
-    // Listen for palette-click events from DragDropContext (mousedown+mouseup without move)
-    useEffect(() => {
-        const handler = (e: Event) => {
-            const detail = (e as CustomEvent).detail;
-            if (detail?.payload?.type && !detail?.payload?.moveId) {
-                addBlockViaCraft(detail.payload.type, detail.payload.componentId);
-            }
-        };
-        document.addEventListener("akasha-palette-click", handler);
-        return () => document.removeEventListener("akasha-palette-click", handler);
-    }, [addBlockViaCraft]);
 
     /** Pointer-based drag start (works in Tauri WebView) */
-    const handlePointerDragStart = useCallback((e: React.MouseEvent, componentType: string, componentId?: string) => {
+    const handlePointerDragStart = useCallback((e: React.MouseEvent, componentType: string, label: string, componentId?: string) => {
         prepareDrag(
             {
                 type: componentType,
                 componentId,
-                label: componentType.toUpperCase(),
+                label,
             },
             e,
         );
     }, [prepareDrag]);
-
-    /** Legacy HTML5 DnD start (kept as backup for browser mode) */
-    const handleDragStart = (e: React.DragEvent, componentType: string, componentId?: string) => {
-        e.dataTransfer.setData("application/akasha-block", componentType);
-        if (componentId) {
-            e.dataTransfer.setData("application/akasha-component-id", componentId);
-        }
-        e.dataTransfer.setData("text/plain", componentType);
-        e.dataTransfer.effectAllowed = "copy";
-
-        // Store in global for WebView fallback (Tauri doesn't preserve DataTransfer)
-        (window as any).__akashaDragData = { type: componentType, componentId };
-
-        // Add a ghost image
-        const ghost = document.createElement('div');
-        ghost.className = 'px-3 py-1.5 rounded-lg text-xs font-bold shadow-2xl';
-        ghost.style.background = "linear-gradient(135deg, var(--ide-primary), var(--ide-primary-hover))";
-        ghost.style.color = "#ffffff";
-        ghost.innerText = componentType.toUpperCase();
-        document.body.appendChild(ghost);
-        e.dataTransfer.setDragImage(ghost, 0, 0);
-        setTimeout(() => document.body.removeChild(ghost), 0);
-    };
 
     const handleCreateComponent = async () => {
         if (!newComponentName.trim()) return;
@@ -261,12 +227,16 @@ const ComponentPalette: React.FC = () => {
                                 {category.items.map((item) => (
                                     <div
                                         key={item.name + ((item as any).id || item.type)}
-                                        draggable
-                                        onDragStart={(e) => handleDragStart(e, item.type, (item as any).id)}
                                         onMouseDown={(e) => {
                                             if (e.button === 0 && (e.target as HTMLElement).closest('[data-palette-edit]') === null) {
-                                                handlePointerDragStart(e, item.type, (item as any).id);
+                                                // Start pointer-based drag (no e.preventDefault so onClick still fires)
+                                                handlePointerDragStart(e, item.type, item.name, (item as any).id);
                                             }
+                                        }}
+                                        onClick={(e) => {
+                                            // Click-to-add: fires on click (no drag movement)
+                                            if ((e.target as HTMLElement).closest('[data-palette-edit]') !== null) return;
+                                            addBlockViaCraft(item.type, (item as any).id);
                                         }}
                                         className={`group relative h-16 bg-white/5 hover:bg-white/10 border border-transparent hover:border-white/10 rounded-lg cursor-pointer transition-all duration-200 flex flex-col items-center justify-center gap-1 overflow-hidden ring-1 ring-inset ring-transparent hover:ring-[#0099FF]/30 shadow-sm ${lastAdded === item.type ? 'ring-2 ring-emerald-500 scale-95' : ''
                                             }`}
