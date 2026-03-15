@@ -85,9 +85,16 @@ class OpenRouterProvider implements LLMProvider {
  */
 class QwenProvider implements LLMProvider {
     private qwenUrl: string;
+    private readonly defaultMaxTokens: number;
 
     constructor() {
         this.qwenUrl = getQwenUrl();
+        this.defaultMaxTokens = Number(process.env.QWEN_MAX_NEW_TOKENS || 384);
+    }
+
+    private resolveMaxNewTokens(options: LLMCompletionOptions): number {
+        const requested = options.max_tokens ?? this.defaultMaxTokens;
+        return Math.max(32, Math.min(2048, Math.floor(requested)));
     }
 
     async chat(options: LLMCompletionOptions): Promise<string> {
@@ -105,6 +112,9 @@ class QwenProvider implements LLMProvider {
                 body: JSON.stringify({
                     message: currentMessage,
                     history,
+                    max_new_tokens: this.resolveMaxNewTokens(options),
+                    temperature: options.temperature,
+                    top_p: options.top_p,
                     stream: false,
                 }),
             });
@@ -127,7 +137,14 @@ class QwenProvider implements LLMProvider {
         const response = await fetch(`${this.qwenUrl}/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: currentMessage, history, stream: true }),
+            body: JSON.stringify({
+                message: currentMessage,
+                history,
+                max_new_tokens: this.resolveMaxNewTokens(options),
+                temperature: options.temperature,
+                top_p: options.top_p,
+                stream: true,
+            }),
         });
 
         if (!response.ok || !response.body) {

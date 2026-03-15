@@ -10,7 +10,7 @@ interface IdeaWorkshopProps {
     projectId?: string;
     initialIdea?: string;
     fullScreen?: boolean;
-    onRefined: (refinedIdea: string) => void;
+    onRefined: (refinedIdea: string) => void | Promise<void>;
     onCancel: () => void;
 }
 
@@ -559,6 +559,7 @@ export default function IdeaWorkshop({
     const [newFeature, setNewFeature] = useState('');
     const [detailsLoadingId, setDetailsLoadingId] = useState<string | null>(null);
     const [previewRevealCount, setPreviewRevealCount] = useState(0);
+    const [isPersistingFinalPlan, setIsPersistingFinalPlan] = useState(false);
 
     const draftStorageKey = useMemo(
         () => `akasha:idea-workshop:draft:${projectId || projectName}`,
@@ -926,18 +927,26 @@ export default function IdeaWorkshop({
             );
             const normalizedDoc = normalizeRefinedDoc((result as any)?.doc);
             const fallbackMarkdown = typeof (result as any)?.refinedIdea === 'string' ? (result as any).refinedIdea : '';
+            const finalMarkdown = normalizedDoc ? (fallbackMarkdown || docToMarkdown(normalizedDoc)) : fallbackMarkdown;
 
             if (normalizedDoc) {
                 setRefinedDoc(normalizedDoc);
-                setRefinedIdea(fallbackMarkdown || docToMarkdown(normalizedDoc));
+                setRefinedIdea(finalMarkdown);
             } else {
                 setRefinedDoc(null);
-                setRefinedIdea(fallbackMarkdown);
+                setRefinedIdea(finalMarkdown);
             }
             setPhase('complete');
+
+            if (finalMarkdown.trim()) {
+                setIsPersistingFinalPlan(true);
+                await onRefined(finalMarkdown);
+            }
         } catch (err: any) {
             toast.showToast('Failed to refine idea', 'error');
             setPhase('discussion');
+        } finally {
+            setIsPersistingFinalPlan(false);
         }
     };
 
@@ -1682,7 +1691,7 @@ export default function IdeaWorkshop({
                             fullScreen ? 'xl:grid-cols-[320px,1fr]' : 'grid-cols-1'
                         }`}
                     >
-                        <div className="space-y-4">
+                        <div className="space-y-4 min-w-0">
                             <div className="rounded-2xl border border-indigo-500/20 bg-indigo-500/8 p-4">
                                 <div className="text-[10px] font-black uppercase tracking-widest text-indigo-300">Idea Readiness</div>
                                 <div className="mt-2 flex items-end justify-between">
@@ -1732,7 +1741,7 @@ export default function IdeaWorkshop({
                             </div>
                         </div>
 
-                        <div className="min-h-0 flex flex-col gap-4">
+                        <div className="min-h-0 min-w-0 flex flex-col gap-4">
                             <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-2xl p-4 flex items-start gap-4">
                                 <div className="text-xl">💡</div>
                                 <div className="text-sm text-indigo-200">
@@ -1775,7 +1784,7 @@ export default function IdeaWorkshop({
 
                 {(phase === 'analyzing' || phase === 'refining') && (
                     <div className="h-full min-h-0 animate-fade-in grid grid-cols-1 xl:grid-cols-[1.1fr,0.9fr] gap-4">
-                        <div className="bg-[var(--ide-bg-elevated)] border border-[var(--ide-border)] rounded-2xl p-4 space-y-4">
+                        <div className="min-w-0 bg-[var(--ide-bg-elevated)] border border-[var(--ide-border)] rounded-2xl p-4 space-y-4">
                             <div className="flex items-center gap-3">
                                 <div className="relative">
                                     <div className="w-14 h-14 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin"></div>
@@ -1807,7 +1816,7 @@ export default function IdeaWorkshop({
                             </div>
                         </div>
 
-                        <div className="bg-black/20 border border-white/10 rounded-2xl p-4 space-y-4">
+                        <div className="min-w-0 bg-black/20 border border-white/10 rounded-2xl p-4 space-y-4">
                             <div className="text-[10px] font-black uppercase tracking-widest text-violet-300">Feature Queue Skeleton</div>
                             <div className="space-y-3">
                                 {Array.from({ length: 4 }).map((_, index) => (
@@ -1831,7 +1840,7 @@ export default function IdeaWorkshop({
                     >
                         <div
                             className={`space-y-4 ${
-                                fullScreen ? 'min-h-0 overflow-y-auto custom-scrollbar pr-1' : 'shrink-0'
+                                fullScreen ? 'min-h-0 min-w-0 overflow-y-auto custom-scrollbar pr-1' : 'shrink-0'
                             }`}
                         >
                             <div className="bg-gradient-to-br from-white/[0.04] to-white/[0.01] border border-white/5 rounded-2xl p-5 relative overflow-hidden">
@@ -1893,7 +1902,7 @@ export default function IdeaWorkshop({
                             {renderProgressiveConceptPreview()}
                         </div>
 
-                        <div className="min-h-0 flex flex-col gap-4">
+                        <div className="min-h-0 min-w-0 flex flex-col gap-4">
                             {renderFeatureDecisionBoard()}
                             {renderChatPanel()}
                         </div>
@@ -1996,9 +2005,10 @@ export default function IdeaWorkshop({
                     {phase === 'complete' && (
                         <button
                             onClick={() => onRefined(refinedIdea)}
-                            className="btn-modern-primary !h-10 !px-8 text-xs !bg-gradient-to-r !from-emerald-500 !to-teal-500 hover:!from-emerald-400 hover:!to-teal-400 !shadow-emerald-500/20"
+                            disabled={isPersistingFinalPlan || !refinedIdea.trim()}
+                            className="btn-modern-primary !h-10 !px-8 text-xs !bg-gradient-to-r !from-emerald-500 !to-teal-500 hover:!from-emerald-400 hover:!to-teal-400 !shadow-emerald-500/20 disabled:opacity-50"
                         >
-                            Generate Structured Plan
+                            {isPersistingFinalPlan ? 'Saving Plan...' : 'Generate Structured Plan'}
                         </button>
                     )}
                 </div>

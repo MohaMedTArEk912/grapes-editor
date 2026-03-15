@@ -105,6 +105,12 @@ export async function startQwenServer(): Promise<boolean> {
             env: {
                 ...process.env,
                 PYTHONUTF8: '1',
+                QWEN_PROFILE: process.env.QWEN_PROFILE || 'balanced',
+                QWEN_MAX_NEW_TOKENS: process.env.QWEN_MAX_NEW_TOKENS || '256',
+                QWEN_MAX_INPUT_TOKENS: process.env.QWEN_MAX_INPUT_TOKENS || '2048',
+                QWEN_REQUEST_LOCK_TIMEOUT_SEC: process.env.QWEN_REQUEST_LOCK_TIMEOUT_SEC || '0.15',
+                QWEN_USE_TORCH_COMPILE: process.env.QWEN_USE_TORCH_COMPILE || 'false',
+                TOKENIZERS_PARALLELISM: process.env.TOKENIZERS_PARALLELISM || 'false',
             },
         });
 
