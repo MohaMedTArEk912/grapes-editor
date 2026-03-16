@@ -27,6 +27,7 @@ interface ProjectState {
     exportModalOpen: boolean;
     selectedFilePath: string | null;
     terminalOpen: boolean;
+    builderActive: boolean;
 
     /** Diff viewer state — when set, the editor area shows a diff view */
     diffView: {
@@ -66,6 +67,7 @@ const initialState: ProjectState = {
     isDashboardActive: true,
     selectedFilePath: null,
     terminalOpen: false,
+    builderActive: false,
     openPageIds: [],
     diffView: null,
 };
@@ -1316,6 +1318,13 @@ export function openDiffView(data: {
  */
 export function closeDiffView(): void {
     updateState(() => ({ diffView: null }));
+}
+
+/**
+ * Toggle builder active state
+ */
+export function setBuilderActive(active: boolean): void {
+    updateState(() => ({ builderActive: active }));
 }
 
 /**

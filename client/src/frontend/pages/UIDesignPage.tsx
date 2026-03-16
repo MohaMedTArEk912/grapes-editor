@@ -21,13 +21,17 @@ import BuilderWorkspace from "../components/features/VisualBuilder/workspace/Bui
 
 /* ═══════════════════  Main Page  ═══════════════════════ */
 
-const UIDesignPage: React.FC = () => {
+interface UIDesignPageProps {
+    onBack?: () => void;
+}
+
+const UIDesignPage: React.FC<UIDesignPageProps> = ({ onBack }) => {
     const [exportOpen, setExportOpen] = useState(false);
 
     return (
         <CraftEditor>
             <div className="size-full flex flex-col bg-[var(--ide-bg)] overflow-hidden">
-                <BuilderWorkspace onExportClick={() => setExportOpen(true)} />
+                <BuilderWorkspace onExportClick={() => setExportOpen(true)} onBack={onBack} />
 
                 <ExportModal isOpen={exportOpen} onClose={() => setExportOpen(false)} />
                 <ContextMenu />

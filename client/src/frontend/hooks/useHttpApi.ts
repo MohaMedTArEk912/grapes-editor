@@ -73,7 +73,17 @@ export const httpApi = {
     throw new Error("Rename not implemented in HTTP hook without ID");
   },
   updateSettings: async (_settings: Partial<ProjectSettings>) => {
-    throw new Error("Update settings not implemented");
+    if (!activeProjectId) throw new Error("No active project");
+    const current = await client.get(`/project/${activeProjectId}`);
+    const currentSettings = (current.data?.settings || {}) as ProjectSettings;
+    const mergedSettings = {
+      ...currentSettings,
+      ..._settings,
+    };
+    const res = await client.put(`/project/${activeProjectId}`, {
+      settings: mergedSettings,
+    });
+    return res.data;
   },
   generateStructuredIdea: async (
     id: string,

@@ -242,6 +242,19 @@ export interface StructuredIdeaDetails {
     };
 }
 
+export interface UiArchitectSavedPlan {
+    version: string;
+    saved_at: string;
+    form?: Record<string, unknown>;
+    globals?: {
+        themeMode?: string;
+        spacingScale?: string;
+        animationSpeed?: string;
+        containerWidth?: string;
+    };
+    export_payload?: Record<string, unknown>;
+}
+
 export interface ProjectSettings {
     default_locale: string;
     locales: string[];
@@ -264,6 +277,7 @@ export interface ProjectSettings {
         favicon?: string;
     };
     ideaDetails?: StructuredIdeaDetails;
+    uiArchitectPlan?: UiArchitectSavedPlan;
 }
 
 export interface FileEntry {

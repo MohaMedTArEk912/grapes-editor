@@ -6,6 +6,7 @@ import {
     archivePage,
     generateBuilderLayout,
     selectPage,
+    setBuilderActive,
 } from "../stores/projectStore";
 import { useToast } from "../context/ToastContext";
 import UIDesignPage from "./UIDesignPage";
@@ -129,6 +130,24 @@ function parseTypography(input: string): { heading: string; body: string } {
     };
 }
 
+function inferPlatformFromIdea(ideaDetails: unknown): ArchitectForm["platform"] | null {
+    if (!ideaDetails || typeof ideaDetails !== "object") return null;
+    const product = (ideaDetails as { product?: { platforms?: unknown } }).product;
+    const platforms = Array.isArray(product?.platforms)
+        ? product.platforms.filter((item): item is string => typeof item === "string")
+        : [];
+
+    if (platforms.length === 0) return null;
+    const combined = platforms.join(" ").toLowerCase();
+
+    const hasWeb = /web|browser|website/.test(combined);
+    const hasMobile = /mobile|ios|android|app/.test(combined);
+
+    if (hasWeb && hasMobile) return "both";
+    if (hasMobile) return "mobile";
+    return "web";
+}
+
 const UIIdeationPage: React.FC = () => {
     const { project, selectedPageId } = useProjectStore();
     const toast = useToast();
@@ -147,6 +166,10 @@ const UIIdeationPage: React.FC = () => {
     const pages = useMemo(() => project?.pages.filter((p) => !p.archived) ?? [], [project]);
 
     useEffect(() => {
+        setBuilderActive(activeTab === "builder");
+    }, [activeTab]);
+
+    useEffect(() => {
         try {
             const raw = localStorage.getItem(ARCHITECT_DRAFT_STORAGE_KEY);
             if (!raw) return;
@@ -156,6 +179,24 @@ const UIIdeationPage: React.FC = () => {
             // Ignore malformed drafts and keep defaults.
         }
     }, []);
+
+    useEffect(() => {
+        if (!project) return;
+
+        const ideaDetails = project.settings?.ideaDetails;
+        const inferredName = ideaDetails?.ideaMetadata?.ideaName || project.name || "";
+        const inferredIndustry = ideaDetails?.ideaMetadata?.industry || ideaDetails?.ideaMetadata?.category || "";
+        const inferredPlatform = inferPlatformFromIdea(ideaDetails);
+
+        setForm((prev) => ({
+            ...prev,
+            name: prev.name.trim() ? prev.name : inferredName,
+            industry: prev.industry.trim() ? prev.industry : inferredIndustry,
+            platform: inferredPlatform && prev.platform === initialForm.platform
+                ? inferredPlatform
+                : prev.platform,
+        }));
+    }, [project]);
 
     useEffect(() => {
         try {
@@ -427,6 +468,7 @@ const UIIdeationPage: React.FC = () => {
 
     return (
         <div className="size-full bg-[var(--ide-bg)] text-[var(--ide-text)] flex flex-col overflow-hidden">
+            {activeTab !== "builder" && (
             <header className="h-14 border-b border-[var(--ide-border)] px-5 flex items-center justify-between bg-[var(--ide-bg-sidebar)]/70 backdrop-blur-xl">
                 <div className="flex items-center gap-4">
                     <h1 className="text-sm tracking-[0.12em] uppercase font-extrabold text-white/90">AI UI Architect</h1>
@@ -452,10 +494,11 @@ const UIIdeationPage: React.FC = () => {
                     Open Builder
                 </button>
             </header>
+            )}
 
             {activeTab === "builder" && (
                 <div className="flex-1 overflow-hidden">
-                    <UIDesignPage />
+                    <UIDesignPage onBack={() => setActiveTab("pages")} />
                 </div>
             )}
 

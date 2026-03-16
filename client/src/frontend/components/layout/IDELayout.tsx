@@ -58,7 +58,7 @@ const FEATURE_PAGES: FeaturePageDef[] = [
  * Main IDE Layout — Feature Page Architecture
  */
 const IDELayout: React.FC = () => {
-    const { project, activePage, loading, loadingMessage, installLog, installError, terminalOpen } = useProjectStore();
+    const { project, activePage, loading, loadingMessage, installLog, installError, terminalOpen, builderActive } = useProjectStore();
     const [settingsOpen, setSettingsOpen] = useState(false);
 
     // Global keyboard shortcut: toggle terminal
@@ -88,6 +88,7 @@ const IDELayout: React.FC = () => {
         <div className="h-screen w-screen flex flex-col bg-[var(--ide-bg)] text-[var(--ide-text)] overflow-hidden">
 
             {/* ===== TOP: Title Bar ===== */}
+            {!builderActive && (
             <header
                 className="h-10 bg-[#050508] border-b border-white/[0.04] flex items-center justify-between px-4 select-none flex-shrink-0 relative overflow-hidden"
                 data-tauri-drag-region
@@ -134,11 +135,13 @@ const IDELayout: React.FC = () => {
                     <div className="w-20"></div>
                 </div>
             </header>
+            )}
 
             {/* ===== MAIN CONTENT AREA ===== */}
             <div className="flex-1 flex overflow-hidden">
 
                 {/* ===== LEFT: Feature Navigation Rail ===== */}
+                {!builderActive && (
                 <aside className="w-14 bg-[#0c0c14] flex flex-col items-center py-3 flex-shrink-0 border-r border-white/[0.06] relative">
                     {/* Subtle gradient overlay */}
                     <div className="absolute inset-0 bg-gradient-to-b from-indigo-500/[0.03] to-transparent pointer-events-none" />
@@ -168,6 +171,7 @@ const IDELayout: React.FC = () => {
                         onClick={() => setSettingsOpen(true)}
                     />
                 </aside>
+                )}
 
                 {/* ===== CENTER: Page Content + Terminal ===== */}
                 <div className="flex-1 flex flex-col overflow-hidden">

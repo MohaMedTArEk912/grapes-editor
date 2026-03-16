@@ -9,6 +9,7 @@ interface LeftSidebarProps {
     tab: BuilderLeftTab;
     onTabChange: (tab: BuilderLeftTab) => void;
     onExportClick: () => void;
+    onBack?: () => void;
 }
 
 const tabs: Array<{ key: BuilderLeftTab; label: string }> = [
@@ -17,12 +18,15 @@ const tabs: Array<{ key: BuilderLeftTab; label: string }> = [
     { key: "layers", label: "Layers" },
 ];
 
-const LeftSidebar: React.FC<LeftSidebarProps> = ({ tab, onTabChange, onExportClick }) => {
+const LeftSidebar: React.FC<LeftSidebarProps> = ({ tab, onTabChange, onExportClick, onBack }) => {
     return (
         <div className="w-64 bg-[var(--ide-bg-sidebar)] border-r border-[var(--ide-border)] flex flex-col flex-shrink-0">
             <div className="h-10 flex items-center border-b border-[var(--ide-border)] select-none">
                 <button
-                    onClick={() => setActivePage("ui")}
+                    onClick={() => {
+                        if (onBack) onBack();
+                        else setActivePage("ui");
+                    }}
                     className="h-full px-4 flex items-center gap-2 justify-center text-[var(--ide-text-muted)] hover:text-[var(--ide-text)] hover:bg-white/5 transition-colors border-r border-[var(--ide-border)]"
                     title="Back to UI Design"
                 >
